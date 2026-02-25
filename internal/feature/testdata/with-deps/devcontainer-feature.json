@@ -1,0 +1,11 @@
+{
+    "id": "with-deps",
+    "version": "1.0.0",
+    "name": "Feature With Dependencies",
+    "dependsOn": {
+        "ghcr.io/devcontainers/features/common-utils:2": {}
+    },
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/node"
+    ]
+}

@@ -1,0 +1,20 @@
+// Ruby project example with development tools.
+// Usage:
+//   cd examples/ruby-project
+//   crib up
+//   crib exec -- bash
+//   crib stop
+//   crib delete
+{
+  "name": "ruby-project",
+  "image": "docker.io/library/ruby:3.3-bookworm",
+
+  "overrideCommand": true,
+  "remoteUser": "root",
+
+  "remoteEnv": {
+    "CRIB_EXAMPLE": "ruby-project"
+  },
+
+  "postCreateCommand": "apt-get update && apt-get install -y git make curl && echo '==> Ruby dev environment ready. ruby: ' && ruby --version && gem --version"
+}

@@ -1,0 +1,6 @@
+services:
+  web:
+    build:
+      context: ./app
+      dockerfile: Dockerfile.dev
+    user: vscode

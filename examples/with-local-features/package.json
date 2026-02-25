@@ -1,0 +1,16 @@
+{
+  "name": "with-features-example",
+  "version": "1.0.0",
+  "description": "Example using devcontainer Features for development tools",
+  "main": "hello.ts",
+  "scripts": {
+    "dev": "ts-node hello.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "ts-node": "^10.0.0"
+  },
+  "keywords": ["example", "features"],
+  "author": "",
+  "license": "MIT"
+}

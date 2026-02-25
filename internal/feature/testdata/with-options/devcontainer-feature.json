@@ -1,0 +1,18 @@
+{
+    "id": "with-options",
+    "version": "1.0.0",
+    "name": "Feature With Options",
+    "options": {
+        "version": {
+            "type": "string",
+            "default": "latest",
+            "description": "Version to install",
+            "proposals": ["latest", "lts"]
+        },
+        "install_tools": {
+            "type": "boolean",
+            "default": true,
+            "description": "Install additional tools"
+        }
+    }
+}

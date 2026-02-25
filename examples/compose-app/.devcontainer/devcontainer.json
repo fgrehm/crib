@@ -1,0 +1,42 @@
+// Compose example covering several recently fixed behaviours:
+//
+//   - Multi-service compose: both app and db start/stop/delete together.
+//   - ${localWorkspaceFolderBasename} in docker-compose.yml: crib passes
+//     devcontainer variables as env vars to docker compose, so ${PROJECT}
+//     resolves without "variable is not set" warnings.
+//   - ${containerEnv:VAR} in remoteEnv: resolved against the running
+//     container's environment after it starts.
+//   - remoteEnv in lifecycle hooks: postCreateCommand sees PROJECT_NAME
+//     and REDIS_URL because hooks now receive remoteEnv via -e flags.
+//   - remoteEnv in crib shell / crib exec: same vars are injected there too.
+//
+// Usage:
+//   cd examples/compose-app
+//   crib up
+//   crib shell                    # PROJECT_NAME and REDIS_URL are set
+//   crib exec -- node hello.js    # prints the resolved env vars
+//   crib stop                     # stops both app and db
+//   crib delete                   # removes both app and db
+{
+  "name": "compose-app",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "runServices": ["app", "db"],
+
+  // ${localWorkspaceFolderBasename} is substituted by crib before the
+  // workspace folder is used, so this resolves to e.g. /workspaces/compose-app.
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+
+  "overrideCommand": true,
+  "remoteUser": "root",
+
+  "remoteEnv": {
+    // Pulled from the running container env - PROJECT was set in docker-compose.yml
+    // from ${localWorkspaceFolderBasename}, so this chains both substitutions.
+    "PROJECT_NAME": "${containerEnv:PROJECT}",
+    // Plain value - shows remoteEnv reaches hooks and shell sessions.
+    "REDIS_URL": "redis://db:6379"
+  },
+
+  "postCreateCommand": "echo '==> PROJECT_NAME='$PROJECT_NAME && echo '==> REDIS_URL='$REDIS_URL && node --version"
+}

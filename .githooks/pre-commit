@@ -1,0 +1,29 @@
+#!/bin/bash
+# Pre-commit hook to enforce go fmt and lint
+
+set -e
+
+# Get list of staged Go files
+staged_go_files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+
+if [ -z "$staged_go_files" ]; then
+    exit 0
+fi
+
+# Run gofmt on staged files
+echo "Running gofmt on staged Go files..."
+gofmt -s -w $staged_go_files
+
+# Re-stage the formatted files
+git add $staged_go_files
+
+echo "✓ Code formatted with gofmt"
+
+# Run linter
+echo "Running golangci-lint..."
+go tool golangci-lint run --new-from-rev=HEAD~1 --fix
+
+# Re-stage any auto-fixed files
+git add $staged_go_files
+
+echo "✓ Lint passed"

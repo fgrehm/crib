@@ -1,0 +1,10 @@
+.claude/settings.local.json
+bin/
+*.tmp
+*.log
+.DS_Store
+.env
+
+# crib generated build artifacts
+.crib-Dockerfile
+.crib-features/

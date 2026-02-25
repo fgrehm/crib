@@ -1,0 +1,12 @@
+{
+  "name": "nodejs-example",
+  "version": "1.0.0",
+  "description": "A simple Node.js devcontainer example",
+  "main": "hello.js",
+  "scripts": {
+    "start": "node hello.js"
+  },
+  "keywords": ["example"],
+  "author": "",
+  "license": "MIT"
+}

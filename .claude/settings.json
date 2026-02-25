@@ -1,0 +1,10 @@
+{
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(make build:*)",
+      "Bash(make test:*)"
+    ]
+  }
+}

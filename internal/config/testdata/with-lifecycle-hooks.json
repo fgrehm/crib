@@ -1,0 +1,11 @@
+{
+	"image": "ubuntu:22.04",
+	"onCreateCommand": "echo hello",
+	"updateContentCommand": ["git", "pull"],
+	"postCreateCommand": {
+		"install": "npm install",
+		"build": ["make", "build"]
+	},
+	"postStartCommand": "echo started",
+	"postAttachCommand": "echo attached"
+}

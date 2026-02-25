@@ -1,0 +1,40 @@
+// Full feature config with comments (JSONC)
+{
+    "id": "full-feature",
+    "name": "Full Feature",
+    "version": "2.1.0",
+    "description": "A feature with all fields populated",
+    "entrypoint": "/usr/local/bin/entrypoint.sh",
+    "deprecated": true,
+    "options": {
+        "version": {
+            "type": "string",
+            "default": "3.12",
+            "description": "Version to install",
+            "enum": ["3.10", "3.11", "3.12"],
+            "proposals": ["3.12", "3.11"]
+        }
+    },
+    "dependsOn": {
+        "ghcr.io/devcontainers/features/common-utils:2": {
+            "username": "vscode"
+        }
+    },
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/node"
+    ],
+    "capAdd": ["SYS_PTRACE"],
+    "init": true,
+    "privileged": false,
+    "securityOpt": ["seccomp=unconfined"],
+    "mounts": [
+        "type=bind,src=/tmp,dst=/tmp"
+    ],
+    "containerEnv": {
+        "MY_VAR": "my_value"
+    },
+    "onCreateCommand": "echo on-create",
+    "postCreateCommand": "echo post-create",
+    "postStartCommand": "echo post-start",
+    "postAttachCommand": "echo post-attach"
+}

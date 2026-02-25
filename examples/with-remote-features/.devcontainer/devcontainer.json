@@ -1,0 +1,24 @@
+// Project demonstrating remote OCI devcontainer Features.
+// Features are pulled from ghcr.io and cached under ~/.crib/feature-cache/.
+//
+// Usage:
+//   cd examples/with-remote-features
+//   crib up
+//   crib exec -- go version
+//   crib stop
+//   crib delete
+{
+  "name": "with-remote-features",
+  "image": "docker.io/library/ubuntu:24.04",
+
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": {},
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "overrideCommand": true,
+  "remoteUser": "root",
+
+  "postCreateCommand": "go version && node --version && gh --version"
+}

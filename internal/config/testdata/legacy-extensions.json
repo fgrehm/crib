@@ -1,0 +1,8 @@
+{
+	"image": "ubuntu:22.04",
+	"extensions": ["ms-python.python", "golang.go"],
+	"settings": {
+		"editor.tabSize": 4,
+		"editor.formatOnSave": true
+	}
+}

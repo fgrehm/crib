@@ -1,0 +1,36 @@
+// This is a full devcontainer config with JSONC features.
+{
+	"name": "Full Config",
+	"image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+	// Forward some ports
+	"forwardPorts": [8080, "9090:9090"],
+	"remoteUser": "vscode",
+	"remoteEnv": {
+		"EDITOR": "vim",
+	},
+	"containerEnv": {
+		"DEBIAN_FRONTEND": "noninteractive",
+	},
+	"mounts": [
+		"type=bind,src=/tmp,dst=/tmp",
+		{"type": "volume", "source": "mydata", "target": "/data"},
+	],
+	"features": {
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "18",
+		},
+	},
+	"onCreateCommand": "echo setup",
+	"postCreateCommand": {
+		"install": "npm install",
+		"build": "npm run build",
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": ["ms-python.python"],
+		},
+	},
+	"workspaceFolder": "/workspace",
+	/* Block comment */
+	"shutdownAction": "stopContainer",
+}

@@ -1,0 +1,20 @@
+// Node.js project example with development tools.
+// Usage:
+//   cd examples/nodejs-project
+//   crib up
+//   crib exec -- bash
+//   crib stop
+//   crib delete
+{
+  "name": "nodejs-project",
+  "image": "docker.io/library/node:22-bookworm",
+
+  "overrideCommand": true,
+  "remoteUser": "root",
+
+  "remoteEnv": {
+    "CRIB_EXAMPLE": "nodejs-project"
+  },
+
+  "postCreateCommand": "apt-get update && apt-get install -y git make curl && echo '==> Node.js dev environment ready. node: ' && node --version && npm --version"
+}

@@ -1,0 +1,11 @@
+services:
+  app:
+    image: docker.io/library/node:20-slim
+    environment:
+      NODE_ENV: development
+      # ${localWorkspaceFolderBasename} is passed by crib as an env var to
+      # docker compose, so it resolves here without "variable is not set" warnings.
+      PROJECT: ${localWorkspaceFolderBasename}
+
+  db:
+    image: docker.io/library/redis:7-alpine

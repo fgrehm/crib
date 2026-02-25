@@ -1,0 +1,25 @@
+// Simple crib example using a plain Debian image.
+// Usage:
+//   cd examples/simple
+//   crib up
+//   crib exec -- bash
+//   crib stop
+//   crib delete
+{
+  "name": "simple",
+  "image": "docker.io/library/debian:12-slim",
+
+  // Keep the container alive and override the default entrypoint.
+  "overrideCommand": true,
+
+  // Run lifecycle commands as root (the default).
+  "remoteUser": "root",
+
+  // Environment variables injected into every exec session.
+  "remoteEnv": {
+    "CRIB_EXAMPLE": "simple"
+  },
+
+  // Runs once after the container is first created.
+  "postCreateCommand": "echo '==> container ready. try: crib exec -- bash'"
+}

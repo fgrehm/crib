@@ -1,0 +1,11 @@
+{
+	"image": "ubuntu:22.04",
+	"workspaceFolder": "/workspace/${localWorkspaceFolderBasename}",
+	"remoteEnv": {
+		"PROJECT_DIR": "${containerWorkspaceFolder}",
+		"LOCAL_HOME": "${localEnv:HOME}"
+	},
+	"containerEnv": {
+		"WORKSPACE": "${localWorkspaceFolder}"
+	}
+}

@@ -1,0 +1,26 @@
+// Project demonstrating local devcontainer Features.
+// Features are defined as local folders with install.sh and devcontainer-feature.json.
+//
+// Usage:
+//   cd examples/with-local-features
+//   crib up
+//   crib exec -- node --version
+//   crib stop
+//   crib delete
+{
+  "name": "with-local-features",
+  "image": "docker.io/library/ubuntu:24.04",
+
+  "features": {
+    "./features/node": {}
+  },
+
+  "overrideCommand": true,
+  "remoteUser": "root",
+
+  "remoteEnv": {
+    "CRIB_EXAMPLE": "with-local-features"
+  },
+
+  "postCreateCommand": "node --version"
+}

@@ -1,0 +1,20 @@
+// Go project example with development tools.
+// Usage:
+//   cd examples/go-project
+//   crib up
+//   crib exec -- bash
+//   crib stop
+//   crib delete
+{
+  "name": "go-project",
+  "image": "docker.io/library/golang:1.26-bookworm",
+
+  "overrideCommand": true,
+  "remoteUser": "root",
+
+  "remoteEnv": {
+    "CRIB_EXAMPLE": "go-project"
+  },
+
+  "postCreateCommand": "apt-get update && apt-get install -y git make curl && echo '==> Go dev environment ready. go version: ' && go version"
+}

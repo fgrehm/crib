@@ -1,0 +1,10 @@
+{
+  "id": "node",
+  "version": "1.0.0",
+  "name": "Node.js",
+  "description": "Install Node.js development environment",
+  "documentationURL": "https://nodejs.org/",
+  "licenseURL": "https://github.com/nodejs/node/blob/main/LICENSE",
+  "options": {},
+  "installsAfter": []
+}

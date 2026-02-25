@@ -1,0 +1,23 @@
+// Python project with custom Dockerfile.
+// Usage:
+//   cd examples/python-dockerfile
+//   crib up
+//   crib exec -- bash
+//   crib stop
+//   crib delete
+{
+  "name": "python-dockerfile",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+
+  "overrideCommand": true,
+  "remoteUser": "root",
+
+  "remoteEnv": {
+    "CRIB_EXAMPLE": "python-dockerfile"
+  },
+
+  "postCreateCommand": "echo '==> Python dev environment ready.' && python --version && pip list | grep -E 'pytest|black|flake8'"
+}
