@@ -82,35 +82,10 @@ type UpResult struct {
 func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions) (*UpResult, error) {
 	e.logger.Debug("up", "workspace", ws.ID, "source", ws.Source)
 
-	// Parse and substitute devcontainer.json.
-	configPath := filepath.Join(ws.Source, ws.DevContainerPath)
-	cfg, err := config.Parse(configPath)
+	cfg, workspaceFolder, err := e.parseAndSubstitute(ws)
 	if err != nil {
-		return nil, fmt.Errorf("parsing devcontainer config: %w", err)
+		return nil, err
 	}
-
-	workspaceFolder := resolveWorkspaceFolder(cfg, ws.Source)
-	// Pre-expand local-path variables in workspaceFolder so the substitution
-	// context gets a concrete path for ${containerWorkspaceFolder} references.
-	workspaceFolder = strings.NewReplacer(
-		"${localWorkspaceFolder}", ws.Source,
-		"${localWorkspaceFolderBasename}", filepath.Base(ws.Source),
-	).Replace(workspaceFolder)
-
-	subCtx := &config.SubstitutionContext{
-		DevContainerID:           ws.ID,
-		LocalWorkspaceFolder:     ws.Source,
-		ContainerWorkspaceFolder: workspaceFolder,
-		Env:                      envMap(),
-	}
-	cfg, err = config.Substitute(subCtx, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("substituting variables: %w", err)
-	}
-
-	// Re-resolve after full substitution in case workspaceFolder referenced
-	// other variables (e.g. ${devcontainerId}).
-	workspaceFolder = resolveWorkspaceFolder(cfg, ws.Source)
 
 	// Run initializeCommand on the host before image build/pull.
 	if err := e.runInitializeCommand(ctx, ws, cfg); err != nil {
@@ -170,8 +145,8 @@ func (e *Engine) Stop(ctx context.Context, ws *workspace.Workspace) error {
 		var cfg config.DevContainerConfig
 		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
 			if e.compose != nil {
-				configDir := filepath.Dir(filepath.Join(ws.Source, ws.DevContainerPath))
-				composeFiles := resolveComposeFiles(configDir, cfg.DockerComposeFile)
+				cd := configDir(ws)
+				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 				projectName := compose.ProjectName(ws.ID)
 				env := devcontainerEnv(ws.ID, ws.Source, result.WorkspaceFolder)
 				return e.compose.Stop(ctx, projectName, composeFiles, e.stdout, e.stderr, env)
@@ -200,8 +175,8 @@ func (e *Engine) Delete(ctx context.Context, ws *workspace.Workspace) error {
 		var cfg config.DevContainerConfig
 		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
 			if e.compose != nil {
-				configDir := filepath.Dir(filepath.Join(ws.Source, ws.DevContainerPath))
-				composeFiles := resolveComposeFiles(configDir, cfg.DockerComposeFile)
+				cd := configDir(ws)
+				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 				projectName := compose.ProjectName(ws.ID)
 				env := devcontainerEnv(ws.ID, ws.Source, result.WorkspaceFolder)
 				if err := e.compose.Down(ctx, projectName, composeFiles, e.stdout, e.stderr, env); err != nil {
@@ -231,11 +206,109 @@ func (e *Engine) Status(ctx context.Context, ws *workspace.Workspace) (*driver.C
 	return e.driver.FindContainer(ctx, ws.ID)
 }
 
+// --- shared helpers ---
+
+// parseAndSubstitute parses and performs variable substitution on the
+// devcontainer config for the given workspace. Returns the fully resolved
+// config and the workspace folder path inside the container.
+func (e *Engine) parseAndSubstitute(ws *workspace.Workspace) (*config.DevContainerConfig, string, error) {
+	cfgPath := filepath.Join(ws.Source, ws.DevContainerPath)
+	cfg, err := config.Parse(cfgPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("parsing devcontainer config: %w", err)
+	}
+
+	workspaceFolder := resolveWorkspaceFolder(cfg, ws.Source)
+	// Pre-expand local-path variables in workspaceFolder so the substitution
+	// context gets a concrete path for ${containerWorkspaceFolder} references.
+	workspaceFolder = strings.NewReplacer(
+		"${localWorkspaceFolder}", ws.Source,
+		"${localWorkspaceFolderBasename}", filepath.Base(ws.Source),
+	).Replace(workspaceFolder)
+
+	subCtx := &config.SubstitutionContext{
+		DevContainerID:           ws.ID,
+		LocalWorkspaceFolder:     ws.Source,
+		ContainerWorkspaceFolder: workspaceFolder,
+		Env:                      envMap(),
+	}
+	cfg, err = config.Substitute(subCtx, cfg)
+	if err != nil {
+		return nil, "", fmt.Errorf("substituting variables: %w", err)
+	}
+
+	// Re-resolve after full substitution in case workspaceFolder referenced
+	// other variables (e.g. ${devcontainerId}).
+	workspaceFolder = resolveWorkspaceFolder(cfg, ws.Source)
+
+	return cfg, workspaceFolder, nil
+}
+
+// resolveRemoteUser determines the remote user for a container, using the
+// config's remoteUser/containerUser with fallback to detecting the container's
+// default user via whoami.
+func (e *Engine) resolveRemoteUser(ctx context.Context, workspaceID string, cfg *config.DevContainerConfig, containerID string) string {
+	remoteUser := cfg.RemoteUser
+	if remoteUser == "" {
+		remoteUser = cfg.ContainerUser
+	}
+	if remoteUser == "" {
+		remoteUser = e.detectContainerUser(ctx, workspaceID, containerID)
+	}
+	if remoteUser == "" {
+		remoteUser = "root"
+	}
+	return remoteUser
+}
+
+// configDir returns the directory containing the devcontainer config file.
+func configDir(ws *workspace.Workspace) string {
+	return filepath.Dir(filepath.Join(ws.Source, ws.DevContainerPath))
+}
+
+// recreateComposeServices tears down and recreates compose services for the
+// given workspace. It generates a compose override, brings services up, and
+// returns the primary service container ID. featureImage is the image name to
+// override the primary service with (empty string to skip the override).
+func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder, featureImage string) (string, error) {
+	cd := configDir(ws)
+	composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
+	projectName := compose.ProjectName(ws.ID)
+	env := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
+
+	// Down removes old containers so Up creates new ones with updated config.
+	if err := e.compose.Down(ctx, projectName, composeFiles, e.stdout, e.stderr, env); err != nil {
+		return "", fmt.Errorf("compose down: %w", err)
+	}
+
+	// Generate override and bring services up.
+	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, featureImage)
+	if err != nil {
+		return "", fmt.Errorf("generating compose override: %w", err)
+	}
+	defer func() { _ = os.Remove(overridePath) }()
+
+	allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
+	services := ensureServiceIncluded(cfg.RunServices, cfg.Service)
+
+	e.reportProgress("Starting services...")
+	if err := e.compose.Up(ctx, projectName, allFiles, services, e.stdout, e.stderr, env); err != nil {
+		return "", fmt.Errorf("compose up: %w", err)
+	}
+
+	container, err := e.findComposeContainer(ctx, ws.ID, projectName, allFiles, env, "after recreate")
+	if err != nil {
+		return "", err
+	}
+
+	return container.ID, nil
+}
+
 // resolveComposeFiles resolves compose file paths relative to configDir.
-func resolveComposeFiles(configDir string, paths []string) []string {
+func resolveComposeFiles(cd string, paths []string) []string {
 	files := make([]string, len(paths))
 	for i, f := range paths {
-		files[i] = filepath.Join(configDir, f)
+		files[i] = filepath.Join(cd, f)
 	}
 	return files
 }

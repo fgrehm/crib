@@ -143,17 +143,7 @@ func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, proj
 // On lifecycle hook failure, both the result and error are returned so
 // callers can persist the result (container is still usable).
 func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder string) (*UpResult, error) {
-	remoteUser := cfg.RemoteUser
-	if remoteUser == "" {
-		remoteUser = cfg.ContainerUser
-	}
-	if remoteUser == "" {
-		// Detect the actual container user (e.g. USER vscode in Dockerfile).
-		remoteUser = e.detectContainerUser(ctx, ws.ID, containerID)
-	}
-	if remoteUser == "" {
-		remoteUser = "root"
-	}
+	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, containerID)
 
 	result := &UpResult{
 		ContainerID:     containerID,

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-02-26
+
+### Added
+
+- `crib restart` command with smart change detection
+  - No config changes: simple container restart, runs only resume-flow hooks
+    (`postStartCommand`, `postAttachCommand`)
+  - Safe changes (volumes, mounts, ports, env, runArgs, user): recreates container
+    without rebuilding the image, runs only resume-flow hooks
+  - Image-affecting changes (image, Dockerfile, features, build args): reports error
+    and suggests `crib rebuild`
+- `RestartContainer` method in container driver interface
+- `Restart` method in compose helper
+- Smart Restart section in README
+- New project logo
+
+### Changed
+
+- Refactor engine package: extract `change.go`, `restart.go` from `engine.go`
+- Deduplicate config parsing (`parseAndSubstitute`) and user resolution (`resolveRemoteUser`)
+
 ## [0.1.0] - 2026-02-25
 
 ### Added

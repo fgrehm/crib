@@ -55,6 +55,31 @@ detected user is root, it falls through to the default "root" behavior. Non-root
 
 **Files**: `internal/engine/single.go` (detectContainerUser, setupAndReturn).
 
+### Smart restart with change detection
+
+`crib restart` compares the current devcontainer config against the stored config from the
+last `crib up` to determine the minimal action needed:
+
+- **No changes**: Simple `docker restart` / `docker compose restart`, then run the spec's
+  Resume Flow hooks (`postStartCommand` + `postAttachCommand`).
+- **Safe changes** (volumes, mounts, ports, env, runArgs, user, etc.): Recreate the
+  container with the new config, then run Resume Flow hooks only. Creation-time hooks
+  (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`) are skipped since their
+  marker files still exist.
+- **Image-affecting changes** (image, Dockerfile, features, build args): Error with a
+  message suggesting `crib rebuild`, since the image needs to be rebuilt.
+
+This follows the devcontainer spec's distinction between Creation Flow (all hooks) and
+Resume Flow (only `postStartCommand` + `postAttachCommand`). The result is that tweaking
+a volume mount or environment variable takes seconds instead of minutes.
+
+Change detection uses JSON comparison of the stored `MergedConfig` against a freshly parsed
+and substituted config. Fields are classified as "image-affecting" or "safe" based on
+whether they require a new image build or just container runtime configuration.
+
+**Files**: `internal/engine/engine.go` (Restart, detectConfigChange, restartSimple,
+restartWithRecreate), `internal/engine/lifecycle.go` (runResumeHooks).
+
 ### Early result persistence
 
 crib saves the workspace result (container ID, workspace folder, remote user) as soon as

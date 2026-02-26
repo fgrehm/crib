@@ -44,6 +44,10 @@ func (m *mockDriver) StopContainer(ctx context.Context, workspaceID, containerID
 	return nil
 }
 
+func (m *mockDriver) RestartContainer(ctx context.Context, workspaceID, containerID string) error {
+	return nil
+}
+
 func (m *mockDriver) DeleteContainer(ctx context.Context, workspaceID, containerID string) error {
 	return nil
 }
