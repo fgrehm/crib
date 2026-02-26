@@ -20,6 +20,9 @@ type Driver interface {
 	// StopContainer stops a running container.
 	StopContainer(ctx context.Context, workspaceID, containerID string) error
 
+	// RestartContainer restarts a running or stopped container.
+	RestartContainer(ctx context.Context, workspaceID, containerID string) error
+
 	// DeleteContainer removes a container.
 	DeleteContainer(ctx context.Context, workspaceID, containerID string) error
 

@@ -12,6 +12,7 @@ crib reads your `.devcontainer` config, builds the container, and gets out of yo
 cd my-project
 crib up        # build and start the devcontainer
 crib shell     # drop into a shell
+crib restart   # restart (picks up config changes)
 crib stop      # stop it
 crib delete    # clean up
 ```
@@ -37,6 +38,7 @@ Make sure `~/.local/bin` is in your `PATH`.
 | `crib up` | Create or start the workspace container |
 | `crib shell` | Open an interactive shell (detects zsh/bash/sh) |
 | `crib exec` | Execute a command in the workspace container |
+| `crib restart` | Restart the workspace container (picks up safe config changes) |
 | `crib stop` | Stop the workspace container |
 | `crib delete` | Delete the workspace container and state |
 | `crib rebuild` | Rebuild the workspace (delete + up) |
@@ -152,6 +154,28 @@ This ensures `.env` is present on the host before the container starts, so bind 
     "credentials": "test -f config/master.key || (echo 'Missing config/master.key' >&2 && exit 1)"
   }
 }
+```
+
+## Smart restart
+
+`crib restart` is faster than `crib rebuild` because it knows what changed. When you edit your devcontainer config, `restart` compares the current config against the stored one and picks the right strategy:
+
+| What changed | What happens | Lifecycle hooks |
+|---|---|---|
+| Nothing | Simple container restart (`docker restart`) | `postStartCommand` + `postAttachCommand` |
+| Volumes, mounts, ports, env, runArgs, user | Container recreated with new config | `postStartCommand` + `postAttachCommand` |
+| Image, Dockerfile, features, build args | Error — suggests `crib rebuild` | — |
+
+This follows the [devcontainer spec's Resume Flow](https://containers.dev/implementors/spec/#lifecycle): on restart, only `postStartCommand` and `postAttachCommand` run. Creation-time hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`) are skipped since they already ran when the container was first created.
+
+The practical effect: you can tweak a volume mount or add an environment variable, run `crib restart`, and be back in your container in seconds instead of waiting for a full rebuild and all creation hooks to re-execute.
+
+```
+# Changed a volume in docker-compose.yml? Or added a mount in devcontainer.json?
+crib restart   # recreates the container, skips creation hooks
+
+# Changed the base image or added a feature?
+crib restart   # tells you to run 'crib rebuild' instead
 ```
 
 ## Git inside devcontainers

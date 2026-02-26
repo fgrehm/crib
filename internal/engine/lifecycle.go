@@ -58,6 +58,23 @@ func (r *lifecycleRunner) runLifecycleHooks(ctx context.Context, cfg *config.Dev
 	return nil
 }
 
+// runResumeHooks executes only the resume-flow lifecycle hooks (postStartCommand
+// and postAttachCommand). Per the devcontainer spec, these are the only hooks
+// that run when a container is restarted (as opposed to freshly created).
+func (r *lifecycleRunner) runResumeHooks(ctx context.Context, cfg *config.DevContainerConfig, workspaceFolder string) error {
+	// postStart hooks: run every time the container starts.
+	if err := r.runHook(ctx, "postStartCommand", cfg.PostStartCommand, workspaceFolder); err != nil {
+		return err
+	}
+
+	// postAttach hooks: run every time.
+	if err := r.runHook(ctx, "postAttachCommand", cfg.PostAttachCommand, workspaceFolder); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // runHookWithMarker executes a lifecycle hook, using a host-side marker
 // file to ensure it only runs once. Markers are stored in the workspace
 // directory (~/.crib/workspaces/{id}/hooks/) so they survive container

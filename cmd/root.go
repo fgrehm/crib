@@ -83,6 +83,7 @@ func init() {
 	rootCmd.AddCommand(shellCmd)
 	rootCmd.AddCommand(upCmd)
 	rootCmd.AddCommand(rebuildCmd)
+	rootCmd.AddCommand(restartCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 

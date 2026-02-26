@@ -147,6 +147,12 @@ func (d *OCIDriver) StopContainer(ctx context.Context, _, containerID string) er
 	return err
 }
 
+// RestartContainer restarts a running or stopped container.
+func (d *OCIDriver) RestartContainer(ctx context.Context, _, containerID string) error {
+	_, err := d.helper.Output(ctx, "restart", containerID)
+	return err
+}
+
 // DeleteContainer removes a container forcefully.
 func (d *OCIDriver) DeleteContainer(ctx context.Context, _, containerID string) error {
 	_, err := d.helper.Output(ctx, "rm", "-f", containerID)
