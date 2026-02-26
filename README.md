@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./images/logo-color.png">
-    <img src="./images/logo-dark.png" alt="crib logo" width="200">
-  </picture>
+  <img src="./images/icon.png" alt="crib logo" width="200">
 </p>
 
 # crib
