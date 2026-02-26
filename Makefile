@@ -5,12 +5,11 @@ help: ## Show this help
 
 build: ## Build the crib binary
 	@mkdir -p bin
-	VERSION=$$(cat VERSION 2>/dev/null || echo "0.4.0-dev"); \
+	VERSION=$$(cat VERSION 2>/dev/null || echo "0.0.0")-dev; \
 	COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown"); \
-	TIMESTAMP=$$(date -u '+%Y%m%d%H%M%S'); \
 	BUILT=$$(date -u '+%Y-%m-%dT%H:%M:%SZ'); \
 	go build \
-		-ldflags="-X github.com/fgrehm/crib/cmd.Version=$$VERSION+$$TIMESTAMP -X github.com/fgrehm/crib/cmd.Commit=$$COMMIT -X github.com/fgrehm/crib/cmd.Built=$$BUILT" \
+		-ldflags="-X github.com/fgrehm/crib/cmd.Version=$$VERSION -X github.com/fgrehm/crib/cmd.Commit=$$COMMIT -X github.com/fgrehm/crib/cmd.Built=$$BUILT" \
 		-o bin/crib .
 
 install: build ## Install crib to ~/.local/bin
