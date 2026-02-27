@@ -34,7 +34,7 @@ Make sure `~/.local/bin` is in your `PATH`.
 Or install with [mise](https://mise.jdx.dev/):
 
 ```bash
-mise use ubi:fgrehm/crib
+mise use github:fgrehm/crib
 ```
 
 ## Commands
