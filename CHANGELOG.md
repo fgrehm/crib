@@ -18,7 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rebuild` no longer needs to re-save workspace state after removing the
   container (uses `down` instead of the old `delete`).
 - Display crib version at the start of `up`, `down`, `remove`, `rebuild`,
-  and `restart` commands.
+  and `restart` commands. Dev builds include commit SHA and build timestamp.
+- Suppress noisy compose stdout (container name listings) during up/down/restart.
+  Use `--verbose` / `-V` to see full compose output.
 
 ### Fixed
 
@@ -27,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   across container removal, causing hooks to be skipped.
 - `restart` for compose workspaces now uses `compose up` instead of `compose restart`,
   fixing failures when dependency services (databases, sidecars) were stopped.
+- `up` after `down` for compose workspaces no longer rebuilds images. When a
+  stored result exists with a previously built image, the build is skipped and
+  services are started directly.
 
 ## [0.2.0] - 2026-02-26
 

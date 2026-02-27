@@ -19,6 +19,7 @@ var rebuildCmd = &cobra.Command{
 			return err
 		}
 		eng.SetOutput(os.Stdout, os.Stderr)
+		eng.SetVerbose(verboseFlag)
 		eng.SetProgress(func(msg string) { u.Dim("  " + msg) })
 
 		ws, err := currentWorkspace(store, true)
@@ -26,7 +27,7 @@ var rebuildCmd = &cobra.Command{
 			return err
 		}
 
-		u.Dim("crib " + Version)
+		u.Dim(versionString())
 		u.Header("Rebuilding workspace")
 
 		if err := eng.Down(cmd.Context(), ws); err != nil {

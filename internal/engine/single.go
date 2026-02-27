@@ -75,7 +75,12 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 		return nil, fmt.Errorf("container not found after creation")
 	}
 
-	return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
+	result, setupErr := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
+	if result != nil {
+		result.ImageName = buildRes.imageName
+		e.saveResult(ws, cfg, result)
+	}
+	return result, setupErr
 }
 
 // buildRunOptions constructs RunOptions from the devcontainer config.

@@ -25,6 +25,7 @@ type Engine struct {
 	logger   *slog.Logger
 	stdout   io.Writer
 	stderr   io.Writer
+	verbose  bool
 	progress func(string)
 }
 
@@ -44,6 +45,21 @@ func New(d driver.Driver, composeHelper *compose.Helper, store *workspace.Store,
 func (e *Engine) SetOutput(stdout, stderr io.Writer) {
 	e.stdout = stdout
 	e.stderr = stderr
+}
+
+// SetVerbose enables verbose output (e.g. compose stdout).
+func (e *Engine) SetVerbose(v bool) {
+	e.verbose = v
+}
+
+// composeStdout returns the writer for compose stdout. In verbose mode, this
+// is the engine's stdout writer. Otherwise, output is discarded to reduce noise
+// from container name listings during up/down/restart.
+func (e *Engine) composeStdout() io.Writer {
+	if e.verbose {
+		return e.stdout
+	}
+	return io.Discard
 }
 
 // SetProgress sets a callback for user-facing progress messages.
@@ -70,6 +86,9 @@ type UpOptions struct {
 type UpResult struct {
 	// ContainerID is the container ID.
 	ContainerID string
+
+	// ImageName is the name of the built image (for compose feature images).
+	ImageName string
 
 	// WorkspaceFolder is the path inside the container where the project is mounted.
 	WorkspaceFolder string
@@ -126,6 +145,7 @@ func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerCon
 	mergedJSON, _ := json.Marshal(cfg)
 	wsResult := &workspace.Result{
 		ContainerID:     result.ContainerID,
+		ImageName:       result.ImageName,
 		MergedConfig:    mergedJSON,
 		WorkspaceFolder: result.WorkspaceFolder,
 		RemoteEnv:       cfg.RemoteEnv,
@@ -156,7 +176,7 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 				projectName := compose.ProjectName(ws.ID)
 				env := devcontainerEnv(ws.ID, ws.Source, result.WorkspaceFolder)
-				return e.compose.Down(ctx, projectName, composeFiles, e.stdout, e.stderr, env)
+				return e.compose.Down(ctx, projectName, composeFiles, e.composeStdout(), e.stderr, env)
 			}
 		}
 	}
@@ -261,7 +281,7 @@ func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Work
 	env := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
 
 	// Down removes old containers so Up creates new ones with updated config.
-	if err := e.compose.Down(ctx, projectName, composeFiles, e.stdout, e.stderr, env); err != nil {
+	if err := e.compose.Down(ctx, projectName, composeFiles, e.composeStdout(), e.stderr, env); err != nil {
 		return "", fmt.Errorf("compose down: %w", err)
 	}
 
@@ -276,7 +296,7 @@ func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Work
 	services := ensureServiceIncluded(cfg.RunServices, cfg.Service)
 
 	e.reportProgress("Starting services...")
-	if err := e.compose.Up(ctx, projectName, allFiles, services, e.stdout, e.stderr, env); err != nil {
+	if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.stderr, env); err != nil {
 		return "", fmt.Errorf("compose up: %w", err)
 	}
 

@@ -59,7 +59,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			services := ensureServiceIncluded(cfg.RunServices, serviceName)
 
 			e.reportProgress("Starting services...")
-			if err := e.compose.Up(ctx, projectName, allFiles, services, e.stdout, e.stderr, dcEnv); err != nil {
+			if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.stderr, dcEnv); err != nil {
 				return nil, fmt.Errorf("starting compose services: %w", err)
 			}
 			container, err = e.findComposeContainer(ctx, ws.ID, projectName, allFiles, dcEnv, "after restart")
@@ -73,13 +73,21 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
 	}
 
+	// No container but a previous result exists (e.g. after "crib down").
+	// Images are already built, so skip the build and just bring services up.
+	if container == nil && !opts.Recreate {
+		if storedResult, err := e.store.LoadResult(ws.ID); err == nil && storedResult != nil {
+			return e.upComposeFromStored(ctx, ws, cfg, workspaceFolder, configDir, composeFiles, projectName, dcEnv, serviceName, storedResult)
+		}
+	}
+
 	// Remove existing containers if recreating.
 	if container != nil && opts.Recreate {
 		e.reportProgress("Removing services...")
 		if err := e.store.ClearHookMarkers(ws.ID); err != nil {
 			e.logger.Warn("failed to clear hook markers", "error", err)
 		}
-		if err := e.compose.Down(ctx, projectName, composeFiles, e.stdout, e.stderr, dcEnv); err != nil {
+		if err := e.compose.Down(ctx, projectName, composeFiles, e.composeStdout(), e.stderr, dcEnv); err != nil {
 			e.logger.Warn("failed to bring down existing services", "error", err)
 		}
 	}
@@ -123,7 +131,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 
 	// Bring up services. Always include the primary service regardless of runServices.
 	e.reportProgress("Starting services...")
-	if err := e.compose.Up(ctx, projectName, allFiles, services, e.stdout, e.stderr, dcEnv); err != nil {
+	if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.stderr, dcEnv); err != nil {
 		return nil, fmt.Errorf("starting compose services: %w", err)
 	}
 
@@ -133,7 +141,49 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 		return nil, err
 	}
 
-	return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
+	result, setupErr := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
+	if result != nil && featureImage != "" {
+		result.ImageName = featureImage
+		e.saveResult(ws, cfg, result)
+	}
+	return result, setupErr
+}
+
+// upComposeFromStored handles "crib up" after "crib down" when images are
+// already built. It generates the compose override using the stored feature
+// image (if any) and brings services up without rebuilding.
+func (e *Engine) upComposeFromStored(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder, configDir string, composeFiles []string, projectName string, dcEnv []string, serviceName string, storedResult *workspace.Result) (*UpResult, error) {
+	e.logger.Debug("compose up from stored result (skipping build)")
+
+	// Use the stored feature image name in the override so compose uses
+	// the previously built image instead of the base service image.
+	featureImage := storedResult.ImageName
+
+	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, featureImage)
+	if err != nil {
+		return nil, fmt.Errorf("generating compose override: %w", err)
+	}
+	defer func() { _ = os.Remove(overridePath) }()
+
+	allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
+	services := ensureServiceIncluded(cfg.RunServices, serviceName)
+
+	e.reportProgress("Starting services...")
+	if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.stderr, dcEnv); err != nil {
+		return nil, fmt.Errorf("starting compose services: %w", err)
+	}
+
+	container, err := e.findComposeContainer(ctx, ws.ID, projectName, allFiles, dcEnv, "after up")
+	if err != nil {
+		return nil, err
+	}
+
+	result, setupErr := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
+	if result != nil && featureImage != "" {
+		result.ImageName = featureImage
+		e.saveResult(ws, cfg, result)
+	}
+	return result, setupErr
 }
 
 // buildComposeFeatures resolves features, determines the base image, and builds

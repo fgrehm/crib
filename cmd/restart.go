@@ -27,6 +27,7 @@ args), restart will ask you to run 'crib rebuild' instead.`,
 			return err
 		}
 		eng.SetOutput(os.Stdout, os.Stderr)
+		eng.SetVerbose(verboseFlag)
 		eng.SetProgress(func(msg string) { u.Dim("  " + msg) })
 
 		ws, err := currentWorkspace(store, false)
@@ -34,7 +35,7 @@ args), restart will ask you to run 'crib rebuild' instead.`,
 			return err
 		}
 
-		u.Dim("crib " + Version)
+		u.Dim(versionString())
 		u.Header("Restarting workspace")
 
 		result, err := eng.Restart(cmd.Context(), ws)

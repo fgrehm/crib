@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 
 var (
 	debugFlag     bool
+	verboseFlag   bool
 	configDirFlag string
 	dirFlag       string
 	logger        *slog.Logger
@@ -71,6 +73,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&debugFlag, "debug", false, "enable debug logging")
+	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "V", false, "show detailed output from compose and build commands")
 	rootCmd.PersistentFlags().StringVarP(&configDirFlag, "config", "C", "", "devcontainer config directory (e.g. .devcontainer-custom)")
 	rootCmd.PersistentFlags().StringVarP(&dirFlag, "dir", "d", "", "project directory to operate on (defaults to current directory)")
 	rootCmd.MarkFlagsMutuallyExclusive("config", "dir")
@@ -189,6 +192,20 @@ func currentWorkspace(store *workspace.Store, create bool) (*workspace.Workspace
 	}
 
 	return ws, nil
+}
+
+// versionString returns a formatted version string for display.
+// For dev builds, includes commit and build timestamp.
+func versionString() string {
+	v := "crib " + Version
+	if strings.Contains(Version, "-dev") && Commit != "unknown" {
+		v += " (" + Commit
+		if Built != "unknown" {
+			v += ", " + Built
+		}
+		v += ")"
+	}
+	return v
 }
 
 // shortID returns the first 12 characters of a container ID.

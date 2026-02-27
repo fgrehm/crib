@@ -20,6 +20,7 @@ var upCmd = &cobra.Command{
 			return err
 		}
 		eng.SetOutput(os.Stdout, os.Stderr)
+		eng.SetVerbose(verboseFlag)
 		eng.SetProgress(func(msg string) { u.Dim("  " + msg) })
 
 		ws, err := currentWorkspace(store, true)
@@ -27,7 +28,7 @@ var upCmd = &cobra.Command{
 			return err
 		}
 
-		u.Dim("crib " + Version)
+		u.Dim(versionString())
 		u.Header("Starting workspace")
 
 		result, err := eng.Up(cmd.Context(), ws, engine.UpOptions{Recreate: recreateFlag})
