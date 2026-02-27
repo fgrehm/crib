@@ -35,6 +35,10 @@ Run crib commands from inside or outside the container, with automatic delegatio
 
 ## Considering
 
+### Machine-readable output (`--json`)
+
+Add `--json` or `--format json` flag to commands like `status`, `list` for scripting and tooling integration. The internal data structures already support this.
+
 ### Container health checks
 
 Detect when a container is unhealthy or stuck and surface it in `crib status` / `crib ps`.
