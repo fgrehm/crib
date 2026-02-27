@@ -75,6 +75,10 @@ Run a single test:
 go test ./internal/config/ -short -run TestParseFull
 ```
 
+## Changelog
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format. Update the `[Unreleased]` section when making user-facing changes (new features, bug fixes, breaking changes, command renames, etc.). Internal refactors that don't affect behavior don't need an entry.
+
 ## Conventions
 
 - Go module: `github.com/fgrehm/crib`
