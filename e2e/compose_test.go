@@ -96,7 +96,7 @@ func TestE2ECompose(t *testing.T) {
 
 	// Best-effort cleanup so containers don't linger if the test fails mid-way.
 	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "delete")
+		cmd := cribCmd(projectDir, cribHome, "remove")
 		_ = cmd.Run()
 	})
 
@@ -127,22 +127,22 @@ func TestE2ECompose(t *testing.T) {
 	// 4. postCreateCommand ran.
 	mustRunCrib(t, projectDir, cribHome, "exec", "--", "test", "-f", "/tmp/post-create-ran")
 
-	// 5. stop - should stop all compose services without error.
-	mustRunCrib(t, projectDir, cribHome, "stop")
+	// 5. down - should stop and remove all compose services.
+	mustRunCrib(t, projectDir, cribHome, "down")
 
 	out = mustRunCrib(t, projectDir, cribHome, "status")
 	if strings.Contains(strings.ToLower(out), "running") {
-		t.Errorf("status after stop: want not-running, got %q", out)
+		t.Errorf("status after down: want not-running, got %q", out)
 	}
 
-	// 6. up again - restart existing services.
+	// 6. up again - should recreate services (down removed them).
 	mustRunCrib(t, projectDir, cribHome, "up")
 
-	// 7. delete - must remove all compose services cleanly.
-	mustRunCrib(t, projectDir, cribHome, "delete")
+	// 7. remove - must remove all compose services and workspace state.
+	mustRunCrib(t, projectDir, cribHome, "remove")
 
 	out = mustRunCrib(t, projectDir, cribHome, "list")
 	if !strings.Contains(strings.ToLower(out), "no workspaces") {
-		t.Errorf("list after delete: want 'no workspaces', got %q", out)
+		t.Errorf("list after remove: want 'no workspaces', got %q", out)
 	}
 }

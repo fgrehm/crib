@@ -17,8 +17,8 @@ jobs:
       - run: make test
       - run: make lint
 
-  e2e:
-    name: E2E tests
+  e2e-podman:
+    name: E2E tests (Podman)
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -31,4 +31,24 @@ jobs:
         run: |
           podman system service -t 0 &
           sleep 2
-      - run: make test-e2e
+      - name: Run integration tests
+        run: CRIB_RUNTIME=podman make test-integration
+      - name: Run e2e tests
+        run: CRIB_RUNTIME=podman make test-e2e
+
+  e2e-docker:
+    name: E2E tests (Docker)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify Docker is available
+        run: docker info
+      - name: Run integration tests
+        run: CRIB_RUNTIME=docker make test-integration
+      - name: Run e2e tests
+        run: CRIB_RUNTIME=docker make test-e2e

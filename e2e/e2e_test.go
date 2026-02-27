@@ -187,16 +187,16 @@ func TestE2EFullLifecycle(t *testing.T) {
 	out = mustRunCrib(t, projectDir, cribHome, "exec", "--", "test", "-f", "/tmp/post-create-ran")
 	_ = out // exit 0 means the file exists; mustRunCrib already asserts that
 
-	// 8. stop - stops the container.
-	mustRunCrib(t, projectDir, cribHome, "stop")
+	// 8. down - stops and removes the container.
+	mustRunCrib(t, projectDir, cribHome, "down")
 
-	// 9. status - container should be stopped.
+	// 9. status - container should be gone (down removes it).
 	out = mustRunCrib(t, projectDir, cribHome, "status")
 	if strings.Contains(strings.ToLower(out), "running") {
-		t.Errorf("status after stop: want not-running, got %q", out)
+		t.Errorf("status after down: want not-running, got %q", out)
 	}
 
-	// 10. up again - should restart the existing container.
+	// 10. up again - should create a new container (down removed the old one).
 	out = mustRunCrib(t, projectDir, cribHome, "up")
 	if !strings.Contains(out, "container") {
 		t.Errorf("second up: want 'container' in output, got %q", out)
@@ -208,7 +208,7 @@ func TestE2EFullLifecycle(t *testing.T) {
 		t.Errorf("status after second up: want 'running', got %q", out)
 	}
 
-	// 12. rebuild - deletes and recreates the container.
+	// 12. rebuild - removes and recreates the container.
 	out = mustRunCrib(t, projectDir, cribHome, "rebuild")
 	if !strings.Contains(out, "container") {
 		t.Errorf("rebuild: want 'container' in output, got %q", out)
@@ -220,19 +220,19 @@ func TestE2EFullLifecycle(t *testing.T) {
 		t.Errorf("status after rebuild: want 'running', got %q", out)
 	}
 
-	// 14. delete - removes container and workspace state.
-	mustRunCrib(t, projectDir, cribHome, "delete")
+	// 14. remove - removes container and workspace state.
+	mustRunCrib(t, projectDir, cribHome, "remove")
 
 	// 15. list - workspace should be gone.
 	out = mustRunCrib(t, projectDir, cribHome, "list")
 	if !strings.Contains(strings.ToLower(out), "no workspaces") {
-		t.Errorf("list after delete: want 'no workspaces', got %q", out)
+		t.Errorf("list after remove: want 'no workspaces', got %q", out)
 	}
 
 	// 16. status - should error (no workspace).
 	_, err := runCrib(t, projectDir, cribHome, "status")
 	if err == nil {
-		t.Error("status after delete: want error, got nil")
+		t.Error("status after remove: want error, got nil")
 	}
 }
 
@@ -260,7 +260,7 @@ func TestE2EUpRecreate(t *testing.T) {
 		t.Errorf("up --recreate: want new container ID, got same %q", id1)
 	}
 
-	mustRunCrib(t, projectDir, cribHome, "delete")
+	mustRunCrib(t, projectDir, cribHome, "remove")
 }
 
 func TestE2ENoDevcontainer(t *testing.T) {
