@@ -132,9 +132,9 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 // restartWithRecreate stops the container, recreates it with the new config,
 // and runs resume-flow hooks (not the full creation lifecycle).
 func (e *Engine) restartWithRecreate(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string) (*RestartResult, error) {
-	// Stop first.
-	if err := e.Stop(ctx, ws); err != nil {
-		e.logger.Warn("failed to stop before recreate", "error", err)
+	// Remove existing container first.
+	if err := e.Down(ctx, ws); err != nil {
+		e.logger.Warn("failed to remove container before recreate", "error", err)
 	}
 
 	// For compose: down + up (picks up volume/env/port changes).

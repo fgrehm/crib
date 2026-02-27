@@ -5,8 +5,9 @@ import (
 )
 
 var statusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Show the status of the current workspace container",
+	Use:     "status",
+	Aliases: []string{"ps"},
+	Short:   "Show the status of the current workspace container",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 

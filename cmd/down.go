@@ -4,9 +4,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var deleteCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete the current workspace container and state",
+var downCmd = &cobra.Command{
+	Use:     "down",
+	Aliases: []string{"stop"},
+	Short:   "Stop and remove the current workspace container",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 
@@ -20,11 +21,11 @@ var deleteCmd = &cobra.Command{
 			return err
 		}
 
-		if err := eng.Delete(cmd.Context(), ws); err != nil {
+		if err := eng.Down(cmd.Context(), ws); err != nil {
 			return err
 		}
 
-		u.Success("Deleted " + ws.ID)
+		u.Success("Stopped " + ws.ID)
 		return nil
 	},
 }

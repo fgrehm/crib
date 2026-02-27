@@ -136,11 +136,12 @@ func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerCon
 	}
 }
 
-// Stop stops the container for the given workspace.
-func (e *Engine) Stop(ctx context.Context, ws *workspace.Workspace) error {
-	e.logger.Debug("stop", "workspace", ws.ID)
+// Down stops and removes the container for the given workspace, but keeps
+// workspace state in the store so that a subsequent "up" can recreate it.
+func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
+	e.logger.Debug("down", "workspace", ws.ID)
 
-	// For compose workspaces, use compose stop to stop all services.
+	// For compose workspaces, use compose down to stop and remove all services.
 	if result, err := e.store.LoadResult(ws.ID); err == nil && result != nil {
 		var cfg config.DevContainerConfig
 		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
@@ -149,12 +150,12 @@ func (e *Engine) Stop(ctx context.Context, ws *workspace.Workspace) error {
 				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 				projectName := compose.ProjectName(ws.ID)
 				env := devcontainerEnv(ws.ID, ws.Source, result.WorkspaceFolder)
-				return e.compose.Stop(ctx, projectName, composeFiles, e.stdout, e.stderr, env)
+				return e.compose.Down(ctx, projectName, composeFiles, e.stdout, e.stderr, env)
 			}
 		}
 	}
 
-	// Non-compose path: stop the individual container.
+	// Non-compose path: stop and remove the individual container.
 	container, err := e.driver.FindContainer(ctx, ws.ID)
 	if err != nil {
 		return fmt.Errorf("finding container: %w", err)
@@ -163,39 +164,16 @@ func (e *Engine) Stop(ctx context.Context, ws *workspace.Workspace) error {
 		return fmt.Errorf("no container found for workspace %s", ws.ID)
 	}
 
-	return e.driver.StopContainer(ctx, ws.ID, container.ID)
+	return e.driver.DeleteContainer(ctx, ws.ID, container.ID)
 }
 
-// Delete removes the container and workspace state.
-func (e *Engine) Delete(ctx context.Context, ws *workspace.Workspace) error {
-	e.logger.Debug("delete", "workspace", ws.ID)
+// Remove stops and removes the container, then deletes all workspace state.
+func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
+	e.logger.Debug("remove", "workspace", ws.ID)
 
-	// For compose workspaces, use compose down to remove all services.
-	if result, err := e.store.LoadResult(ws.ID); err == nil && result != nil {
-		var cfg config.DevContainerConfig
-		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
-			if e.compose != nil {
-				cd := configDir(ws)
-				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
-				projectName := compose.ProjectName(ws.ID)
-				env := devcontainerEnv(ws.ID, ws.Source, result.WorkspaceFolder)
-				if err := e.compose.Down(ctx, projectName, composeFiles, e.stdout, e.stderr, env); err != nil {
-					e.logger.Warn("failed to bring down compose services", "error", err)
-				}
-			}
-			return e.store.Delete(ws.ID)
-		}
-	}
-
-	// Non-compose path: remove the individual container.
-	container, err := e.driver.FindContainer(ctx, ws.ID)
-	if err != nil {
-		return fmt.Errorf("finding container: %w", err)
-	}
-	if container != nil {
-		if err := e.driver.DeleteContainer(ctx, ws.ID, container.ID); err != nil {
-			return fmt.Errorf("deleting container: %w", err)
-		}
+	// Best-effort container removal (workspace may have no container).
+	if err := e.Down(ctx, ws); err != nil {
+		e.logger.Warn("failed to remove container", "error", err)
 	}
 
 	return e.store.Delete(ws.ID)

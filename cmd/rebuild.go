@@ -28,15 +28,10 @@ var rebuildCmd = &cobra.Command{
 
 		u.Header("Rebuilding workspace")
 
-		if err := eng.Delete(cmd.Context(), ws); err != nil {
-			return fmt.Errorf("deleting existing container: %w", err)
+		if err := eng.Down(cmd.Context(), ws); err != nil {
+			return fmt.Errorf("removing existing container: %w", err)
 		}
 		u.Success("Container removed")
-
-		// Delete removes workspace state from disk; re-save so Up can proceed.
-		if err := store.Save(ws); err != nil {
-			return fmt.Errorf("restoring workspace state: %w", err)
-		}
 
 		result, err := eng.Up(cmd.Context(), ws, engine.UpOptions{})
 		if err != nil {

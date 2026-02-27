@@ -8,8 +8,9 @@ import (
 )
 
 var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all workspaces",
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List all workspaces",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 

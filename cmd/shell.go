@@ -12,8 +12,9 @@ import (
 )
 
 var shellCmd = &cobra.Command{
-	Use:   "shell",
-	Short: "Open an interactive shell in the current workspace container",
+	Use:     "shell",
+	Aliases: []string{"sh"},
+	Short:   "Open an interactive shell in the current workspace container",
 	Long: `Open an interactive shell in the current workspace container.
 
 The shell command automatically detects the best available shell

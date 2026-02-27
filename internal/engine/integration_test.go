@@ -106,20 +106,20 @@ func TestIntegrationUpImageBased(t *testing.T) {
 		t.Errorf("CRIB_TEST = %q, want %q", got, "true")
 	}
 
-	// Stop.
-	if err := e.Stop(ctx, ws); err != nil {
-		t.Fatalf("Stop: %v", err)
+	// Down (stops and removes container, keeps workspace state).
+	if err := e.Down(ctx, ws); err != nil {
+		t.Fatalf("Down: %v", err)
 	}
 
 	container, err = d.FindContainer(ctx, wsID)
 	if err != nil {
-		t.Fatalf("FindContainer after stop: %v", err)
+		t.Fatalf("FindContainer after down: %v", err)
 	}
-	if status := strings.ToLower(container.State.Status); status != "exited" {
-		t.Errorf("container status after stop = %q, want exited", status)
+	if container != nil {
+		t.Error("container still exists after down")
 	}
 
-	// Up again (should start existing container).
+	// Up again (should create a new container since down removed it).
 	result2, err := e.Up(ctx, ws, UpOptions{})
 	if err != nil {
 		t.Fatalf("Up (second): %v", err)
@@ -128,17 +128,17 @@ func TestIntegrationUpImageBased(t *testing.T) {
 		t.Error("second Up returned empty ContainerID")
 	}
 
-	// Delete.
-	if err := e.Delete(ctx, ws); err != nil {
-		t.Fatalf("Delete: %v", err)
+	// Remove (removes container and workspace state).
+	if err := e.Remove(ctx, ws); err != nil {
+		t.Fatalf("Remove: %v", err)
 	}
 
 	container, err = d.FindContainer(ctx, wsID)
 	if err != nil {
-		t.Fatalf("FindContainer after delete: %v", err)
+		t.Fatalf("FindContainer after remove: %v", err)
 	}
 	if container != nil {
-		t.Error("container still exists after delete")
+		t.Error("container still exists after remove")
 	}
 }
 
