@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Lifecycle hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`)
   now run after `down` + `up` cycle. Previously, host-side hook markers persisted
   across container removal, causing hooks to be skipped.
+- `restart` for compose workspaces now uses `compose up` instead of `compose restart`,
+  fixing failures when dependency services (databases, sidecars) were stopped.
 
 ## [0.2.0] - 2026-02-26
 

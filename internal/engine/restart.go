@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/fgrehm/crib/internal/compose"
 	"github.com/fgrehm/crib/internal/config"
@@ -82,17 +83,31 @@ func (e *Engine) Restart(ctx context.Context, ws *workspace.Workspace) (*Restart
 
 // restartSimple performs a simple container restart without recreation.
 func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, storedResult *workspace.Result) (*RestartResult, error) {
-	// For compose workspaces, use compose restart.
+	// For compose workspaces, use compose up instead of compose restart.
+	// compose restart only restarts already-running containers and fails when
+	// dependency services are stopped. compose up handles starting all
+	// services (including dependencies) in the correct order.
 	if len(cfg.DockerComposeFile) > 0 {
 		if e.compose == nil {
 			return nil, fmt.Errorf("compose is not available")
 		}
-		configDir := configDir(ws)
-		composeFiles := resolveComposeFiles(configDir, cfg.DockerComposeFile)
+		cd := configDir(ws)
+		composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 		projectName := compose.ProjectName(ws.ID)
 		env := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
-		if err := e.compose.Restart(ctx, projectName, composeFiles, e.stdout, e.stderr, env); err != nil {
-			return nil, fmt.Errorf("restarting compose services: %w", err)
+
+		overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, "")
+		if err != nil {
+			return nil, fmt.Errorf("generating compose override: %w", err)
+		}
+		defer func() { _ = os.Remove(overridePath) }()
+
+		allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
+		services := ensureServiceIncluded(cfg.RunServices, cfg.Service)
+
+		e.reportProgress("Starting services...")
+		if err := e.compose.Up(ctx, projectName, allFiles, services, e.stdout, e.stderr, env); err != nil {
+			return nil, fmt.Errorf("starting compose services: %w", err)
 		}
 	} else {
 		// Non-compose: restart the individual container.
