@@ -3,6 +3,7 @@ package compose
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -163,6 +164,56 @@ func (h *Helper) ListContainers(ctx context.Context, projectName string, files [
 	}
 
 	return parseLines(stdoutBuf.String()), nil
+}
+
+// ServiceStatus holds the status of a single compose service.
+type ServiceStatus struct {
+	Service string
+	State   string
+}
+
+// ListServiceStatuses returns the status of all services in a compose project.
+// Uses `compose ps --format json` to get service names and states.
+func (h *Helper) ListServiceStatuses(ctx context.Context, projectName string, files []string, extraEnv []string) ([]ServiceStatus, error) {
+	args := projectArgs(projectName, files)
+	args = append(args, "ps", "--format", "json")
+
+	cmd := exec.CommandContext(ctx, h.baseCommand, append(h.argsPrefix, args...)...)
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("%s compose ps: %w: %s", h.baseCommand, err, stderrBuf.String())
+	}
+
+	// Parse JSON output. Both Docker and Podman output a JSON array of objects
+	// with "Labels" and "State" fields.
+	var containers []struct {
+		Labels map[string]string `json:"Labels"`
+		State  string            `json:"State"`
+	}
+	if err := json.Unmarshal(stdoutBuf.Bytes(), &containers); err != nil {
+		return nil, fmt.Errorf("parsing compose ps output: %w", err)
+	}
+
+	var statuses []ServiceStatus
+	for _, c := range containers {
+		svc := c.Labels[ServiceLabel]
+		if svc == "" {
+			continue
+		}
+		statuses = append(statuses, ServiceStatus{
+			Service: svc,
+			State:   strings.ToLower(c.State),
+		})
+	}
+
+	return statuses, nil
 }
 
 // ProjectName returns the compose project name for a workspace.

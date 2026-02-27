@@ -29,13 +29,14 @@ Use -- to separate crib flags from the container command:
 			return err
 		}
 
-		container, err := eng.Status(cmd.Context(), ws)
+		status, err := eng.Status(cmd.Context(), ws)
 		if err != nil {
 			return fmt.Errorf("finding container: %w", err)
 		}
-		if container == nil {
+		if status.Container == nil {
 			return fmt.Errorf("no container found (run 'crib up' first)")
 		}
+		container := status.Container
 
 		shellArgs := args
 		if len(shellArgs) == 0 {

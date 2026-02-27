@@ -32,13 +32,14 @@ Working directory is set to the workspace folder if available.`,
 			return err
 		}
 
-		container, err := eng.Status(cmd.Context(), ws)
+		status, err := eng.Status(cmd.Context(), ws)
 		if err != nil {
 			return fmt.Errorf("finding container: %w", err)
 		}
-		if container == nil {
+		if status.Container == nil {
 			return fmt.Errorf("no container found (run 'crib up' first)")
 		}
+		container := status.Container
 
 		// Detect which shell is available in the container
 		var buf bytes.Buffer

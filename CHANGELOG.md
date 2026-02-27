@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `restart` commands. Dev builds include commit SHA and build timestamp.
 - Suppress noisy compose stdout (container name listings) during up/down/restart.
   Use `--verbose` / `-V` to see full compose output.
+- `status` / `ps` now shows all compose service statuses for compose workspaces.
 
 ### Fixed
 

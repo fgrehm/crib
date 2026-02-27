@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 )
 
@@ -21,21 +23,30 @@ var statusCmd = &cobra.Command{
 			return err
 		}
 
-		container, err := eng.Status(cmd.Context(), ws)
+		result, err := eng.Status(cmd.Context(), ws)
 		if err != nil {
 			return err
 		}
 
-		u.Keyval("workspace", ws.ID)
-		u.Keyval("source", ws.Source)
+		u.Dim(versionString())
+		u.Header(ws.ID)
+		fmt.Printf("%-12s%s\n", "source", ws.Source)
 
-		if container == nil {
-			u.Keyval("status", u.StatusColor("no container"))
+		if result.Container == nil {
+			fmt.Printf("%-12s%s\n", "status", u.StatusColor("no container"))
 			return nil
 		}
 
-		u.Keyval("container", shortID(container.ID))
-		u.Keyval("status", u.StatusColor(container.State.Status))
+		fmt.Printf("%-12s%s\n", "container", shortID(result.Container.ID))
+		fmt.Printf("%-12s%s\n", "status", u.StatusColor(result.Container.State.Status))
+
+		if len(result.Services) > 0 {
+			fmt.Println("services")
+			for _, svc := range result.Services {
+				u.Keyval(svc.Service, u.StatusColor(svc.State))
+			}
+		}
+
 		return nil
 	},
 }

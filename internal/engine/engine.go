@@ -206,8 +206,42 @@ func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
 }
 
 // Status returns the current container details for a workspace, or nil if not found.
-func (e *Engine) Status(ctx context.Context, ws *workspace.Workspace) (*driver.ContainerDetails, error) {
-	return e.driver.FindContainer(ctx, ws.ID)
+// StatusResult holds the outcome of a Status query.
+type StatusResult struct {
+	// Container is the primary container details (nil if not found).
+	Container *driver.ContainerDetails
+
+	// Services holds the status of compose services (nil for non-compose workspaces).
+	Services []compose.ServiceStatus
+}
+
+func (e *Engine) Status(ctx context.Context, ws *workspace.Workspace) (*StatusResult, error) {
+	container, err := e.driver.FindContainer(ctx, ws.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &StatusResult{Container: container}
+
+	// For compose workspaces, also fetch service statuses.
+	if e.compose != nil {
+		if stored, err := e.store.LoadResult(ws.ID); err == nil && stored != nil {
+			var cfg config.DevContainerConfig
+			if json.Unmarshal(stored.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
+				cd := configDir(ws)
+				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
+				projectName := compose.ProjectName(ws.ID)
+				env := devcontainerEnv(ws.ID, ws.Source, stored.WorkspaceFolder)
+				if statuses, err := e.compose.ListServiceStatuses(ctx, projectName, composeFiles, env); err == nil {
+					result.Services = statuses
+				} else {
+					e.logger.Debug("failed to list compose services", "error", err)
+				}
+			}
+		}
+	}
+
+	return result, nil
 }
 
 // --- shared helpers ---
