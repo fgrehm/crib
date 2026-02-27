@@ -8,13 +8,17 @@ Devcontainers without the ceremony.
 
 crib reads your `.devcontainer` config, builds the container, and gets out of your way.
 
+> **Note:** This is the `main` branch where active development happens.
+> Docs here may describe unreleased features. For documentation matching
+> the latest release, see the [`stable`](https://github.com/fgrehm/crib/tree/stable) branch.
+
 ```
 cd my-project
 crib up        # build and start the devcontainer
 crib shell     # drop into a shell
 crib restart   # restart (picks up config changes)
-crib stop      # stop it
-crib delete    # clean up
+crib down      # stop and remove the container
+crib remove    # remove container and workspace state
 ```
 
 ## Installation
@@ -39,18 +43,18 @@ mise use github:fgrehm/crib
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `crib up` | Create or start the workspace container |
-| `crib shell` | Open an interactive shell (detects zsh/bash/sh) |
-| `crib exec` | Execute a command in the workspace container |
-| `crib restart` | Restart the workspace container (picks up safe config changes) |
-| `crib stop` | Stop the workspace container |
-| `crib delete` | Delete the workspace container and state |
-| `crib rebuild` | Rebuild the workspace (delete + up) |
-| `crib list` | List all workspaces |
-| `crib status` | Show workspace container status |
-| `crib version` | Show version information |
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `crib up` | | Create or start the workspace container |
+| `crib down` | `stop` | Stop and remove the workspace container |
+| `crib remove` | `rm`, `delete` | Remove the workspace container and state |
+| `crib shell` | `sh` | Open an interactive shell (detects zsh/bash/sh) |
+| `crib exec` | | Execute a command in the workspace container |
+| `crib restart` | | Restart the workspace container (picks up safe config changes) |
+| `crib rebuild` | | Rebuild the workspace (down + up) |
+| `crib list` | `ls` | List all workspaces |
+| `crib status` | `ps` | Show workspace container status |
+| `crib version` | | Show version information |
 
 ## Using a custom devcontainer directory
 

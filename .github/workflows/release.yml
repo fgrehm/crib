@@ -28,3 +28,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update stable branch
+        run: |
+          git push origin HEAD:refs/heads/stable --force

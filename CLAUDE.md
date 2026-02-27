@@ -58,6 +58,15 @@ Dependency flow: `cmd/ -> engine/ -> config/, feature/, driver/, compose/, docke
 - State stored in `~/.crib/workspaces/{id}/`.
 - Runtime detection: `CRIB_RUNTIME` env var > podman > docker.
 
+## Development Workflow
+
+See `docs/development.md` for branching model and build instructions.
+
+- All work happens on `main`. No long-lived feature branches.
+- Releases are tagged (e.g. `v0.3.0`) and the `stable` branch is updated to match.
+- `README.md` on `stable` is the source of truth for released functionality.
+- `README.md` on `main` may describe unreleased work.
+
 ## Build and Test
 
 Requires Go 1.26+.
