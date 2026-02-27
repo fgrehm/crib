@@ -21,6 +21,8 @@ var downCmd = &cobra.Command{
 			return err
 		}
 
+		u.Dim("crib " + Version)
+
 		if err := eng.Down(cmd.Context(), ws); err != nil {
 			return err
 		}

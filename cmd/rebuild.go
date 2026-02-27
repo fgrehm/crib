@@ -26,6 +26,7 @@ var rebuildCmd = &cobra.Command{
 			return err
 		}
 
+		u.Dim("crib " + Version)
 		u.Header("Rebuilding workspace")
 
 		if err := eng.Down(cmd.Context(), ws); err != nil {

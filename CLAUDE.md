@@ -38,7 +38,7 @@ cmd/           -> CLI commands (cobra). Thin layer, delegates to engine/workspac
 internal/
   config/      -> devcontainer.json parsing, variable substitution, merging
   feature/     -> DevContainer Features (OCI resolution, ordering, Dockerfile generation)
-  engine/      -> Core orchestration (up/stop/delete flows, lifecycle hooks)
+  engine/      -> Core orchestration (up/down/remove flows, lifecycle hooks)
   driver/      -> Container runtime abstraction (Docker/Podman via single OCI driver)
   compose/     -> Docker Compose / Podman Compose helper
   workspace/   -> Workspace state management (~/.crib/workspaces/)

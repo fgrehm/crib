@@ -34,6 +34,7 @@ args), restart will ask you to run 'crib rebuild' instead.`,
 			return err
 		}
 
+		u.Dim("crib " + Version)
 		u.Header("Restarting workspace")
 
 		result, err := eng.Restart(cmd.Context(), ws)

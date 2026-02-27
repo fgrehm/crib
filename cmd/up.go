@@ -27,6 +27,7 @@ var upCmd = &cobra.Command{
 			return err
 		}
 
+		u.Dim("crib " + Version)
 		u.Header("Starting workspace")
 
 		result, err := eng.Up(cmd.Context(), ws, engine.UpOptions{Recreate: recreateFlag})

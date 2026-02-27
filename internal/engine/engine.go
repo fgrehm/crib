@@ -138,8 +138,14 @@ func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerCon
 
 // Down stops and removes the container for the given workspace, but keeps
 // workspace state in the store so that a subsequent "up" can recreate it.
+// Hook markers are cleared so the next "up" runs all lifecycle hooks.
 func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 	e.logger.Debug("down", "workspace", ws.ID)
+
+	// Clear hook markers so the next "up" runs all lifecycle hooks.
+	if err := e.store.ClearHookMarkers(ws.ID); err != nil {
+		e.logger.Warn("failed to clear hook markers", "error", err)
+	}
 
 	// For compose workspaces, use compose down to stop and remove all services.
 	if result, err := e.store.LoadResult(ws.ID); err == nil && result != nil {

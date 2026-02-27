@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Rename `stop` to `down` (alias: `stop`). Now stops and removes the container
+  instead of just stopping it, clearing lifecycle hook markers so the next `up`
+  runs all hooks from scratch.
+- Rename `delete` to `remove` (aliases: `rm`, `delete`). Removes container and
+  workspace state.
+- Add short aliases: `list` (`ls`), `status` (`ps`), `shell` (`sh`).
+- `rebuild` no longer needs to re-save workspace state after removing the
+  container (uses `down` instead of the old `delete`).
+- Display crib version at the start of `up`, `down`, `remove`, `rebuild`,
+  and `restart` commands.
+
+### Fixed
+
+- Lifecycle hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`)
+  now run after `down` + `up` cycle. Previously, host-side hook markers persisted
+  across container removal, causing hooks to be skipped.
+
 ## [0.2.0] - 2026-02-26
 
 ### Added

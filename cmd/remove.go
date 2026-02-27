@@ -21,6 +21,8 @@ var removeCmd = &cobra.Command{
 			return err
 		}
 
+		u.Dim("crib " + Version)
+
 		if err := eng.Remove(cmd.Context(), ws); err != nil {
 			return err
 		}
