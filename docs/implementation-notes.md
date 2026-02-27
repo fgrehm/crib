@@ -144,6 +144,19 @@ the feature build already produced the final image. Other services still build n
 `internal/engine/build.go` (buildComposeFeatureImage, resolveComposeContainerUser),
 `internal/compose/project.go` (GetServiceInfo).
 
+### TTY detection for exec uses isatty, not ModeCharDevice
+
+`crib exec` passes `-i -t` to `docker exec` / `podman exec` only when stdin is an
+interactive terminal. The detection must use a proper `isatty` syscall
+(`term.IsTerminal(fd)`) rather than Go's `os.ModeCharDevice` file mode check.
+
+`/dev/null` is a character device on Linux, so `ModeCharDevice` returns true for it.
+This causes `crib exec` to pass `-t` when stdin is `/dev/null` (e.g. in CI, pipes,
+or `exec.Command` with no stdin). Docker strictly validates the TTY and errors with
+"the input device is not a TTY." Podman silently ignores `-t` without a real TTY.
+
+**Files**: `cmd/exec.go` (stdinIsTerminal).
+
 ## Spec Compliance
 
 ### Fully Implemented

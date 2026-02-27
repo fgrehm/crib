@@ -79,9 +79,14 @@ func hasRuntime() bool {
 
 // cribCmd builds an exec.Cmd for the crib binary with the given args,
 // running in projectDir with workspace state isolated to cribHome (CRIB_HOME).
+// Stdin is explicitly wired to /dev/null so that crib's TTY detection returns
+// false, preventing "the input device is not a TTY" errors from Docker when
+// crib exec replaces itself via syscall.Exec.
 func cribCmd(projectDir, cribHome string, args ...string) *exec.Cmd {
 	cmd := exec.Command(cribBin, args...)
 	cmd.Dir = projectDir
+	devNull, _ := os.Open(os.DevNull)
+	cmd.Stdin = devNull
 	cmd.Env = append(os.Environ(), "CRIB_HOME="+cribHome)
 	return cmd
 }

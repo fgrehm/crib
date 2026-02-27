@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"syscall"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 )
 
@@ -49,11 +50,12 @@ Use -- to separate crib flags from the container command:
 		}
 
 		// Replace the current process with docker/podman exec.
-		// Only allocate a pseudo-TTY (-t) when stdin is an interactive terminal;
-		// omitting -t allows non-interactive use (pipes, scripts, tests).
-		execArgs := []string{runtimeBin, "exec", "-i"}
+		// Only allocate stdin (-i) and pseudo-TTY (-t) when stdin is an
+		// interactive terminal. Omitting both allows non-interactive use
+		// (pipes, scripts, CI).
+		execArgs := []string{runtimeBin, "exec"}
 		if stdinIsTerminal() {
-			execArgs = append(execArgs, "-t")
+			execArgs = append(execArgs, "-i", "-t")
 		}
 
 		// Inject remoteEnv variables (before user-specified --env so user flags take precedence).
@@ -112,10 +114,8 @@ func init() {
 }
 
 // stdinIsTerminal reports whether stdin is an interactive terminal.
+// Uses the isatty syscall rather than ModeCharDevice, which incorrectly
+// reports /dev/null as a character device.
 func stdinIsTerminal() bool {
-	stat, err := os.Stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return (stat.Mode() & os.ModeCharDevice) != 0
+	return term.IsTerminal(os.Stdin.Fd())
 }
