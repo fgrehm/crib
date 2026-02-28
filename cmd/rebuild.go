@@ -13,13 +13,14 @@ var rebuildCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 
-		eng, _, store, err := newEngine()
+		eng, d, store, err := newEngine()
 		if err != nil {
 			return err
 		}
 		eng.SetOutput(os.Stdout, os.Stderr)
 		eng.SetVerbose(verboseFlag || debugFlag)
 		eng.SetProgress(func(msg string) { u.Dim("  " + msg) })
+		setupPlugins(eng, d)
 
 		ws, err := currentWorkspace(store, true)
 		if err != nil {

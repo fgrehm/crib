@@ -4,8 +4,6 @@ import (
 	"os"
 
 	"github.com/fgrehm/crib/internal/engine"
-	"github.com/fgrehm/crib/internal/plugin"
-	"github.com/fgrehm/crib/internal/plugin/codingagents"
 	"github.com/spf13/cobra"
 )
 
@@ -24,11 +22,7 @@ var upCmd = &cobra.Command{
 		eng.SetOutput(os.Stdout, os.Stderr)
 		eng.SetVerbose(verboseFlag || debugFlag)
 		eng.SetProgress(func(msg string) { u.Dim("  " + msg) })
-		eng.SetRuntime(d.Runtime().String())
-
-		mgr := plugin.NewManager(logger)
-		mgr.Register(codingagents.New())
-		eng.SetPlugins(mgr)
+		setupPlugins(eng, d)
 
 		ws, err := currentWorkspace(store, true)
 		if err != nil {

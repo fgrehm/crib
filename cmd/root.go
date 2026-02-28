@@ -15,6 +15,8 @@ import (
 	"github.com/fgrehm/crib/internal/driver"
 	"github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/engine"
+	"github.com/fgrehm/crib/internal/plugin"
+	"github.com/fgrehm/crib/internal/plugin/codingagents"
 	"github.com/fgrehm/crib/internal/ui"
 	"github.com/fgrehm/crib/internal/workspace"
 	"github.com/spf13/cobra"
@@ -230,6 +232,15 @@ func composePortsToDriver(ports []compose.PortBinding) []driver.PortBinding {
 		}
 	}
 	return result
+}
+
+// setupPlugins creates a plugin manager with bundled plugins and attaches it
+// to the engine. Called from commands that create containers (up, rebuild).
+func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
+	eng.SetRuntime(d.Runtime().String())
+	mgr := plugin.NewManager(logger)
+	mgr.Register(codingagents.New())
+	eng.SetPlugins(mgr)
 }
 
 // appendRemoteEnv appends -e KEY=VALUE flags for each entry in result.RemoteEnv.
