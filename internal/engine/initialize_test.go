@@ -95,6 +95,56 @@ func TestRunInitializeCommand_Failure(t *testing.T) {
 	}
 }
 
+func TestRunInitializeCommand_Object_AllEntriesRun(t *testing.T) {
+	// Object-form: named entries run in parallel, all must execute.
+	tmpDir := t.TempDir()
+	markerA := filepath.Join(tmpDir, "hook-a")
+	markerB := filepath.Join(tmpDir, "hook-b")
+
+	e := &Engine{
+		logger: slog.Default(),
+		stdout: os.Stdout,
+		stderr: os.Stderr,
+	}
+
+	ws := &workspace.Workspace{Source: tmpDir}
+	cfg := &config.DevContainerConfig{}
+	cfg.InitializeCommand = config.LifecycleHook{
+		"hook-a": {"touch " + markerA},
+		"hook-b": {"touch " + markerB},
+	}
+
+	if err := e.runInitializeCommand(context.Background(), ws, cfg); err != nil {
+		t.Fatalf("runInitializeCommand: %v", err)
+	}
+
+	if _, err := os.Stat(markerA); err != nil {
+		t.Errorf("hook-a did not run: %v", err)
+	}
+	if _, err := os.Stat(markerB); err != nil {
+		t.Errorf("hook-b did not run: %v", err)
+	}
+}
+
+func TestRunInitializeCommand_Object_FailureReturnsError(t *testing.T) {
+	e := &Engine{
+		logger: slog.Default(),
+		stdout: os.Stdout,
+		stderr: os.Stderr,
+	}
+
+	ws := &workspace.Workspace{Source: t.TempDir()}
+	cfg := &config.DevContainerConfig{}
+	cfg.InitializeCommand = config.LifecycleHook{
+		"ok":   {"true"},
+		"fail": {"false"},
+	}
+
+	if err := e.runInitializeCommand(context.Background(), ws, cfg); err == nil {
+		t.Fatal("expected error when a named entry fails, got nil")
+	}
+}
+
 func TestRunInitializeCommand_WorkingDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 	marker := filepath.Join(tmpDir, "pwd-check")
