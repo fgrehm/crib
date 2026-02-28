@@ -180,3 +180,126 @@ upSingle()
   execPluginCopies()                   <- file copies injected via docker exec
   setupAndReturn()                     <- lifecycle hooks, env probe, etc.
 ```
+
+## Future: External Plugins
+
+Currently all plugins are bundled Go code compiled into the crib binary. A planned external plugin system will let users write plugins as standalone executables in any language. The protocol uses environment variables for input and JSON on stdout for output.
+
+To illustrate what this looks like, here are the two existing bundled plugins reimagined as bash scripts.
+
+### shell-history (bash version)
+
+```bash
+#!/usr/bin/env bash
+# shell-history — persist bash/zsh history across container recreations
+set -euo pipefail
+
+PLUGIN_DIR="${CRIB_WORKSPACE_DIR}/plugins/shell-history"
+HIST_FILE=".shell_history"
+
+# Infer remote home from user.
+if [ -z "${CRIB_REMOTE_USER}" ] || [ "${CRIB_REMOTE_USER}" = "root" ]; then
+  REMOTE_HOME="/root"
+else
+  REMOTE_HOME="/home/${CRIB_REMOTE_USER}"
+fi
+
+MOUNT_TARGET="${REMOTE_HOME}/.crib_history"
+
+# Create plugin dir and touch the history file if it doesn't exist.
+mkdir -p "${PLUGIN_DIR}"
+[ -f "${PLUGIN_DIR}/${HIST_FILE}" ] || touch "${PLUGIN_DIR}/${HIST_FILE}"
+
+# Output JSON response.
+cat <<JSON
+{
+  "mounts": [
+    {
+      "type": "bind",
+      "source": "${PLUGIN_DIR}",
+      "target": "${MOUNT_TARGET}"
+    }
+  ],
+  "env": {
+    "HISTFILE": "${MOUNT_TARGET}/${HIST_FILE}"
+  }
+}
+JSON
+```
+
+### coding-agents (bash version)
+
+```bash
+#!/usr/bin/env bash
+# coding-agents — inject Claude Code credentials into the container
+set -euo pipefail
+
+CREDS="${HOME}/.claude/.credentials.json"
+
+# No-op if credentials don't exist on the host.
+if [ ! -f "${CREDS}" ]; then
+  echo '{}'
+  exit 0
+fi
+
+PLUGIN_DIR="${CRIB_WORKSPACE_DIR}/plugins/coding-agents"
+mkdir -p "${PLUGIN_DIR}"
+
+# Stage credentials.
+cp "${CREDS}" "${PLUGIN_DIR}/credentials.json"
+chmod 600 "${PLUGIN_DIR}/credentials.json"
+
+# Generate minimal config to skip onboarding.
+echo '{"hasCompletedOnboarding":true}' > "${PLUGIN_DIR}/claude.json"
+
+# Infer remote home and owner.
+if [ -z "${CRIB_REMOTE_USER}" ] || [ "${CRIB_REMOTE_USER}" = "root" ]; then
+  REMOTE_HOME="/root"
+  OWNER="root"
+else
+  REMOTE_HOME="/home/${CRIB_REMOTE_USER}"
+  OWNER="${CRIB_REMOTE_USER}"
+fi
+
+# Output JSON response with file copies (not mounts, to avoid EBUSY on
+# atomic renames).
+cat <<JSON
+{
+  "copies": [
+    {
+      "source": "${PLUGIN_DIR}/credentials.json",
+      "target": "${REMOTE_HOME}/.claude/.credentials.json",
+      "mode": "0600",
+      "user": "${OWNER}"
+    },
+    {
+      "source": "${PLUGIN_DIR}/claude.json",
+      "target": "${REMOTE_HOME}/.claude.json",
+      "user": "${OWNER}"
+    }
+  ]
+}
+JSON
+```
+
+### Protocol Summary
+
+External plugins receive context via environment variables set by crib:
+
+| Variable | Description |
+|----------|-------------|
+| `CRIB_EVENT` | Event name (e.g. `pre-container-run`) |
+| `CRIB_WORKSPACE_ID` | Workspace identifier |
+| `CRIB_WORKSPACE_DIR` | State directory (`~/.crib/workspaces/{id}/`) |
+| `CRIB_SOURCE_DIR` | Project root on host |
+| `CRIB_RUNTIME` | `docker` or `podman` |
+| `CRIB_REMOTE_USER` | Container user (from config) |
+| `CRIB_WORKSPACE_FOLDER` | Workspace path inside container |
+| `CRIB_CONTAINER_NAME` | Container name (`crib-{workspace-id}`) |
+| `CRIB_VERBOSE` | `1` if verbose mode is on |
+
+Plugins write JSON to stdout. Stderr is for diagnostic messages (suppressed in normal mode, shown in verbose mode). Exit code 0 means success, non-zero means the plugin failed (fail-open: crib logs a warning and continues).
+
+Plugin configuration is delivered via stdin as JSON (from `customizations.crib.plugins.<name>` in devcontainer.json or `~/.config/crib/config.toml`).
+
+See the full [plugin system spec](https://github.com/fgrehm/crib/blob/main/docs/specs/2026-02-28-plugin-system.md) for the complete protocol design.
