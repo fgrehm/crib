@@ -12,8 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic port publishing for single-container workspaces. `forwardPorts` and
   `appPort` from `devcontainer.json` are now translated into `--publish` flags on
   `docker run`, so ports work without manual `runArgs` workarounds.
-- `crib status` / `crib ps` now shows published ports for both single-container
-  and Docker Compose workspaces.
+- Published ports shown on `crib ps`, `crib up`, `crib restart`, and `crib rebuild`.
+  For compose workspaces, ports are parsed from `docker compose ps` output.
+- Documentation website at [fgrehm.github.io/crib](https://fgrehm.github.io/crib/).
+
+### Fixed
+
+- `crib restart` no longer fails with "cannot determine image name" on
+  Dockerfile-based workspaces where the stored result had an empty image name.
+  Falls back to rebuilding the image instead of erroring.
 
 ## [0.3.1] - 2026-02-28
 
