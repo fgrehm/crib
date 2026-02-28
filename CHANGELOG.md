@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-02-28
+
+### Fixed
+
+- `down` / `stop` on rootless Podman no longer fails with "no pod with name or
+  ID ... found". The `x-podman: { in_pod: false }` override was only passed
+  during `up`, so `compose down` tried to remove a pod that never existed.
+- `rebuild` now actually rebuilds images. Previously it passed `Recreate: false`
+  to `Up`, which took the stored-result shortcut and skipped the image build.
+- Environment probe now runs after lifecycle hooks (in addition to before), so
+  the persisted environment for `shell`/`exec` includes tools installed by hooks
+  (e.g. `mise install` in `bin/setup`).
+- Filter mise internal state variables (`__MISE_*`, `MISE_SHELL`) from the probed
+  environment. These are session-specific and confused mise when injected into a
+  new shell via `crib shell`.
+
 ## [0.3.0] - 2026-02-27
 
 ### Changed
