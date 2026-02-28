@@ -61,7 +61,7 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 		return nil, fmt.Errorf("writing config: %w", err)
 	}
 
-	remoteHome := inferRemoteHome(req.RemoteUser)
+	remoteHome := plugin.InferRemoteHome(req.RemoteUser)
 	owner := req.RemoteUser
 	if owner == "" {
 		owner = "root"
@@ -82,15 +82,6 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 			},
 		},
 	}, nil
-}
-
-// inferRemoteHome returns the home directory path for the given user inside
-// the container. Root or empty user maps to /root, others to /home/{user}.
-func inferRemoteHome(user string) string {
-	if user == "" || user == "root" {
-		return "/root"
-	}
-	return "/home/" + user
 }
 
 // copyFile copies a single file from src to dst with the given permissions.

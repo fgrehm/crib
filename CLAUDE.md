@@ -14,10 +14,16 @@ crib is a fresh implementation of a devcontainer CLI tool. It is not a fork of D
 
 The [docs site](https://fgrehm.github.io/crib/) is the single source of truth for user-facing documentation. README.md is a GitHub landing page that links to the site.
 
-Key reference pages (canonical files in `docs/`, symlinked into the website for publishing):
+Canonical docs live in `docs/` and are symlinked into the website for publishing. When adding a new doc:
+1. Create the file in `docs/`.
+2. Symlink into the website: `ln -s ../../../../../docs/<file>.md website/src/content/docs/<section>/<file>.md`
+3. Add a sidebar entry in `website/astro.config.mjs` (under the appropriate section).
+
+Key reference pages:
 
 - **Devcontainer Spec Reference** (`docs/devcontainers-spec.md`) - quick-lookup companion to the [official spec](https://containers.dev/implementors/spec/). Use when implementing or debugging config parsing, lifecycle hooks, Features, Docker Compose, or workspace mounts.
 - **Implementation Notes** (`docs/implementation-notes.md`) - quirks, workarounds, and spec compliance status. Use when debugging rootless Podman issues, lifecycle hooks, container user detection, or checking which spec features are implemented.
+- **Plugin Development** (`docs/plugin-development.md`) - how to write bundled plugins. Covers the plugin interface, response types, merge rules, staging directories, and the bind-mount-file-vs-directory gotcha.
 
 ## Architecture
 
@@ -29,6 +35,7 @@ internal/
   engine/      -> Core orchestration (up/down/remove flows, lifecycle hooks)
   driver/      -> Container runtime abstraction (Docker/Podman via single OCI driver)
   compose/     -> Docker Compose / Podman Compose helper
+  plugin/      -> Plugin system (manager, bundled plugins: codingagents, shellhistory)
   workspace/   -> Workspace state management (~/.crib/workspaces/)
   dockerfile/  -> Dockerfile parsing and rewriting
 ```
@@ -120,6 +127,10 @@ verbose output, and don't hardcode `io.Discard` where the verbose flag should de
 - CLI framework: `spf13/cobra`.
 - Linting: golangci-lint v2 (errcheck, govet, staticcheck, unused, ineffassign).
 - Pre-commit hooks: gofmt + golangci-lint on staged Go files.
+
+## Known Issues / Troubleshooting
+
+`docs/troubleshooting.md` (symlinked into the website at `reference/troubleshooting`) collects common issues and solutions. When users report container environment problems (permission errors, missing tools, networking issues), add an entry there even if the root cause is outside crib (e.g. base image permissions, runtime quirks). Users look for help in crib's docs first regardless of whose "fault" it is.
 
 ## Implementation Status
 

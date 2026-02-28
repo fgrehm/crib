@@ -35,6 +35,17 @@ type PreContainerRunResponse struct {
 	Copies  []FileCopy
 }
 
+// InferRemoteHome returns the home directory path for the given user inside
+// the container. Root or empty user maps to /root, others to /home/{user}.
+// Used by plugins that need to place files in the container user's home
+// before the container exists.
+func InferRemoteHome(user string) string {
+	if user == "" || user == "root" {
+		return "/root"
+	}
+	return "/home/" + user
+}
+
 // FileCopy describes a file to copy into the container after creation.
 type FileCopy struct {
 	Source string      // path on host

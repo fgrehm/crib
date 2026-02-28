@@ -100,6 +100,10 @@ export default defineConfig({
               slug: "contributing/implementation-notes",
             },
             {
+              label: "Plugin Development",
+              slug: "contributing/plugin-development",
+            },
+            {
               label: "DevContainer Spec Reference",
               slug: "contributing/devcontainers-spec",
             },

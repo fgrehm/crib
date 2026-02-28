@@ -191,3 +191,31 @@ chmod 644 ~/.ssh/*.pub ~/.ssh/allowed_signers 2>/dev/null
 ```
 
 **Prevention:** Avoid mounting into directories where ownership matters (like `.ssh/`). Mount individual files to paths outside sensitive directories instead, as shown in the [commit signing](/crib/guides/git-integration/#commit-signing-with-ssh-keys) section.
+
+## Go: "permission denied" writing to module cache
+
+When using a Go base image (e.g. `golang:1.26`) with a non-root `remoteUser`, you may see:
+
+```text
+go: writing stat cache: mkdir /go/pkg/mod/cache/download/...: permission denied
+```
+
+The `/go/pkg/mod/cache/` directory is owned by root in official Go images. When running as a non-root user, Go can't write to it.
+
+**Fix in your Dockerfile:**
+
+```dockerfile
+RUN chmod -R a+w /go/pkg
+```
+
+**Or set a user-writable cache location** in `devcontainer.json`:
+
+```jsonc
+{
+  "remoteEnv": {
+    "GOMODCACHE": "/home/vscode/.cache/go/pkg/mod"
+  }
+}
+```
+
+This is not a crib issue. It affects any tool that runs Go containers with non-root users.

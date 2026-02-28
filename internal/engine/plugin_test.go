@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -17,10 +19,12 @@ import (
 // testPlugin returns a fixed response for testing.
 type testPlugin struct {
 	resp *plugin.PreContainerRunResponse
+	req  *plugin.PreContainerRunRequest // captured from last call
 }
 
 func (p *testPlugin) Name() string { return "test" }
-func (p *testPlugin) PreContainerRun(_ context.Context, _ *plugin.PreContainerRunRequest) (*plugin.PreContainerRunResponse, error) {
+func (p *testPlugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunRequest) (*plugin.PreContainerRunResponse, error) {
+	p.req = req
 	return p.resp, nil
 }
 
@@ -114,6 +118,47 @@ func TestRunPreContainerRunPlugins_NilManager(t *testing.T) {
 	}
 }
 
+func TestRunPreContainerRunPlugins_RemoteUserFallback(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-1", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	tp := &testPlugin{resp: &plugin.PreContainerRunResponse{}}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(tp)
+
+	eng := &Engine{
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+	}
+
+	// When RemoteUser is empty, ContainerUser should be used.
+	cfg := &config.DevContainerConfig{}
+	cfg.ContainerUser = "devuser"
+	runOpts := &driver.RunOptions{}
+
+	if _, err := eng.runPreContainerRunPlugins(context.Background(), ws, cfg, runOpts, "img", "/workspaces/project"); err != nil {
+		t.Fatal(err)
+	}
+	if tp.req.RemoteUser != "devuser" {
+		t.Errorf("expected RemoteUser=devuser (from ContainerUser fallback), got %s", tp.req.RemoteUser)
+	}
+
+	// When both are empty, RemoteUser should be empty.
+	cfg.ContainerUser = ""
+	cfg.RemoteUser = ""
+	if _, err := eng.runPreContainerRunPlugins(context.Background(), ws, cfg, runOpts, "img", "/workspaces/project"); err != nil {
+		t.Fatal(err)
+	}
+	if tp.req.RemoteUser != "" {
+		t.Errorf("expected empty RemoteUser when both are empty, got %s", tp.req.RemoteUser)
+	}
+}
+
 func TestExecPluginCopies(t *testing.T) {
 	// Create a staging file on "host".
 	staging := t.TempDir()
@@ -148,11 +193,11 @@ func TestExecPluginCopies(t *testing.T) {
 	if !strings.Contains(cmdStr, "/home/vscode/.config/test.json") {
 		t.Errorf("expected target path in command, got: %s", cmdStr)
 	}
-	if !strings.Contains(cmdStr, "chmod 0600") {
-		t.Errorf("expected chmod 0600 in command, got: %s", cmdStr)
+	if !strings.Contains(cmdStr, "chmod '0600'") {
+		t.Errorf("expected chmod '0600' in command, got: %s", cmdStr)
 	}
-	if !strings.Contains(cmdStr, "chown vscode") {
-		t.Errorf("expected chown vscode in command, got: %s", cmdStr)
+	if !strings.Contains(cmdStr, "chown 'vscode'") {
+		t.Errorf("expected chown 'vscode' in command, got: %s", cmdStr)
 	}
 }
 
@@ -220,4 +265,80 @@ func TestExecPluginCopies_Empty(t *testing.T) {
 	if len(mockDrv.execCalls) != 0 {
 		t.Errorf("expected 0 exec calls for empty copies, got %d", len(mockDrv.execCalls))
 	}
+}
+
+func TestExecPluginCopies_MissingSource(t *testing.T) {
+	mockDrv := &mockDriver{}
+	eng := &Engine{
+		driver: mockDrv,
+		logger: slog.Default(),
+	}
+
+	staging := t.TempDir()
+	goodFile := filepath.Join(staging, "good.json")
+	if err := os.WriteFile(goodFile, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	copies := []plugin.FileCopy{
+		{Source: "/nonexistent/missing.json", Target: "/home/vscode/.config/missing.json"},
+		{Source: goodFile, Target: "/home/vscode/.config/good.json"},
+	}
+
+	eng.execPluginCopies(context.Background(), "ws-1", "c-1", copies)
+
+	// Missing source should be skipped, good file should still be copied.
+	if len(mockDrv.execCalls) != 1 {
+		t.Fatalf("expected 1 exec call (skipping missing source), got %d", len(mockDrv.execCalls))
+	}
+	cmdStr := strings.Join(mockDrv.execCalls[0].cmd, " ")
+	if !strings.Contains(cmdStr, "good.json") {
+		t.Errorf("expected good.json in command, got: %s", cmdStr)
+	}
+}
+
+func TestExecPluginCopies_ExecFailure(t *testing.T) {
+	staging := t.TempDir()
+	file1 := filepath.Join(staging, "a.json")
+	file2 := filepath.Join(staging, "b.json")
+	if err := os.WriteFile(file1, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file2, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Make all exec calls fail.
+	mockDrv := &mockDriver{
+		errors: map[string]error{},
+	}
+	// We can't predict the exact command key, so use a failing driver wrapper.
+	failDrv := &failingExecDriver{mockDriver: mockDrv}
+	eng := &Engine{
+		driver: failDrv,
+		logger: slog.Default(),
+	}
+
+	copies := []plugin.FileCopy{
+		{Source: file1, Target: "/home/vscode/a.json"},
+		{Source: file2, Target: "/home/vscode/b.json"},
+	}
+
+	eng.execPluginCopies(context.Background(), "ws-1", "c-1", copies)
+
+	// Both copies should be attempted despite the first one failing.
+	if failDrv.execCount != 2 {
+		t.Errorf("expected 2 exec attempts, got %d", failDrv.execCount)
+	}
+}
+
+// failingExecDriver wraps mockDriver but makes ExecContainer always return an error.
+type failingExecDriver struct {
+	*mockDriver
+	execCount int
+}
+
+func (f *failingExecDriver) ExecContainer(ctx context.Context, workspaceID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer, env []string, user string) error {
+	f.execCount++
+	return fmt.Errorf("exec failed")
 }
