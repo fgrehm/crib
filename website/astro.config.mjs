@@ -7,6 +7,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "crib docs",
+      favicon: "/favicon.svg",
       logo: {
         light: "./src/assets/logo-light.svg",
         dark: "./src/assets/logo-dark.svg",
