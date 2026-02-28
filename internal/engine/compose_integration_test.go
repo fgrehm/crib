@@ -1,11 +1,14 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -277,6 +280,112 @@ func TestIntegrationComposeDownClearsMarkers(t *testing.T) {
 // checkFileExists verifies a file exists in the container.
 func checkFileExists(ctx context.Context, e *Engine, wsID, containerID, path string) error {
 	return e.driver.ExecContainer(ctx, wsID, containerID, []string{"test", "-f", path}, nil, nil, nil, nil, "")
+}
+
+// TestIntegrationComposeRecreateRebuildsImage verifies that Up with Recreate: true
+// after Down actually rebuilds the image instead of reusing the stored result.
+// This is a regression test for a bug where "crib rebuild" passed Recreate: false,
+// causing it to take the upComposeFromStored shortcut and skip the image build.
+func TestIntegrationComposeRecreateRebuildsImage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, _, store := newTestEngineWithCompose(t)
+
+	projectDir := t.TempDir()
+	wsID := "test-compose-recreate-rebuild"
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create a Dockerfile-based compose service. The Dockerfile creates
+	// a version marker file so we can verify which image is running.
+	dockerfile := filepath.Join(devcontainerDir, "Dockerfile")
+	if err := os.WriteFile(dockerfile, []byte("FROM alpine:3.20\nRUN echo v1 > /tmp/build-version\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	composeContent := `services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["sleep", "infinity"]
+`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "compose.yml"), []byte(composeContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	configContent := `{
+		"dockerComposeFile": "compose.yml",
+		"service": "app",
+		"overrideCommand": true
+	}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:            projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	t.Cleanup(func() { cleanupCompose(t, e, ws) })
+	cleanupCompose(t, e, ws)
+
+	// Initial Up — builds image with v1.
+	result1, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up (first): %v", err)
+	}
+	if err := checkFileContent(ctx, e, ws.ID, result1.ContainerID, "/tmp/build-version", "v1"); err != nil {
+		t.Fatalf("first Up should have v1 image: %v", err)
+	}
+
+	// Modify Dockerfile to produce a different marker.
+	if err := os.WriteFile(dockerfile, []byte("FROM alpine:3.20\nRUN echo v2 > /tmp/build-version\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Down — removes container, keeps workspace state.
+	if err := e.Down(ctx, ws); err != nil {
+		t.Fatalf("Down: %v", err)
+	}
+
+	// Stored result should still exist.
+	if storedResult, err := store.LoadResult(ws.ID); err != nil || storedResult == nil {
+		t.Fatal("stored result should persist after Down")
+	}
+
+	// Up with Recreate: true — should rebuild the image (not reuse stored).
+	result2, err := e.Up(ctx, ws, UpOptions{Recreate: true})
+	if err != nil {
+		t.Fatalf("Up (recreate): %v", err)
+	}
+
+	// Verify the container is running the rebuilt image (v2, not v1).
+	if err := checkFileContent(ctx, e, ws.ID, result2.ContainerID, "/tmp/build-version", "v2"); err != nil {
+		t.Fatalf("Up with Recreate should have rebuilt image: %v", err)
+	}
+}
+
+// checkFileContent verifies a file exists in the container and contains the expected string.
+func checkFileContent(ctx context.Context, e *Engine, wsID, containerID, path, expected string) error {
+	var buf bytes.Buffer
+	if err := e.driver.ExecContainer(ctx, wsID, containerID, []string{"cat", path}, nil, &buf, nil, nil, ""); err != nil {
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+	got := strings.TrimSpace(buf.String())
+	if got != expected {
+		return fmt.Errorf("%s: got %q, want %q", path, got, expected)
+	}
+	return nil
 }
 
 // TestIntegrationComposeImageNamePersisted verifies that the ImageName field
