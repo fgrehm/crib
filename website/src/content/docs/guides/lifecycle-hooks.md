@@ -25,7 +25,7 @@ Each hook accepts a string, an array, or a map of named commands:
 // array
 "postCreateCommand": ["npm", "install"]
 
-// named commands (all run, order is not guaranteed)
+// named commands — all run in parallel, all must succeed
 "postCreateCommand": {
   "deps": "npm install",
   "db": "rails db:setup"
@@ -82,7 +82,7 @@ If `config/master.key` is missing, `crib up` fails immediately with a clear mess
 
 This ensures `.env` is present on the host before the container starts, so bind mounts and docker compose `env_file` directives pick it up.
 
-**Multiple checks with named commands:**
+**Multiple checks with named commands (run in parallel):**
 
 ```jsonc
 {
@@ -105,7 +105,7 @@ Runs once after the container is first created. Use it for one-time setup that s
 }
 ```
 
-**Multiple setup tasks with named commands:**
+**Multiple setup tasks with named commands (run in parallel):**
 
 ```jsonc
 {
@@ -155,3 +155,22 @@ Runs on every `crib up`. Use it for per-session output or checks.
   "postAttachCommand": "node -v && npm -v"
 }
 ```
+
+## `waitFor`
+
+`waitFor` controls when `crib up` reports "Container ready." in its progress output. It doesn't skip any hooks — all hooks still run to completion. It only affects when the ready message appears.
+
+Default: `updateContentCommand`.
+
+Valid values: `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`.
+
+**Wait until postCreate before reporting ready:**
+
+```jsonc
+{
+  "waitFor": "postCreateCommand",
+  "postCreateCommand": "bundle install"
+}
+```
+
+With this config, `crib up` shows "Container ready." only after `bundle install` finishes. Useful when `postCreateCommand` is a prerequisite for the container to be usable.

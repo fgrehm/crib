@@ -210,9 +210,9 @@ or `exec.Command` with no stdin). Docker strictly validates the TTY and errors w
 | `workspaceMount` / `workspaceFolder` | Custom mount parsing, variable expansion |
 | `containerEnv` / `remoteEnv` | Including `${containerEnv:VAR}` resolution |
 | Compose `runServices` | Selective service starting |
-| Build options | `dockerfile`, `context`, `args`, `target`, `cacheFrom`, `options` |
-| `waitFor` | Progress message emitted after the specified stage; default `updateContentCommand` |
-| Parallel object hooks | Object-syntax hook entries run in parallel via `errgroup` |
+| Build options | `dockerfile`, `context`, `args`, `target`, `cacheFrom`, `options` (extra CLI flags) |
+| `waitFor` | "Container ready." progress message fires after the named stage; all hooks still run to completion; default `updateContentCommand` |
+| Parallel object hooks | Object-syntax hooks (named entries) run concurrently via `errgroup`; all must succeed |
 
 ### Parsed but Not Enforced
 
