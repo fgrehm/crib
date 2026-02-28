@@ -283,6 +283,47 @@ func TestE2ENoDevcontainer(t *testing.T) {
 	}
 }
 
+func TestE2EShellRejectsArgs(t *testing.T) {
+	if !hasRuntime() {
+		t.Fatal("container runtime not available or not working (docker or podman required)")
+	}
+
+	// No up needed: cobra's Args validator rejects before RunE.
+	projectDir := setupProject(t)
+	cribHome := t.TempDir()
+
+	out, err := runCrib(t, projectDir, cribHome, "shell", "--", "foobar")
+	if err == nil {
+		t.Fatal("shell with args: want error, got nil")
+	}
+	if !strings.Contains(out, "crib exec") {
+		t.Errorf("shell with args: want output to mention 'crib exec', got %q", out)
+	}
+}
+
+func TestE2ERebuildNoContainer(t *testing.T) {
+	if !hasRuntime() {
+		t.Fatal("container runtime not available or not working (docker or podman required)")
+	}
+
+	projectDir := setupProject(t)
+	cribHome := t.TempDir()
+
+	t.Cleanup(func() {
+		cmd := cribCmd(projectDir, cribHome, "rm")
+		_ = cmd.Run()
+	})
+
+	// Rebuild with no prior up (no existing container).
+	mustRunCrib(t, projectDir, cribHome, "rebuild")
+
+	// Verify the container is running.
+	out := mustRunCrib(t, projectDir, cribHome, "ps")
+	if !strings.Contains(strings.ToLower(out), "running") {
+		t.Errorf("ps after rebuild: want 'running', got %q", out)
+	}
+}
+
 // extractContainerID pulls the short container ID from `crib up` output.
 // Output line looks like: "  container   abc123def456"
 func extractContainerID(out string) string {

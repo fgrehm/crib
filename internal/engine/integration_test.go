@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/fgrehm/crib/internal/driver/oci"
+	"github.com/fgrehm/crib/internal/plugin"
+	"github.com/fgrehm/crib/internal/plugin/shellhistory"
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
@@ -431,5 +433,67 @@ USER dev
 	}
 	if got := strings.TrimSpace(stdout.String()); got != "ok" {
 		t.Errorf("probe.txt content = %q, want %q", got, "ok")
+	}
+}
+
+func TestIntegrationUpWithPlugins(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d := newTestEngine(t)
+
+	// Wire in shell-history plugin.
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(shellhistory.New())
+	e.SetPlugins(mgr)
+	e.SetRuntime(d.Runtime().String())
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	configContent := `{
+		"image": "alpine:3.20",
+		"overrideCommand": true
+	}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-plugins"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	})
+
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	// Verify HISTFILE is set inside the container.
+	var stdout bytes.Buffer
+	err = d.ExecContainer(ctx, wsID, result.ContainerID, []string{"printenv", "HISTFILE"}, nil, &stdout, nil, nil, "")
+	if err != nil {
+		t.Fatalf("printenv HISTFILE: %v", err)
+	}
+	got := strings.TrimSpace(stdout.String())
+	if got == "" {
+		t.Error("HISTFILE is empty, want non-empty")
+	}
+	if !strings.Contains(got, ".crib_history/.shell_history") {
+		t.Errorf("HISTFILE = %q, want to contain '.crib_history/.shell_history'", got)
 	}
 }
