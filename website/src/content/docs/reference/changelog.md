@@ -8,6 +8,50 @@ All notable changes to this project will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/fgrehm/crib/releases/tag/v0.4.0) - 2026-02-28
+
+### Added
+
+- **Plugin system** with bundled plugin support for `pre-container-run`. Plugins
+  can inject mounts, environment variables, extra run args, and file copies into
+  containers. Fail-open error handling (one broken plugin doesn't block container
+  creation). See [Plugin Development](/crib/contributing/plugin-development/).
+- **coding-agents plugin**: automatically injects Claude Code credentials into
+  containers so AI coding tools work without re-authentication. Detects
+  `~/.claude/.credentials.json` on the host and copies it into the container.
+- **shell-history plugin**: persists bash/zsh history across container
+  recreations. Bind-mounts a history directory from workspace state and sets
+  `HISTFILE`.
+- Automatic port publishing for single-container workspaces. `forwardPorts` and
+  `appPort` from `devcontainer.json` are now translated into `--publish` flags on
+  `docker run`, so ports work without manual `runArgs` workarounds.
+- Published ports shown on `crib ps`, `crib up`, `crib restart`, and `crib rebuild`.
+  For compose workspaces, ports are parsed from `docker compose ps` output.
+- `-V` / `--verbose` now prints each lifecycle hook command before running it
+  (e.g. `  $ npm install`), making it easier to diagnose hook failures.
+- `build.options` from `devcontainer.json` is now passed to `docker build` /
+  `podman build` as extra CLI flags (e.g. `--network=host`, `--progress=plain`).
+- Object-syntax lifecycle hooks now run their named entries in parallel, matching
+  the devcontainer spec. String and array hooks are unchanged (sequential).
+- `waitFor` is now respected: a "Container ready." progress message is emitted
+  after the specified lifecycle stage completes (default: `updateContentCommand`).
+
+### Changed
+
+- `--debug` now implies `--verbose`: subprocess stdout (hooks, build, compose) is shown
+  when debug logging is active.
+- `crib shell` now rejects arguments with a helpful error suggesting `crib exec`.
+
+### Fixed
+
+- `crib restart` no longer fails with "cannot determine image name" on
+  Dockerfile-based workspaces where the stored result had an empty image name.
+  Falls back to rebuilding the image instead of erroring.
+- `crib rebuild` no longer fails when no container exists (e.g. first build or
+  after manual container removal).
+- Container deletion is faster (skips stop grace period).
+- `make install` now uses correct permissions.
+
 ## [0.3.1](https://github.com/fgrehm/crib/releases/tag/v0.3.1) - 2026-02-28
 
 ### Fixed
