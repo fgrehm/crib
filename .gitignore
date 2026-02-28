@@ -9,6 +9,7 @@ bin/
 website/node_modules/
 website/dist/
 website/.astro/
+website/public/llms-full.txt
 
 # crib generated build artifacts
 .crib-Dockerfile
