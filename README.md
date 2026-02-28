@@ -8,6 +8,8 @@ Devcontainers without the ceremony.
 
 crib reads your `.devcontainer` config, builds the container, and gets out of your way.
 
+**[Documentation](https://fgrehm.github.io/crib/)**
+
 > **Note:** This is the `main` branch where active development happens.
 > Docs here may describe unreleased features. For documentation matching
 > the latest release, see the [`stable`](https://github.com/fgrehm/crib/tree/stable) branch.

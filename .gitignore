@@ -5,6 +5,11 @@ bin/
 .DS_Store
 .env
 
+# website
+website/node_modules/
+website/dist/
+website/.astro/
+
 # crib generated build artifacts
 .crib-Dockerfile
 .crib-features/

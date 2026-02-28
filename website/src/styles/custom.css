@@ -1,0 +1,9 @@
+/* Brighten the dark-outlined logo in dark mode so it's visible */
+:root[data-theme="dark"] .site-title img {
+  filter: brightness(2.5);
+}
+
+/* Same for the hero image on the landing page */
+:root[data-theme="dark"] .hero img {
+  filter: brightness(2.5);
+}

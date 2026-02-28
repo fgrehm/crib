@@ -1,0 +1,51 @@
+---
+title: Dev containers without the ceremony
+description: Dev containers without the ceremony.
+template: splash
+hero:
+  tagline: Read your .devcontainer config, build the container, get out of the way.
+  image:
+    file: ../../assets/icon.png
+  actions:
+    - text: Get Started
+      link: /crib/installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/fgrehm/crib
+      icon: external
+---
+
+import { Card, CardGrid } from "@astrojs/starlight/components";
+
+## Quick Start
+
+```
+cd my-project
+crib up        # build and start the devcontainer
+crib shell     # drop into a shell
+crib restart   # restart (picks up config changes)
+crib down      # stop and remove the container
+crib remove    # remove container and workspace state
+```
+
+## Features
+
+<CardGrid stagger>
+  <Card title="No agent injection" icon="approve-check">
+    All container setup happens via `docker exec` from the host. Nothing gets
+    installed inside your container that you didn't ask for.
+  </Card>
+  <Card title="Docker and Podman" icon="setting">
+    Both runtimes are first-class citizens. Auto-detected, configurable via
+    `CRIB_RUNTIME`.
+  </Card>
+  <Card title="Implicit workspace resolution" icon="magnifier">
+    `cd` into a project directory and run commands. crib walks up to find your
+    `.devcontainer/` config automatically.
+  </Card>
+  <Card title="Smart restart" icon="rocket">
+    `crib restart` detects what changed and picks the fastest strategy, from a
+    simple restart to a container recreate.
+  </Card>
+</CardGrid>
