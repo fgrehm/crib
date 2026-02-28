@@ -15,17 +15,17 @@ From the [implementation notes](/crib/contributing/implementation-notes/), these
 - **`waitFor`**: Field is parsed but lifecycle hooks always run sequentially to completion. Should block tool attachment until the specified stage finishes.
 - **Parallel object hooks**: Spec says object-syntax hook entries run in parallel. crib runs them sequentially.
 
-### Shared host configuration (`customizations.crib.sharedMounts`)
+### Shared host configuration
 
-Auto-inject common host config (SSH keys, gitconfig, package caches) into containers without boilerplate in every devcontainer.json. See the [Extensions Vision](/crib/contributing/crib-extensions/) for the full design.
+Auto-inject common host config (SSH keys, gitconfig, package caches) into containers without boilerplate in every devcontainer.json.
 
 ### Zero-config project bootstrapping
 
-Detect project type (Ruby, Node, Go, etc.) from conventions and generate a working devcontainer config without the user writing one. See the [Extensions Vision](/crib/contributing/crib-extensions/).
+Detect project type (Ruby, Node, Go, etc.) from conventions and generate a working devcontainer config without the user writing one.
 
 ### Transparent command dispatch
 
-Run crib commands from inside or outside the container, with automatic delegation. See the [Extensions Vision](/crib/contributing/crib-extensions/).
+Run crib commands from inside or outside the container, with automatic delegation.
 
 ## Considering
 

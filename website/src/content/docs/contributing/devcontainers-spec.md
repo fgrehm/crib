@@ -3,12 +3,9 @@ title: DevContainer Spec Reference
 description: A distilled reference of the Dev Container Specification for quick lookup.
 ---
 
-A distilled reference of the [Dev Container Specification](https://containers.dev/implementors/spec/)
-for use when working on crib. This is not a replacement for the official docs, just a quick-lookup
-companion with links to the authoritative sources.
-
-All URLs point to the spec maintained by the
-[Dev Containers organization](https://github.com/devcontainers/spec).
+:::tip[🤖 AI-generated reference]
+This page was distilled from the [Dev Container Specification](https://containers.dev/implementors/spec/) by Claude (Opus 4.6) for quick lookup when working on crib. It may contain inaccuracies or be out of date. For the authoritative reference, see the [official spec](https://containers.dev/implementors/spec/).
+:::
 
 ---
 

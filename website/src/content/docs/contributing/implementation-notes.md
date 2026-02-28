@@ -219,7 +219,7 @@ does not act on them. This is intentional for a CLI-only tool.
 |---------|--------|
 | `forwardPorts` | Port forwarding is IDE-specific; use `runArgs` with `-p` instead |
 | `portsAttributes` | Display/behavior hints for IDE port UI |
-| `shutdownAction` | crib manages container lifecycle explicitly via `stop`/`delete` |
+| `shutdownAction` | crib manages container lifecycle explicitly via `down`/`remove` |
 | `hostRequirements` | Validation not implemented; runtime will fail naturally |
 | `appPort` (legacy) | Spec says use `forwardPorts` instead |
 

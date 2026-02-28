@@ -66,14 +66,6 @@ export default defineConfig({
               label: "DevContainer Spec Reference",
               slug: "contributing/devcontainers-spec",
             },
-            {
-              label: "Remote Features Design",
-              slug: "contributing/remote-features-design",
-            },
-            {
-              label: "Extensions Vision",
-              slug: "contributing/crib-extensions",
-            },
           ],
         },
       ],
