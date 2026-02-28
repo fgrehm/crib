@@ -144,6 +144,27 @@ the feature build already produced the final image. Other services still build n
 `internal/engine/build.go` (buildComposeFeatureImage, resolveComposeContainerUser),
 `internal/compose/project.go` (GetServiceInfo).
 
+### Environment probe runs twice: before and after lifecycle hooks
+
+`probeUserEnv` runs the user's login shell (`zsh -l -i -c env`) to capture environment
+variables set by shell profile files (mise, nvm, rbenv, etc.). This probe runs twice
+during `setupContainer`:
+
+1. **Before hooks**: provides lifecycle hooks with the user's shell environment (PATH,
+   tool paths, etc.) so hooks don't need to explicitly set up their own environment.
+2. **After hooks**: captures any changes made by hooks (e.g. `mise install` adding new
+   tool paths to PATH). This is the version that gets persisted for `crib shell`/`crib exec`.
+
+Without the post-hook probe, the saved PATH would be missing tools installed during
+lifecycle hooks (e.g. a `bin/setup` script that runs `mise install`).
+
+Tool-manager internal state variables (`__MISE_*`, `MISE_SHELL`) are filtered from the
+probed env. These are session-specific and would confuse tool managers when injected into
+a new shell session via `crib shell`.
+
+**Files**: `internal/engine/setup.go` (setupContainer),
+`internal/engine/env.go` (mergeEnv).
+
 ### TTY detection for exec uses isatty, not ModeCharDevice
 
 `crib exec` passes `-i -t` to `docker exec` / `podman exec` only when stdin is an

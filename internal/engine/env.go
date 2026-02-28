@@ -33,30 +33,46 @@ func envMap() map[string]string {
 
 // mergeEnv merges probed environment variables with remoteEnv.
 // remoteEnv values take precedence over probed values on conflicts.
-// Session-specific variables (HOSTNAME, SHLVL, PWD, _) are excluded from
-// the probed set to avoid overriding container runtime defaults.
+// Session-specific variables and tool-manager internal state are excluded
+// from the probed set to avoid overriding container runtime defaults or
+// confusing tool managers (mise, etc.) when injected into a new shell.
 func mergeEnv(probed map[string]string, remoteEnv map[string]string) map[string]string {
 	if len(probed) == 0 && len(remoteEnv) == 0 {
 		return nil
 	}
 
 	skip := map[string]bool{
-		"HOSTNAME": true,
-		"SHLVL":    true,
-		"PWD":      true,
-		"_":        true,
+		"HOSTNAME":   true,
+		"SHLVL":      true,
+		"PWD":        true,
+		"OLDPWD":     true,
+		"_":          true,
+		"MISE_SHELL": true,
 	}
 
 	result := make(map[string]string)
 	for k, v := range probed {
-		if !skip[k] {
-			result[k] = v
+		if skip[k] || strings.HasPrefix(k, "__MISE_") {
+			continue
 		}
+		result[k] = v
 	}
 	for k, v := range remoteEnv {
 		result[k] = v
 	}
 	return result
+}
+
+// copyStringMap returns a shallow copy of a string map, or nil if the input is nil.
+func copyStringMap(m map[string]string) map[string]string {
+	if m == nil {
+		return nil
+	}
+	cp := make(map[string]string, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+	return cp
 }
 
 // envSlice converts a map of env vars to KEY=VALUE strings for ExecContainer.

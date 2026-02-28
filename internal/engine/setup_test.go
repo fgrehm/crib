@@ -477,16 +477,55 @@ func TestMergeEnv_SkipsSessionVars(t *testing.T) {
 		"HOSTNAME": "abc123",
 		"SHLVL":    "1",
 		"PWD":      "/",
+		"OLDPWD":   "/home",
 		"_":        "/usr/bin/env",
 	}
 	result := mergeEnv(probed, nil)
-	for _, skip := range []string{"HOSTNAME", "SHLVL", "PWD", "_"} {
+	for _, skip := range []string{"HOSTNAME", "SHLVL", "PWD", "OLDPWD", "_"} {
 		if _, ok := result[skip]; ok {
 			t.Errorf("%s should be excluded from merged env", skip)
 		}
 	}
 	if result["PATH"] != "/usr/bin" {
 		t.Errorf("PATH should be included, got %q", result["PATH"])
+	}
+}
+
+func TestMergeEnv_SkipsMiseInternalVars(t *testing.T) {
+	probed := map[string]string{
+		"PATH":                  "/usr/bin:/home/user/.local/share/mise/installs/node/22/bin",
+		"HOME":                  "/home/user",
+		"MISE_SHELL":            "zsh",
+		"__MISE_DIFF":           "eAFrXpyfk9Kw...",
+		"__MISE_ORIG_PATH":      "/usr/bin",
+		"__MISE_SESSION":        "eAHrWJOTn5iS...",
+		"__MISE_ZSH_PRECMD_RUN": "0",
+	}
+	result := mergeEnv(probed, nil)
+
+	// Mise internal vars should be excluded.
+	for _, skip := range []string{"MISE_SHELL", "__MISE_DIFF", "__MISE_ORIG_PATH", "__MISE_SESSION", "__MISE_ZSH_PRECMD_RUN"} {
+		if _, ok := result[skip]; ok {
+			t.Errorf("%s should be excluded from merged env", skip)
+		}
+	}
+
+	// Regular vars should be included.
+	if result["PATH"] == "" {
+		t.Error("PATH should be included")
+	}
+	if result["HOME"] == "" {
+		t.Error("HOME should be included")
+	}
+}
+
+func TestMergeEnv_RemoteEnvCanOverrideMiseFilter(t *testing.T) {
+	// If a user explicitly sets MISE_SHELL in remoteEnv, it should be included.
+	probed := map[string]string{"PATH": "/usr/bin", "MISE_SHELL": "zsh"}
+	remote := map[string]string{"MISE_SHELL": "bash"}
+	result := mergeEnv(probed, remote)
+	if result["MISE_SHELL"] != "bash" {
+		t.Errorf("MISE_SHELL = %q, want bash (explicit remoteEnv should override filter)", result["MISE_SHELL"])
 	}
 }
 

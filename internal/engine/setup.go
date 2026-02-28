@@ -47,13 +47,17 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 		}
 	}
 
-	// Probe user environment per userEnvProbe setting and merge with remoteEnv.
-	// This captures PATH and other vars set by shell profile files (e.g. mise,
-	// rbenv, nvm) so lifecycle hooks and persisted results have the full env.
+	// Save the original config remoteEnv before merging with probed env.
+	// We need this to re-merge after hooks, since hooks may install tools
+	// that change PATH and other vars.
+	configRemoteEnv := copyStringMap(cfg.RemoteEnv)
+
+	// Pre-hook environment probe: captures PATH and other vars from shell
+	// profile files (e.g. mise, rbenv, nvm) so lifecycle hooks have the
+	// user's full environment.
 	probedEnv := e.probeUserEnv(ctx, ws.ID, containerID, remoteUser, cfg.UserEnvProbe)
-	effectiveEnv := mergeEnv(probedEnv, cfg.RemoteEnv)
-	if len(effectiveEnv) > 0 {
-		cfg.RemoteEnv = effectiveEnv
+	if hookEnv := mergeEnv(probedEnv, configRemoteEnv); len(hookEnv) > 0 {
+		cfg.RemoteEnv = hookEnv
 	}
 
 	// Run lifecycle hooks.
@@ -70,7 +74,17 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 		progress:    e.progress,
 	}
 
-	return runner.runLifecycleHooks(ctx, cfg, workspaceFolder)
+	hookErr := runner.runLifecycleHooks(ctx, cfg, workspaceFolder)
+
+	// Post-hook environment probe: re-captures the environment to pick up
+	// any changes from lifecycle hooks (e.g. tools installed via mise, nvm).
+	// This is what gets persisted for crib shell/exec.
+	postProbe := e.probeUserEnv(ctx, ws.ID, containerID, remoteUser, cfg.UserEnvProbe)
+	if finalEnv := mergeEnv(postProbe, configRemoteEnv); len(finalEnv) > 0 {
+		cfg.RemoteEnv = finalEnv
+	}
+
+	return hookErr
 }
 
 // resolveRemoteEnv resolves ${containerEnv:VAR} references in cfg.RemoteEnv by
