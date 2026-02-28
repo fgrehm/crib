@@ -302,5 +302,3 @@ External plugins receive context via environment variables set by crib:
 Plugins write JSON to stdout. Stderr is for diagnostic messages (suppressed in normal mode, shown in verbose mode). Exit code 0 means success, non-zero means the plugin failed (fail-open: crib logs a warning and continues).
 
 Plugin configuration is delivered via stdin as JSON (from `customizations.crib.plugins.<name>` in devcontainer.json or `~/.config/crib/config.toml`).
-
-See the full [plugin system spec](https://github.com/fgrehm/crib/blob/main/docs/specs/2026-02-28-plugin-system.md) for the complete protocol design.
