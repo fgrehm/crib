@@ -1,17 +1,3 @@
-/* The current logo PNG has an opaque background that looks bad in dark mode.
-   Hide logo images and show the text title as fallback. */
-:root[data-theme="dark"] .site-title img {
-  display: none;
-}
-
-:root[data-theme="dark"] .site-title span {
-  display: inline !important;
-}
-
-:root[data-theme="dark"] .hero img {
-  display: none;
-}
-
 /* Style inline code in the hero tagline */
 .hero .tagline code {
   background: var(--sl-color-gray-6);

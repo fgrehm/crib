@@ -8,8 +8,8 @@ export default defineConfig({
     starlight({
       title: "crib docs",
       logo: {
-        light: "./src/assets/logo-light.png",
-        dark: "./src/assets/icon-dark.png",
+        light: "./src/assets/logo-light.svg",
+        dark: "./src/assets/logo-dark.svg",
         alt: "crib logo",
         replacesTitle: true,
       },
