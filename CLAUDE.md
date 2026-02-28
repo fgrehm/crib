@@ -10,26 +10,14 @@ Dev containers without the ceremony. crib reads `.devcontainer` configs, builds 
 
 crib is a fresh implementation of a devcontainer CLI tool. It is not a fork of DevPod. The architecture uses DevPod's algorithms as reference (see `../devpod` local clone) but owns all its code.
 
-## DevContainer Specification Reference
+## Documentation
 
-`docs/devcontainers-spec.md` is a quick-lookup companion to the [official Dev Container Specification](https://containers.dev/implementors/spec/). Use it when:
+The [docs site](https://fgrehm.github.io/crib/) is the single source of truth for user-facing documentation. README.md is a GitHub landing page that links to the site.
 
-- Implementing or debugging config parsing (syntax, variable substitution, property details)
-- Working with lifecycle hooks (hook types, execution order, timing)
-- Understanding Features (structure, options, installation order, metadata)
-- Determining how Docker Compose, image metadata, or workspace mounts work
-- Checking port attributes, environment variables, or user/permissions semantics
+Key reference pages on the site:
 
-The file is not a replacement for the official spec, just a distilled reference organized by topic with links to the authoritative sources.
-
-## Implementation Notes
-
-`docs/implementation-notes.md` documents quirks, workarounds, and spec compliance status. Consult it when:
-
-- Debugging rootless Podman permission issues (userns_mode, UID sync, chown)
-- Working with lifecycle hooks and environment probing (userEnvProbe)
-- Understanding how container user detection works for compose containers
-- Checking which spec features are implemented, partially implemented, or skipped
+- **Devcontainer Spec Reference** (`website/src/content/docs/contributing/devcontainers-spec.md`) - quick-lookup companion to the [official spec](https://containers.dev/implementors/spec/). Use when implementing or debugging config parsing, lifecycle hooks, Features, Docker Compose, or workspace mounts.
+- **Implementation Notes** (`website/src/content/docs/contributing/implementation-notes.md`) - quirks, workarounds, and spec compliance status. Use when debugging rootless Podman issues, lifecycle hooks, container user detection, or checking which spec features are implemented.
 
 ## Architecture
 
@@ -60,12 +48,10 @@ Dependency flow: `cmd/ -> engine/ -> config/, feature/, driver/, compose/, docke
 
 ## Development Workflow
 
-See `docs/development.md` for branching model and build instructions.
+See the [Development](https://fgrehm.github.io/crib/contributing/development/) page on the docs site for branching model and build instructions.
 
 - All work happens on `main`. No long-lived feature branches.
 - Releases are tagged (e.g. `v0.3.0`) and the `stable` branch is updated to match.
-- `README.md` on `stable` is the source of truth for released functionality.
-- `README.md` on `main` may describe unreleased work.
 
 ## Build and Test
 
@@ -99,6 +85,10 @@ To cut a new release:
 ## Changelog
 
 `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format. Update the `[Unreleased]` section when making user-facing changes (new features, bug fixes, breaking changes, command renames, etc.). Internal refactors that don't affect behavior don't need an entry.
+
+When releasing, also mirror the new version section into `website/src/content/docs/reference/changelog.md`:
+- The site changelog has no `[Unreleased]` section.
+- Version headers are links: `## [0.3.1](https://github.com/fgrehm/crib/releases/tag/v0.3.1) - YYYY-MM-DD`
 
 ## Conventions
 
