@@ -149,6 +149,13 @@ entire image build, compose services define their own images or Dockerfiles.
 The compose `build` step for the primary service is skipped in the main flow since
 the feature build already produced the final image. Other services still build normally.
 
+`build.options` (extra Docker build CLI flags) applies to the feature image build
+(step 4 above, via `doBuild`) but **not** to the base service image build (step 2,
+via `compose build`). This is spec-correct: the compose service image is managed by
+`docker-compose.yml`, not by `devcontainer.json`'s `build` section. If you need
+extra flags for the compose service build, set them in the compose file directly
+(e.g. `build.args`, `build.network`).
+
 **Files**: `internal/engine/compose.go` (buildComposeFeatures, generateComposeOverride),
 `internal/engine/build.go` (buildComposeFeatureImage, resolveComposeContainerUser),
 `internal/compose/project.go` (GetServiceInfo).
@@ -210,7 +217,7 @@ or `exec.Command` with no stdin). Docker strictly validates the TTY and errors w
 | `workspaceMount` / `workspaceFolder` | Custom mount parsing, variable expansion |
 | `containerEnv` / `remoteEnv` | Including `${containerEnv:VAR}` resolution |
 | Compose `runServices` | Selective service starting |
-| Build options | `dockerfile`, `context`, `args`, `target`, `cacheFrom`, `options` (extra CLI flags) |
+| Build options | `dockerfile`, `context`, `args`, `target`, `cacheFrom`, `options` (extra CLI flags; for compose, applies to feature layer builds only — see quirk above) |
 | `waitFor` | "Container ready." progress message fires after the named stage; all hooks still run to completion; default `updateContentCommand` |
 | Parallel object hooks | Object-syntax hooks (named entries) run concurrently via `errgroup`; all must succeed |
 

@@ -122,6 +122,25 @@ func (r *lifecycleRunner) runHookWithMarker(ctx context.Context, name string, ho
 	return nil
 }
 
+// dispatchHook runs a LifecycleHook's entries using executor.
+// String/array hooks (stored under the "" key) call executor once, sequentially.
+// Object hooks (named entries) call executor for each entry in parallel via errgroup;
+// all must succeed for the hook to succeed.
+func dispatchHook(ctx context.Context, hook config.LifecycleHook, executor func(context.Context, string, []string) error) error {
+	// String/array form uses the "" key: single sequential entry.
+	if _, sequential := hook[""]; sequential {
+		return executor(ctx, "", hook[""])
+	}
+
+	// Object form: all named entries run in parallel.
+	g, gCtx := errgroup.WithContext(ctx)
+	for hookName, cmdParts := range hook {
+		hookName, cmdParts := hookName, cmdParts
+		g.Go(func() error { return executor(gCtx, hookName, cmdParts) })
+	}
+	return g.Wait()
+}
+
 // runHook executes a lifecycle hook's commands inside the container.
 // Object-form hooks (named entries) run in parallel per the devcontainer spec.
 // String and array-form hooks (stored under the "" key) run sequentially.
@@ -135,20 +154,9 @@ func (r *lifecycleRunner) runHook(ctx context.Context, name string, hook config.
 	}
 	r.logger.Debug("running lifecycle hook", "hook", name)
 
-	// String/array form uses the "" key: single sequential entry.
-	if _, sequential := hook[""]; sequential {
-		return r.execHookCmd(ctx, name, "", hook[""], workspaceFolder)
-	}
-
-	// Object form: all named entries run in parallel.
-	g, gCtx := errgroup.WithContext(ctx)
-	for hookName, cmdParts := range hook {
-		hookName, cmdParts := hookName, cmdParts
-		g.Go(func() error {
-			return r.execHookCmd(gCtx, name, hookName, cmdParts, workspaceFolder)
-		})
-	}
-	return g.Wait()
+	return dispatchHook(ctx, hook, func(ctx context.Context, hookName string, cmdParts []string) error {
+		return r.execHookCmd(ctx, name, hookName, cmdParts, workspaceFolder)
+	})
 }
 
 // execHookCmd executes a single hook command inside the container.

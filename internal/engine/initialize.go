@@ -6,8 +6,6 @@ import (
 	"log/slog"
 	"os/exec"
 
-	"golang.org/x/sync/errgroup"
-
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/workspace"
 )
@@ -23,20 +21,9 @@ func (e *Engine) runInitializeCommand(ctx context.Context, ws *workspace.Workspa
 
 	e.reportProgress("Running initializeCommand...")
 
-	// String/array form uses the "" key: single sequential entry.
-	if _, sequential := cfg.InitializeCommand[""]; sequential {
-		return e.execInitCmd(ctx, ws, "initializeCommand", "", cfg.InitializeCommand[""])
-	}
-
-	// Object form: all named entries run in parallel.
-	g, gCtx := errgroup.WithContext(ctx)
-	for hookName, cmdParts := range cfg.InitializeCommand {
-		hookName, cmdParts := hookName, cmdParts
-		g.Go(func() error {
-			return e.execInitCmd(gCtx, ws, "initializeCommand", hookName, cmdParts)
-		})
-	}
-	return g.Wait()
+	return dispatchHook(ctx, cfg.InitializeCommand, func(ctx context.Context, hookName string, cmdParts []string) error {
+		return e.execInitCmd(ctx, ws, "initializeCommand", hookName, cmdParts)
+	})
 }
 
 // execInitCmd runs a single initializeCommand entry on the host.
