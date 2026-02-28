@@ -69,4 +69,4 @@ List all known workspaces and their container status.
 
 ### `crib status`
 
-Show the status of the current workspace's container. For compose workspaces, shows all service statuses.
+Show the status of the current workspace's container, including published ports. For compose workspaces, shows all service statuses with their ports.

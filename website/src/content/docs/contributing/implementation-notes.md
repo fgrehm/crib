@@ -203,6 +203,8 @@ or `exec.Command` with no stdin). Docker strictly validates the TTY and errors w
 | `userEnvProbe` | Shell detection, env probing, merge with remoteEnv |
 | `overrideCommand` | Both single and compose paths |
 | `mounts` | String and object format, bind and volume types |
+| `forwardPorts` | Published as `-p` flags for single containers; compose uses native port config |
+| `appPort` (legacy) | Same handling as `forwardPorts`, deduplicated |
 | `init`, `privileged`, `capAdd`, `securityOpt` | Passed through to runtime |
 | `runArgs` | Passed through as extra CLI args |
 | `workspaceMount` / `workspaceFolder` | Custom mount parsing, variable expansion |
@@ -217,11 +219,9 @@ does not act on them. This is intentional for a CLI-only tool.
 
 | Feature | Reason |
 |---------|--------|
-| `forwardPorts` | Port forwarding is IDE-specific; use `runArgs` with `-p` instead |
 | `portsAttributes` | Display/behavior hints for IDE port UI |
 | `shutdownAction` | `crib` manages container lifecycle explicitly via `down`/`remove` |
 | `hostRequirements` | Validation not implemented; runtime will fail naturally |
-| `appPort` (legacy) | Spec says use `forwardPorts` instead |
 
 ### Not Implemented
 
