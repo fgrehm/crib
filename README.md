@@ -6,7 +6,7 @@
 
 Devcontainers without the ceremony.
 
-crib reads your `.devcontainer` config, builds the container, and gets out of your way.
+Your `devcontainer.json`, minus the IDE. crib builds the container and stays out of your way.
 
 **[Documentation](https://fgrehm.github.io/crib/)**
 
