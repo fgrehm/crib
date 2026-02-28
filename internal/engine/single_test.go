@@ -203,6 +203,75 @@ func TestBuildRunOptions_PortsDedup(t *testing.T) {
 	}
 }
 
+func TestCollectPorts_Empty(t *testing.T) {
+	got := collectPorts(nil, nil)
+	if len(got) != 0 {
+		t.Errorf("collectPorts(nil, nil) = %v, want empty", got)
+	}
+}
+
+func TestCollectPorts_BareAndPair(t *testing.T) {
+	got := collectPorts(config.StrIntArray{"8080", "9090:3000"}, nil)
+	want := []string{"8080:8080", "9090:3000"}
+	if len(got) != len(want) {
+		t.Fatalf("len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestCollectPorts_DedupSameFormat(t *testing.T) {
+	// "8080" normalizes to "8080:8080", same as explicit "8080:8080".
+	got := collectPorts(
+		config.StrIntArray{"8080"},
+		config.StrIntArray{"8080:8080"},
+	)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1 (should dedup)", len(got))
+	}
+	if got[0] != "8080:8080" {
+		t.Errorf("got[0] = %q, want %q", got[0], "8080:8080")
+	}
+}
+
+func TestCollectPorts_Range(t *testing.T) {
+	got := collectPorts(config.StrIntArray{"8000-8010"}, nil)
+	if len(got) != 1 || got[0] != "8000-8010:8000-8010" {
+		t.Errorf("got = %v, want [\"8000-8010:8000-8010\"]", got)
+	}
+}
+
+func TestCollectPorts_RangeWithHost(t *testing.T) {
+	got := collectPorts(config.StrIntArray{"9000-9010:8000-8010"}, nil)
+	if len(got) != 1 || got[0] != "9000-9010:8000-8010" {
+		t.Errorf("got = %v, want [\"9000-9010:8000-8010\"]", got)
+	}
+}
+
+func TestPortSpecToBindings(t *testing.T) {
+	specs := []string{"8080:80", "9090:3000"}
+	got := portSpecToBindings(specs)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0].HostPort != 8080 || got[0].ContainerPort != 80 || got[0].Protocol != "tcp" {
+		t.Errorf("got[0] = %+v", got[0])
+	}
+	if got[1].HostPort != 9090 || got[1].ContainerPort != 3000 {
+		t.Errorf("got[1] = %+v", got[1])
+	}
+}
+
+func TestPortSpecToBindings_Empty(t *testing.T) {
+	got := portSpecToBindings(nil)
+	if len(got) != 0 {
+		t.Errorf("portSpecToBindings(nil) = %v, want empty", got)
+	}
+}
+
 func TestResolveContainerUser(t *testing.T) {
 	tests := []struct {
 		containerUser string

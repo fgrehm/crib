@@ -34,28 +34,29 @@ func TestFormatPorts_Multiple_Sorted(t *testing.T) {
 	}
 }
 
-func TestFormatComposePorts_Empty(t *testing.T) {
-	if got := formatComposePorts(nil); got != "" {
-		t.Errorf("formatComposePorts(nil) = %q, want empty", got)
-	}
-}
-
-func TestFormatComposePorts_Single(t *testing.T) {
-	ports := []compose.PortBinding{
-		{HostPort: 5432, ContainerPort: 5432, Protocol: "tcp"},
-	}
-	want := "5432->5432/tcp"
-	if got := formatComposePorts(ports); got != want {
-		t.Errorf("formatComposePorts = %q, want %q", got, want)
-	}
-}
-
-func TestFormatComposePorts_DefaultProtocol(t *testing.T) {
-	ports := []compose.PortBinding{
+func TestFormatPorts_DefaultProtocol(t *testing.T) {
+	ports := []driver.PortBinding{
 		{HostPort: 3000, ContainerPort: 3000},
 	}
 	want := "3000->3000/tcp"
-	if got := formatComposePorts(ports); got != want {
-		t.Errorf("formatComposePorts = %q, want %q", got, want)
+	if got := formatPorts(ports); got != want {
+		t.Errorf("formatPorts = %q, want %q", got, want)
+	}
+}
+
+func TestComposePortsToDriver(t *testing.T) {
+	composePorts := []compose.PortBinding{
+		{ContainerPort: 5432, HostPort: 5432, HostIP: "0.0.0.0", Protocol: "tcp"},
+		{ContainerPort: 6379, HostPort: 6379, Protocol: "tcp"},
+	}
+	got := composePortsToDriver(composePorts)
+	if len(got) != 2 {
+		t.Fatalf("len = %d, want 2", len(got))
+	}
+	if got[0].ContainerPort != 5432 || got[0].HostPort != 5432 || got[0].HostIP != "0.0.0.0" {
+		t.Errorf("got[0] = %+v", got[0])
+	}
+	if got[1].ContainerPort != 6379 || got[1].HostPort != 6379 {
+		t.Errorf("got[1] = %+v", got[1])
 	}
 }

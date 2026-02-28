@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/fgrehm/crib/internal/config"
@@ -157,7 +158,7 @@ func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cf
 		ContainerID:     containerID,
 		WorkspaceFolder: workspaceFolder,
 		RemoteUser:      remoteUser,
-		Ports:           collectPorts(cfg.ForwardPorts, cfg.AppPort),
+		Ports:           portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort)),
 	}
 
 	// Save an early result so crib exec/shell can find the container,
@@ -204,6 +205,23 @@ func collectPorts(forwardPorts, appPort config.StrIntArray) []string {
 				result = append(result, spec)
 			}
 		}
+	}
+	return result
+}
+
+// portSpecToBindings converts publish spec strings (e.g. "8080:3000") into
+// driver.PortBinding values for display purposes.
+func portSpecToBindings(specs []string) []driver.PortBinding {
+	var result []driver.PortBinding
+	for _, spec := range specs {
+		host, container, _ := strings.Cut(spec, ":")
+		hostPort, _ := strconv.Atoi(host)
+		containerPort, _ := strconv.Atoi(container)
+		result = append(result, driver.PortBinding{
+			HostPort:      hostPort,
+			ContainerPort: containerPort,
+			Protocol:      "tcp",
+		})
 	}
 	return result
 }

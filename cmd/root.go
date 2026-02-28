@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/fgrehm/crib/internal/compose"
+	"github.com/fgrehm/crib/internal/driver"
 	"github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/engine"
 	"github.com/fgrehm/crib/internal/ui"
@@ -216,13 +217,19 @@ func shortID(id string) string {
 	return id[:12]
 }
 
-// formatPortSpecs formats publish specs (e.g. "8080:8080") for display.
-// Returns empty string if no ports.
-func formatPortSpecs(ports []string) string {
-	if len(ports) == 0 {
-		return ""
+// composePortsToDriver converts compose.PortBinding values to driver.PortBinding
+// so the same formatPorts function can be used for both.
+func composePortsToDriver(ports []compose.PortBinding) []driver.PortBinding {
+	result := make([]driver.PortBinding, len(ports))
+	for i, p := range ports {
+		result[i] = driver.PortBinding{
+			ContainerPort: p.ContainerPort,
+			HostPort:      p.HostPort,
+			HostIP:        p.HostIP,
+			Protocol:      p.Protocol,
+		}
 	}
-	return strings.Join(ports, ", ")
+	return result
 }
 
 // appendRemoteEnv appends -e KEY=VALUE flags for each entry in result.RemoteEnv.

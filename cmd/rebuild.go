@@ -46,7 +46,7 @@ var rebuildCmd = &cobra.Command{
 		if result.RemoteUser != "" {
 			u.Keyval("user", result.RemoteUser)
 		}
-		if ports := formatPortSpecs(result.Ports); ports != "" {
+		if ports := formatPorts(result.Ports); ports != "" {
 			u.Keyval("ports", ports)
 		}
 

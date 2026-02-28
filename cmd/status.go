@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fgrehm/crib/internal/compose"
 	"github.com/fgrehm/crib/internal/driver"
 	"github.com/spf13/cobra"
 )
@@ -52,7 +51,7 @@ var statusCmd = &cobra.Command{
 			fmt.Println("services")
 			for _, svc := range result.Services {
 				state := u.StatusColor(svc.State)
-				if ports := formatComposePorts(svc.Ports); ports != "" {
+				if ports := formatPorts(composePortsToDriver(svc.Ports)); ports != "" {
 					state += "  " + ports
 				}
 				u.Keyval(svc.Service, state)
@@ -63,7 +62,7 @@ var statusCmd = &cobra.Command{
 	},
 }
 
-// formatPorts formats container port bindings into a compact display string.
+// formatPorts formats port bindings into a compact display string.
 // Example: "8080->8080/tcp, 9090->3000/tcp"
 func formatPorts(ports []driver.PortBinding) string {
 	if len(ports) == 0 {
@@ -79,18 +78,6 @@ func formatPorts(ports []driver.PortBinding) string {
 	})
 	parts := make([]string, len(sorted))
 	for i, p := range sorted {
-		parts[i] = fmt.Sprintf("%d->%d/%s", p.HostPort, p.ContainerPort, p.Protocol)
-	}
-	return strings.Join(parts, ", ")
-}
-
-// formatComposePorts formats compose service port bindings.
-func formatComposePorts(ports []compose.PortBinding) string {
-	if len(ports) == 0 {
-		return ""
-	}
-	parts := make([]string, len(ports))
-	for i, p := range ports {
 		proto := p.Protocol
 		if proto == "" {
 			proto = "tcp"
