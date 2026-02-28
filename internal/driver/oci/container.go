@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/fgrehm/crib/internal/driver"
@@ -31,16 +32,18 @@ func (d *OCIDriver) FindContainer(ctx context.Context, workspaceID string) (*dri
 		return nil, nil
 	}
 
-	// Inspect the matched containers.
-	var containers []driver.ContainerDetails
-	if err := d.helper.Inspect(ctx, ids, "container", &containers); err != nil {
+	// Inspect the matched containers. We unmarshal into an intermediate type
+	// to capture NetworkSettings.Ports from the docker/podman inspect JSON.
+	var raw []inspectContainer
+	if err := d.helper.Inspect(ctx, ids, "container", &raw); err != nil {
 		return nil, fmt.Errorf("inspecting container for workspace %s: %w", workspaceID, err)
 	}
 
 	// Return the first container that isn't being removed.
-	for i := range containers {
-		if !containers[i].State.IsRemoving() {
-			return &containers[i], nil
+	for i := range raw {
+		details := raw[i].toContainerDetails()
+		if !details.State.IsRemoving() {
+			return &details, nil
 		}
 	}
 	return nil, nil
@@ -77,9 +80,7 @@ func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) []
 	}
 
 	// Environment variables.
-	for _, e := range opts.Env {
-		args = append(args, "-e", e)
-	}
+	args = appendFlags(args, "-e", opts.Env)
 
 	// Init process.
 	if opts.Init {
@@ -92,14 +93,10 @@ func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) []
 	}
 
 	// Capabilities.
-	for _, cap := range opts.CapAdd {
-		args = append(args, "--cap-add", cap)
-	}
+	args = appendFlags(args, "--cap-add", opts.CapAdd)
 
 	// Security options.
-	for _, opt := range opts.SecurityOpt {
-		args = append(args, "--security-opt", opt)
-	}
+	args = appendFlags(args, "--security-opt", opts.SecurityOpt)
 
 	// Workspace mount.
 	if opts.WorkspaceMount.Target != "" {
@@ -112,9 +109,7 @@ func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) []
 	}
 
 	// Published ports.
-	for _, p := range opts.Ports {
-		args = append(args, "--publish", p)
-	}
+	args = appendFlags(args, "--publish", opts.Ports)
 
 	// Entrypoint.
 	if opts.Entrypoint != "" {
@@ -188,6 +183,69 @@ func (d *OCIDriver) ContainerLogs(ctx context.Context, _, containerID string, st
 	return d.helper.Run(ctx, []string{"logs", containerID}, nil, stdout, stderr)
 }
 
+// inspectContainer is an intermediate struct for unmarshaling docker/podman
+// inspect JSON. It mirrors the fields we need from ContainerDetails plus the
+// nested NetworkSettings.Ports structure.
+type inspectContainer struct {
+	ID      string `json:"Id"`
+	Created string `json:"Created"`
+	State   struct {
+		Status    string `json:"Status"`
+		StartedAt string `json:"StartedAt"`
+	} `json:"State"`
+	Config struct {
+		Labels map[string]string `json:"Labels"`
+		User   string            `json:"User"`
+	} `json:"Config"`
+	NetworkSettings struct {
+		Ports map[string][]struct {
+			HostIp   string `json:"HostIp"`
+			HostPort string `json:"HostPort"`
+		} `json:"Ports"`
+	} `json:"NetworkSettings"`
+}
+
+// toContainerDetails converts the intermediate inspect result to a driver.ContainerDetails.
+func (ic *inspectContainer) toContainerDetails() driver.ContainerDetails {
+	d := driver.ContainerDetails{
+		ID:      ic.ID,
+		Created: ic.Created,
+		State: driver.ContainerState{
+			Status:    ic.State.Status,
+			StartedAt: ic.State.StartedAt,
+		},
+		Config: driver.ContainerConfig{
+			Labels: ic.Config.Labels,
+			User:   ic.Config.User,
+		},
+	}
+	for containerPort, bindings := range ic.NetworkSettings.Ports {
+		port, proto := parseContainerPort(containerPort)
+		for _, b := range bindings {
+			hostPort, _ := strconv.Atoi(b.HostPort)
+			d.Ports = append(d.Ports, driver.PortBinding{
+				ContainerPort: port,
+				HostPort:      hostPort,
+				HostIP:        b.HostIp,
+				Protocol:      proto,
+			})
+		}
+	}
+	return d
+}
+
+// parseContainerPort splits "8080/tcp" into port number and protocol.
+func parseContainerPort(s string) (int, string) {
+	proto := "tcp"
+	portStr := s
+	if i := strings.Index(s, "/"); i >= 0 {
+		portStr = s[:i]
+		proto = s[i+1:]
+	}
+	port, _ := strconv.Atoi(portStr)
+	return port, proto
+}
+
 // parseLines splits output by newlines and removes empty strings.
 func parseLines(s string) []string {
 	var lines []string
@@ -208,6 +266,14 @@ func hasUsernsArg(args []string) bool {
 		}
 	}
 	return false
+}
+
+// appendFlags appends "--flag value" pairs to args for each value in values.
+func appendFlags(args []string, flag string, values []string) []string {
+	for _, v := range values {
+		args = append(args, flag, v)
+	}
+	return args
 }
 
 // sortedKeys returns the keys of a map in sorted order.

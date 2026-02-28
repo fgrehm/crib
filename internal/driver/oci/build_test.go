@@ -1,7 +1,6 @@
 package oci
 
 import (
-	"log/slog"
 	"strings"
 	"testing"
 
@@ -9,11 +8,7 @@ import (
 )
 
 func TestBuildBuildArgs_DockerBuildx(t *testing.T) {
-	d := &OCIDriver{
-		helper:  NewHelper("docker", slog.Default()),
-		runtime: RuntimeDocker,
-		logger:  slog.Default(),
-	}
+	d := newTestDockerDriver()
 
 	opts := &driver.BuildOptions{
 		Dockerfile: "/tmp/Dockerfile",
@@ -49,11 +44,7 @@ func TestBuildBuildArgs_DockerBuildx(t *testing.T) {
 }
 
 func TestBuildBuildArgs_PlainBuild(t *testing.T) {
-	d := &OCIDriver{
-		helper:  NewHelper("docker", slog.Default()),
-		runtime: RuntimeDocker,
-		logger:  slog.Default(),
-	}
+	d := newTestDockerDriver()
 
 	opts := &driver.BuildOptions{
 		Dockerfile: "Dockerfile",
@@ -72,11 +63,7 @@ func TestBuildBuildArgs_PlainBuild(t *testing.T) {
 }
 
 func TestBuildBuildArgs_PodmanBuild(t *testing.T) {
-	d := &OCIDriver{
-		helper:  NewHelper("podman", slog.Default()),
-		runtime: RuntimePodman,
-		logger:  slog.Default(),
-	}
+	d := newTestPodmanDriver()
 
 	opts := &driver.BuildOptions{
 		Dockerfile: "Dockerfile",
@@ -93,11 +80,7 @@ func TestBuildBuildArgs_PodmanBuild(t *testing.T) {
 }
 
 func TestBuildBuildArgs_Minimal(t *testing.T) {
-	d := &OCIDriver{
-		helper:  NewHelper("docker", slog.Default()),
-		runtime: RuntimeDocker,
-		logger:  slog.Default(),
-	}
+	d := newTestDockerDriver()
 
 	opts := &driver.BuildOptions{}
 	args := d.buildBuildArgs("img:latest", opts, false)
@@ -110,11 +93,7 @@ func TestBuildBuildArgs_Minimal(t *testing.T) {
 }
 
 func TestBuildBuildArgs_NoBuildArgsNoTarget(t *testing.T) {
-	d := &OCIDriver{
-		helper:  NewHelper("docker", slog.Default()),
-		runtime: RuntimeDocker,
-		logger:  slog.Default(),
-	}
+	d := newTestDockerDriver()
 
 	opts := &driver.BuildOptions{
 		Context: "/myctx",

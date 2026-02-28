@@ -9,12 +9,24 @@ import (
 	"github.com/fgrehm/crib/internal/driver"
 )
 
-func TestBuildRunArgs_Minimal(t *testing.T) {
-	d := &OCIDriver{
+func newTestDockerDriver() *OCIDriver {
+	return &OCIDriver{
 		helper:  NewHelper("docker", slog.Default()),
 		runtime: RuntimeDocker,
 		logger:  slog.Default(),
 	}
+}
+
+func newTestPodmanDriver() *OCIDriver {
+	return &OCIDriver{
+		helper:  NewHelper("podman", slog.Default()),
+		runtime: RuntimePodman,
+		logger:  slog.Default(),
+	}
+}
+
+func TestBuildRunArgs_Minimal(t *testing.T) {
+	d := newTestDockerDriver()
 
 	opts := &driver.RunOptions{
 		Image: "ubuntu:22.04",
@@ -29,11 +41,7 @@ func TestBuildRunArgs_Minimal(t *testing.T) {
 }
 
 func TestBuildRunArgs_AllOptions(t *testing.T) {
-	d := &OCIDriver{
-		helper:  NewHelper("docker", slog.Default()),
-		runtime: RuntimeDocker,
-		logger:  slog.Default(),
-	}
+	d := newTestDockerDriver()
 
 	opts := &driver.RunOptions{
 		Image:       "myimage:latest",
@@ -80,11 +88,7 @@ func TestBuildRunArgs_AllOptions(t *testing.T) {
 }
 
 func TestBuildRunArgs_WorkspaceLabelAlwaysPresent(t *testing.T) {
-	d := &OCIDriver{
-		helper:  NewHelper("docker", slog.Default()),
-		runtime: RuntimeDocker,
-		logger:  slog.Default(),
-	}
+	d := newTestDockerDriver()
 
 	opts := &driver.RunOptions{
 		Image: "alpine",
@@ -104,11 +108,7 @@ func TestBuildRunArgs_WorkspaceLabelAlwaysPresent(t *testing.T) {
 }
 
 func TestBuildRunArgs_NoOptionalFlags(t *testing.T) {
-	d := &OCIDriver{
-		helper:  NewHelper("docker", slog.Default()),
-		runtime: RuntimeDocker,
-		logger:  slog.Default(),
-	}
+	d := newTestDockerDriver()
 
 	opts := &driver.RunOptions{
 		Image: "alpine",
@@ -130,11 +130,7 @@ func TestBuildRunArgs_RootlessPodmanInjectsUserns(t *testing.T) {
 	t.Cleanup(func() { getuid = origGetuid })
 	getuid = func() int { return 1000 } // non-root
 
-	d := &OCIDriver{
-		helper:  NewHelper("podman", slog.Default()),
-		runtime: RuntimePodman,
-		logger:  slog.Default(),
-	}
+	d := newTestPodmanDriver()
 
 	opts := &driver.RunOptions{
 		Image: "alpine",
@@ -151,11 +147,7 @@ func TestBuildRunArgs_RootPodmanSkipsUserns(t *testing.T) {
 	t.Cleanup(func() { getuid = origGetuid })
 	getuid = func() int { return 0 } // root
 
-	d := &OCIDriver{
-		helper:  NewHelper("podman", slog.Default()),
-		runtime: RuntimePodman,
-		logger:  slog.Default(),
-	}
+	d := newTestPodmanDriver()
 
 	opts := &driver.RunOptions{
 		Image: "alpine",
@@ -174,11 +166,7 @@ func TestBuildRunArgs_DockerSkipsUserns(t *testing.T) {
 	t.Cleanup(func() { getuid = origGetuid })
 	getuid = func() int { return 1000 }
 
-	d := &OCIDriver{
-		helper:  NewHelper("docker", slog.Default()),
-		runtime: RuntimeDocker,
-		logger:  slog.Default(),
-	}
+	d := newTestDockerDriver()
 
 	opts := &driver.RunOptions{
 		Image: "alpine",
@@ -197,11 +185,7 @@ func TestBuildRunArgs_UserUsernsOverrideSkipsAutoInject(t *testing.T) {
 	t.Cleanup(func() { getuid = origGetuid })
 	getuid = func() int { return 1000 }
 
-	d := &OCIDriver{
-		helper:  NewHelper("podman", slog.Default()),
-		runtime: RuntimePodman,
-		logger:  slog.Default(),
-	}
+	d := newTestPodmanDriver()
 
 	opts := &driver.RunOptions{
 		Image:     "alpine",
@@ -221,11 +205,7 @@ func TestBuildRunArgs_UserUsernsOverrideSkipsAutoInject(t *testing.T) {
 }
 
 func TestBuildRunArgs_Ports(t *testing.T) {
-	d := &OCIDriver{
-		helper:  NewHelper("docker", slog.Default()),
-		runtime: RuntimeDocker,
-		logger:  slog.Default(),
-	}
+	d := newTestDockerDriver()
 
 	opts := &driver.RunOptions{
 		Image: "alpine",
@@ -251,11 +231,7 @@ func TestBuildRunArgs_ExtraArgsPassthrough(t *testing.T) {
 	t.Cleanup(func() { getuid = origGetuid })
 	getuid = func() int { return 0 } // root, so no auto-inject
 
-	d := &OCIDriver{
-		helper:  NewHelper("docker", slog.Default()),
-		runtime: RuntimeDocker,
-		logger:  slog.Default(),
-	}
+	d := newTestDockerDriver()
 
 	opts := &driver.RunOptions{
 		Image:     "alpine",
@@ -355,6 +331,56 @@ func TestScrubArgs(t *testing.T) {
 	// Non-env args should be unchanged.
 	if scrubbed[0] != "exec" || scrubbed[1] != "--user" || scrubbed[2] != "root" {
 		t.Errorf("non-env args were modified: %v", scrubbed[:3])
+	}
+}
+
+func TestInspectContainer_ToContainerDetails_Ports(t *testing.T) {
+	ic := &inspectContainer{}
+	ic.ID = "abc123"
+	ic.State.Status = "running"
+	ic.NetworkSettings.Ports = map[string][]struct {
+		HostIp   string `json:"HostIp"`
+		HostPort string `json:"HostPort"`
+	}{
+		"8080/tcp": {{HostIp: "0.0.0.0", HostPort: "8080"}},
+		"53/udp":   {{HostIp: "0.0.0.0", HostPort: "5353"}},
+	}
+
+	details := ic.toContainerDetails()
+
+	if details.ID != "abc123" {
+		t.Errorf("ID = %q, want %q", details.ID, "abc123")
+	}
+	if len(details.Ports) != 2 {
+		t.Fatalf("Ports length = %d, want 2", len(details.Ports))
+	}
+
+	// Build a lookup by container port for order-independent checks.
+	byContainer := map[int]driver.PortBinding{}
+	for _, p := range details.Ports {
+		byContainer[p.ContainerPort] = p
+	}
+
+	tcp := byContainer[8080]
+	if tcp.HostPort != 8080 || tcp.Protocol != "tcp" {
+		t.Errorf("tcp port = %+v, want HostPort=8080, Protocol=tcp", tcp)
+	}
+
+	udp := byContainer[53]
+	if udp.HostPort != 5353 || udp.Protocol != "udp" {
+		t.Errorf("udp port = %+v, want HostPort=5353, Protocol=udp", udp)
+	}
+}
+
+func TestInspectContainer_ToContainerDetails_NoPorts(t *testing.T) {
+	ic := &inspectContainer{}
+	ic.ID = "xyz"
+	ic.State.Status = "exited"
+
+	details := ic.toContainerDetails()
+
+	if len(details.Ports) != 0 {
+		t.Errorf("Ports should be empty, got %v", details.Ports)
 	}
 }
 
