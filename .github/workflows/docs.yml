@@ -2,7 +2,7 @@ name: Deploy docs
 
 on:
   push:
-    branches: [stable, docs-site]
+    branches: [stable, docs-site, next]
   workflow_dispatch:
 
 permissions:
