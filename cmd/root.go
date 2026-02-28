@@ -41,9 +41,6 @@ var rootCmd = &cobra.Command{
 	Version: Version,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		level := slog.LevelWarn
-		if verboseFlag {
-			level = slog.LevelInfo
-		}
 		if debugFlag {
 			level = slog.LevelDebug
 		}

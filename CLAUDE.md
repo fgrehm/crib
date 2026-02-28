@@ -90,6 +90,28 @@ When releasing, also mirror the new version section into `website/src/content/do
 - The site changelog has no `[Unreleased]` section.
 - Version headers are links: `## [0.3.1](https://github.com/fgrehm/crib/releases/tag/v0.3.1) - YYYY-MM-DD`
 
+## Logging and Output
+
+Four output mechanisms, each with a distinct purpose:
+
+| Mechanism | Audience | Controlled by |
+|-----------|----------|---------------|
+| `internal/ui` (stdout) | User — results and errors | always visible; `cmd/` layer only |
+| Engine progress callback | User — operation status (`  Creating container...`) | always visible |
+| Engine stdout/stderr writers | User — subprocess output (hooks, build, compose) | `-V` / `--verbose` |
+| `log/slog` (stderr) | Developer diagnostics | `--debug` |
+
+**slog levels:** `Debug` for exec commands and internal decisions; `Warn` for non-fatal
+fallbacks; `Info` for one-time startup events only (runtime/compose detection).
+
+**`-V`** passes subprocess stdout through instead of discarding it. Does not change the slog
+level. To echo a command in verbose mode, write it to the engine's stderr writer — not slog.
+
+**`--debug`** sets slog to Debug and should also imply verbose.
+
+Don't use slog in `cmd/` for user messages, don't promote exec logging above `Debug` to fake
+verbose output, and don't hardcode `io.Discard` where the verbose flag should decide.
+
 ## Conventions
 
 - Go module: `github.com/fgrehm/crib`

@@ -19,7 +19,7 @@ var rebuildCmd = &cobra.Command{
 			return err
 		}
 		eng.SetOutput(os.Stdout, os.Stderr)
-		eng.SetVerbose(verboseFlag)
+		eng.SetVerbose(verboseFlag || debugFlag)
 		eng.SetProgress(func(msg string) { u.Dim("  " + msg) })
 
 		ws, err := currentWorkspace(store, true)
