@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/fgrehm/crib/internal/engine"
@@ -31,9 +30,10 @@ var rebuildCmd = &cobra.Command{
 		u.Header("Rebuilding workspace")
 
 		if err := eng.Down(cmd.Context(), ws); err != nil {
-			return fmt.Errorf("removing existing container: %w", err)
+			logger.Debug("down before rebuild", "error", err)
+		} else {
+			u.Success("Container removed")
 		}
-		u.Success("Container removed")
 
 		result, err := eng.Up(cmd.Context(), ws, engine.UpOptions{Recreate: true})
 		if err != nil {
