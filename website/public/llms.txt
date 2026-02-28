@@ -1,0 +1,34 @@
+# crib
+
+> Dev containers without the ceremony. A CLI tool that reads .devcontainer configs, builds the container, and gets out of the way. Supports Docker and Podman.
+
+crib is a devcontainer CLI tool. It reads `.devcontainer/devcontainer.json` configs, builds the container (image-based, Dockerfile-based, or Docker Compose-based), and manages the full lifecycle: creating, starting, stopping, rebuilding, and removing dev containers. No agents, no SSH, no IDE integration, just the CLI.
+
+## Getting Started
+
+- [Overview](https://fgrehm.github.io/crib/overview/): What crib is, why it exists, and the philosophy behind it
+- [Installation](https://fgrehm.github.io/crib/installation/): How to install crib on Linux with Docker or Podman
+- [Commands](https://fgrehm.github.io/crib/commands/): All available crib CLI commands and global flags
+
+## Guides
+
+- [Lifecycle Hooks](https://fgrehm.github.io/crib/guides/lifecycle-hooks/): How crib handles devcontainer lifecycle hooks
+- [Smart Restart](https://fgrehm.github.io/crib/guides/smart-restart/): How crib restart detects changes and picks the fastest strategy
+- [Git Integration](https://fgrehm.github.io/crib/guides/git-integration/): Setting up git push, commit signing, and SSH agent forwarding inside devcontainers
+- [Custom Config Directory](https://fgrehm.github.io/crib/guides/custom-config/): Using a custom devcontainer directory with crib
+
+## Reference
+
+- [Troubleshooting](https://fgrehm.github.io/crib/reference/troubleshooting/): Common issues and solutions when using crib
+- [Changelog](https://fgrehm.github.io/crib/reference/changelog/): All notable changes to crib
+
+## Contributing
+
+- [Development](https://fgrehm.github.io/crib/contributing/development/): Building, testing, and contributing to crib
+- [Roadmap](https://fgrehm.github.io/crib/contributing/roadmap/): What's planned, what's being considered, and what's not happening
+- [Implementation Notes](https://fgrehm.github.io/crib/contributing/implementation-notes/): Quirks, workarounds, and spec compliance status
+- [DevContainer Spec Reference](https://fgrehm.github.io/crib/contributing/devcontainers-spec/): A distilled reference of the Dev Container Specification for quick lookup
+
+## Source Code
+
+- [GitHub Repository](https://github.com/fgrehm/crib)

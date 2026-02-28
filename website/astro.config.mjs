@@ -41,6 +41,17 @@ export default defineConfig({
       editLink: {
         baseUrl: "https://github.com/fgrehm/crib/edit/main/website/",
       },
+      head: [
+        {
+          tag: "link",
+          attrs: {
+            rel: "alternate",
+            type: "text/plain",
+            href: "/crib/llms.txt",
+            title: "LLM-friendly documentation",
+          },
+        },
+      ],
       customCss: ["./src/styles/custom.css"],
       sidebar: [
         {
