@@ -3,7 +3,6 @@ package codingagents
 import (
 	"context"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -12,8 +11,8 @@ import (
 )
 
 // Plugin provides coding-agent credential sharing. Currently supports
-// Claude Code by copying ~/.claude/ into the workspace state directory
-// and returning a bind mount.
+// Claude Code by copying ~/.claude/.credentials.json and generating a
+// minimal ~/.claude.json for the container.
 type Plugin struct {
 	homeDir string // overridable for testing; defaults to os.UserHomeDir()
 }
@@ -26,9 +25,10 @@ func New() *Plugin {
 // Name returns the plugin identifier.
 func (p *Plugin) Name() string { return "coding-agents" }
 
-// PreContainerRun checks for ~/.claude/ on the host. If present, it copies the
-// directory into the workspace state dir and returns a bind mount so the
-// container gets the credentials.
+// PreContainerRun checks for ~/.claude/.credentials.json on the host. If
+// present, it copies the credentials file into the workspace state dir,
+// generates a minimal ~/.claude.json with hasCompletedOnboarding, and returns
+// bind mounts for both.
 func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunRequest) (*plugin.PreContainerRunResponse, error) {
 	home := p.homeDir
 	if home == "" {
@@ -39,16 +39,28 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 		}
 	}
 
-	claudeSrc := filepath.Join(home, ".claude")
-	if _, err := os.Stat(claudeSrc); os.IsNotExist(err) {
+	credsSrc := filepath.Join(home, ".claude", ".credentials.json")
+	if _, err := os.Stat(credsSrc); os.IsNotExist(err) {
 		return nil, nil
 	} else if err != nil {
-		return nil, fmt.Errorf("checking ~/.claude: %w", err)
+		return nil, fmt.Errorf("checking credentials: %w", err)
 	}
 
-	copyDst := filepath.Join(req.WorkspaceDir, "plugins", "coding-agents", "claude")
-	if err := copyDir(claudeSrc, copyDst); err != nil {
-		return nil, fmt.Errorf("copying ~/.claude: %w", err)
+	pluginDir := filepath.Join(req.WorkspaceDir, "plugins", "coding-agents")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating plugin dir: %w", err)
+	}
+
+	// Copy credentials file.
+	credsDst := filepath.Join(pluginDir, "credentials.json")
+	if err := copyFile(credsSrc, credsDst, 0o600); err != nil {
+		return nil, fmt.Errorf("copying credentials: %w", err)
+	}
+
+	// Generate minimal config so Claude Code skips onboarding.
+	configDst := filepath.Join(pluginDir, "claude.json")
+	if err := os.WriteFile(configDst, []byte(`{"hasCompletedOnboarding":true}`), 0o644); err != nil {
+		return nil, fmt.Errorf("writing config: %w", err)
 	}
 
 	remoteHome := inferRemoteHome(req.RemoteUser)
@@ -57,8 +69,13 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 		Mounts: []config.Mount{
 			{
 				Type:   "bind",
-				Source: copyDst,
-				Target: filepath.Join(remoteHome, ".claude"),
+				Source: credsDst,
+				Target: filepath.Join(remoteHome, ".claude", ".credentials.json"),
+			},
+			{
+				Type:   "bind",
+				Source: configDst,
+				Target: filepath.Join(remoteHome, ".claude.json"),
 			},
 		},
 	}, nil
@@ -73,42 +90,11 @@ func inferRemoteHome(user string) string {
 	return "/home/" + user
 }
 
-// copyDir recursively copies src to dst, creating dst if needed.
-func copyDir(src, dst string) error {
-	if err := os.RemoveAll(dst); err != nil {
+// copyFile copies a single file from src to dst with the given permissions.
+func copyFile(src, dst string, perm os.FileMode) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
 		return err
 	}
-
-	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		rel, err := filepath.Rel(src, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(dst, rel)
-
-		if d.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-
-		// Copy regular files only (skip symlinks for safety).
-		if !d.Type().IsRegular() {
-			return nil
-		}
-
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-
-		info, err := d.Info()
-		if err != nil {
-			return err
-		}
-
-		return os.WriteFile(target, data, info.Mode())
-	})
+	return os.WriteFile(dst, data, perm)
 }
