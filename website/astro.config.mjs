@@ -6,10 +6,12 @@ export default defineConfig({
   base: "/crib",
   integrations: [
     starlight({
-      title: "crib",
+      title: "crib docs",
       logo: {
-        src: "./src/assets/icon.png",
+        light: "./src/assets/logo-light.png",
+        dark: "./src/assets/icon-dark.png",
         alt: "crib logo",
+        replacesTitle: true,
       },
       social: [
         {

@@ -1,9 +1,21 @@
-/* Brighten the dark-outlined logo in dark mode so it's visible */
+/* The current logo PNG has an opaque background that looks bad in dark mode.
+   Hide logo images and show the text title as fallback. */
 :root[data-theme="dark"] .site-title img {
-  filter: brightness(2.5);
+  display: none;
 }
 
-/* Same for the hero image on the landing page */
+:root[data-theme="dark"] .site-title span {
+  display: inline !important;
+}
+
 :root[data-theme="dark"] .hero img {
-  filter: brightness(2.5);
+  display: none;
+}
+
+/* Style inline code in the hero tagline */
+.hero .tagline code {
+  background: var(--sl-color-gray-6);
+  padding: 0.1em 0.4em;
+  border-radius: 0.3em;
+  font-size: 0.9em;
 }

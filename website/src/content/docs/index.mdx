@@ -1,11 +1,12 @@
 ---
-title: Dev containers without the ceremony
+title: devcontainers without the ceremony
 description: Dev containers without the ceremony.
 template: splash
 hero:
-  tagline: Read your .devcontainer config, build the container, get out of the way.
+  tagline: Read your <code>devcontainer.json</code> config, build the container, get out of the way.
   image:
-    file: ../../assets/icon.png
+    alt: crib logo
+    file: ../../assets/logo-light.png
   actions:
     - text: Get Started
       link: /crib/installation/
@@ -31,7 +32,7 @@ crib remove    # remove container and workspace state
 
 ## Features
 
-<CardGrid stagger>
+<CardGrid>
   <Card title="No agent injection" icon="approve-check">
     All container setup happens via `docker exec` from the host. Nothing gets
     installed inside your container that you didn't ask for.
