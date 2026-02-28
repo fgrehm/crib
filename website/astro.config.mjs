@@ -16,6 +16,11 @@ export default defineConfig({
       ],
     ],
   },
+  vite: {
+    resolve: {
+      preserveSymlinks: true,
+    },
+  },
   integrations: [
     starlight({
       title: "crib docs",

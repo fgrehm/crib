@@ -14,10 +14,10 @@ crib is a fresh implementation of a devcontainer CLI tool. It is not a fork of D
 
 The [docs site](https://fgrehm.github.io/crib/) is the single source of truth for user-facing documentation. README.md is a GitHub landing page that links to the site.
 
-Key reference pages on the site:
+Key reference pages (canonical files in `docs/`, symlinked into the website for publishing):
 
-- **Devcontainer Spec Reference** (`website/src/content/docs/contributing/devcontainers-spec.md`) - quick-lookup companion to the [official spec](https://containers.dev/implementors/spec/). Use when implementing or debugging config parsing, lifecycle hooks, Features, Docker Compose, or workspace mounts.
-- **Implementation Notes** (`website/src/content/docs/contributing/implementation-notes.md`) - quirks, workarounds, and spec compliance status. Use when debugging rootless Podman issues, lifecycle hooks, container user detection, or checking which spec features are implemented.
+- **Devcontainer Spec Reference** (`docs/devcontainers-spec.md`) - quick-lookup companion to the [official spec](https://containers.dev/implementors/spec/). Use when implementing or debugging config parsing, lifecycle hooks, Features, Docker Compose, or workspace mounts.
+- **Implementation Notes** (`docs/implementation-notes.md`) - quirks, workarounds, and spec compliance status. Use when debugging rootless Podman issues, lifecycle hooks, container user detection, or checking which spec features are implemented.
 
 ## Architecture
 
