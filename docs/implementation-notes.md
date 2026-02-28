@@ -17,8 +17,14 @@ command). This is skipped when the user's compose files already set `userns_mode
 For compose, the override also sets `x-podman: { in_pod: false }` because podman-compose
 creates pods by default and `--userns` and `--pod` are incompatible in Podman.
 
+The same `x-podman: { in_pod: false }` directive must also be passed during `compose down`.
+Without it, podman-compose tries to remove a pod named `pod_crib-<id>` that was never created,
+causing a "no pod with name or ID ... found" error. `composeDown` generates a temporary
+override for this.
+
 **Files**: `internal/engine/single.go` (RunOptions), `internal/engine/compose.go`
-(generateComposeOverride), `internal/driver/oci/container.go` (buildRunArgs).
+(generateComposeOverride, composeDown, writePodmanDownOverride),
+`internal/driver/oci/container.go` (buildRunArgs).
 
 ### Version managers (mise, rbenv, nvm) not in PATH during lifecycle hooks
 

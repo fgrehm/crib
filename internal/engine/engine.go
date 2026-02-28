@@ -176,7 +176,7 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 				projectName := compose.ProjectName(ws.ID)
 				env := devcontainerEnv(ws.ID, ws.Source, result.WorkspaceFolder)
-				return e.compose.Down(ctx, projectName, composeFiles, e.composeStdout(), e.stderr, env)
+				return e.composeDown(ctx, projectName, composeFiles, env)
 			}
 		}
 	}
@@ -315,7 +315,7 @@ func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Work
 	env := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
 
 	// Down removes old containers so Up creates new ones with updated config.
-	if err := e.compose.Down(ctx, projectName, composeFiles, e.composeStdout(), e.stderr, env); err != nil {
+	if err := e.composeDown(ctx, projectName, composeFiles, env); err != nil {
 		return "", fmt.Errorf("compose down: %w", err)
 	}
 

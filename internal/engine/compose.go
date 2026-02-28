@@ -87,7 +87,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 		if err := e.store.ClearHookMarkers(ws.ID); err != nil {
 			e.logger.Warn("failed to clear hook markers", "error", err)
 		}
-		if err := e.compose.Down(ctx, projectName, composeFiles, e.composeStdout(), e.stderr, dcEnv); err != nil {
+		if err := e.composeDown(ctx, projectName, composeFiles, dcEnv); err != nil {
 			e.logger.Warn("failed to bring down existing services", "error", err)
 		}
 	}
@@ -283,6 +283,33 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	}
 
 	return overridePath, nil
+}
+
+// composeDown wraps compose.Down, including a temporary x-podman override when
+// running rootless Podman. Without this override, podman-compose tries to
+// remove a pod that was never created (because Up used in_pod: false).
+func (e *Engine) composeDown(ctx context.Context, projectName string, composeFiles []string, env []string) error {
+	files := composeFiles
+	if overridePath, ok := e.writePodmanDownOverride(composeFiles); ok {
+		defer func() { _ = os.Remove(overridePath) }()
+		files = append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
+	}
+	return e.compose.Down(ctx, projectName, files, e.composeStdout(), e.stderr, env)
+}
+
+// writePodmanDownOverride creates a temporary override file for podman-compose
+// down that disables pod creation. Returns the file path and true if written,
+// or empty string and false if not needed.
+func (e *Engine) writePodmanDownOverride(composeFiles []string) (string, bool) {
+	if !e.isRootlessPodman() || composeFilesContainUserns(composeFiles) {
+		return "", false
+	}
+	dir := filepath.Dir(composeFiles[0])
+	path := filepath.Join(dir, ".crib-podman-down-override.yml")
+	if err := os.WriteFile(path, []byte("x-podman:\n  in_pod: false\n"), 0o644); err != nil {
+		return "", false
+	}
+	return path, true
 }
 
 // isRootlessPodman returns true when the compose runtime is Podman and the

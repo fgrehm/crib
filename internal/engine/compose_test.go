@@ -218,3 +218,89 @@ func TestRemoveService(t *testing.T) {
 		t.Errorf("removeService absent = %v, want [db cache]", got)
 	}
 }
+
+func TestWritePodmanDownOverride_RootlessPodman(t *testing.T) {
+	origGetuid := getuid
+	t.Cleanup(func() { getuid = origGetuid })
+	getuid = func() int { return 1000 }
+
+	e := &Engine{compose: compose.NewHelperFromRuntime("podman")}
+
+	dir := t.TempDir()
+	composeFile := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(composeFile, []byte("services:\n  app:\n    image: alpine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	path, ok := e.writePodmanDownOverride([]string{composeFile})
+	if !ok {
+		t.Fatal("expected override to be written for rootless podman")
+	}
+	t.Cleanup(func() { os.Remove(path) })
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "x-podman:") || !strings.Contains(content, "in_pod: false") {
+		t.Errorf("unexpected override content:\n%s", content)
+	}
+}
+
+func TestWritePodmanDownOverride_Docker(t *testing.T) {
+	origGetuid := getuid
+	t.Cleanup(func() { getuid = origGetuid })
+	getuid = func() int { return 1000 }
+
+	e := &Engine{compose: compose.NewHelperFromRuntime("docker")}
+
+	dir := t.TempDir()
+	composeFile := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(composeFile, []byte("services:\n  app:\n    image: alpine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, ok := e.writePodmanDownOverride([]string{composeFile})
+	if ok {
+		t.Error("docker should not create podman override")
+	}
+}
+
+func TestWritePodmanDownOverride_SkipsWhenUsernsSet(t *testing.T) {
+	origGetuid := getuid
+	t.Cleanup(func() { getuid = origGetuid })
+	getuid = func() int { return 1000 }
+
+	e := &Engine{compose: compose.NewHelperFromRuntime("podman")}
+
+	dir := t.TempDir()
+	composeFile := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(composeFile, []byte("services:\n  app:\n    userns_mode: host\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, ok := e.writePodmanDownOverride([]string{composeFile})
+	if ok {
+		t.Error("should skip override when compose files already set userns_mode")
+	}
+}
+
+func TestWritePodmanDownOverride_RootPodman(t *testing.T) {
+	origGetuid := getuid
+	t.Cleanup(func() { getuid = origGetuid })
+	getuid = func() int { return 0 }
+
+	e := &Engine{compose: compose.NewHelperFromRuntime("podman")}
+
+	dir := t.TempDir()
+	composeFile := filepath.Join(dir, "compose.yml")
+	if err := os.WriteFile(composeFile, []byte("services:\n  app:\n    image: alpine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, ok := e.writePodmanDownOverride([]string{composeFile})
+	if ok {
+		t.Error("root podman should not create override")
+	}
+}
