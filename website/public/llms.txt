@@ -4,6 +4,8 @@
 
 crib is a devcontainer CLI tool. It reads `.devcontainer/devcontainer.json` configs, builds the container (image-based, Dockerfile-based, or Docker Compose-based), and manages the full lifecycle: creating, starting, stopping, rebuilding, and removing dev containers. No agents, no SSH, no IDE integration, just the CLI.
 
+For the full documentation in a single file, see [llms-full.txt](https://fgrehm.github.io/crib/llms-full.txt).
+
 ## Getting Started
 
 - [Overview](https://fgrehm.github.io/crib/overview/): What crib is, why it exists, and the philosophy behind it

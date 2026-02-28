@@ -48,7 +48,16 @@ export default defineConfig({
             rel: "alternate",
             type: "text/plain",
             href: "/crib/llms.txt",
-            title: "LLM-friendly documentation",
+            title: "LLM-friendly documentation index",
+          },
+        },
+        {
+          tag: "link",
+          attrs: {
+            rel: "alternate",
+            type: "text/plain",
+            href: "/crib/llms-full.txt",
+            title: "LLM-friendly full documentation",
           },
         },
       ],

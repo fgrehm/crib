@@ -1,0 +1,1629 @@
+# crib
+
+> Dev containers without the ceremony. A CLI tool that reads .devcontainer configs, builds the container, and gets out of the way. Supports Docker and Podman.
+
+Full documentation: https://fgrehm.github.io/crib/
+Source code: https://github.com/fgrehm/crib
+
+---
+
+## Overview
+
+`crib` is a CLI tool that reads your `.devcontainer/devcontainer.json` config, builds the container, and gets out of your way. No agents injected into your container, no SSH tunnels, no IDE integration. Just Docker (or Podman) doing what Docker does.
+
+> **🐧 Linux only**
+> `crib` is Linux-only. macOS and Windows support may be added if there's interest.
+
+## Principles
+
+- **Implicit workspace resolution.** `cd` into a project directory and run commands. `crib` walks up from your current directory to find `.devcontainer/devcontainer.json`. No workspace names to remember.
+- **No agent injection.** All container setup happens via `docker exec` from the host. Nothing gets installed inside your container that you didn't ask for.
+- **No SSH, no providers, no IDE integration.** `crib` is a CLI tool. It starts containers. What you do inside them is your business.
+- **Docker and Podman as first-class runtimes.** Auto-detected, configurable via `CRIB_RUNTIME`.
+- **Human-readable naming.** Containers show up as `crib-myproject` in `docker ps`, not opaque hashes.
+
+## Why
+
+The [devcontainer spec](https://containers.dev/) is a good idea. A JSON file describes your development environment, and tooling builds a container from it. But the existing tools layer on complexity that gets in the way.
+
+[DevPod](https://github.com/loft-sh/devpod) was the most promising open-source option: provider-agnostic, IDE-agnostic, well-designed. But it was built for a broader scope than most people need. Providers, agents injected into containers, SSH tunnels, gRPC, IDE integrations. For someone who just wants to `docker exec` into a container and use their terminal, that is a lot of moving parts between you and your shell.
+
+Then [DevPod seems to be effectively abandoned](https://github.com/loft-sh/devpod/issues/1915) when Loft Labs shifted focus to vCluster. The project stopped receiving updates in April 2025, with no official statement and no path forward for the community.
+
+`crib` takes a different approach: do less, but do it well. Read the devcontainer config, build the image, run the container, set up the user and lifecycle hooks, done. No agents, no SSH, no providers, no IDE assumptions. Just Docker (or Podman) doing what Docker does.
+
+## Background
+
+This isn't the first time [@fgrehm](https://github.com/fgrehm) has gone down this road. [vagrant-boxen](https://github.com/fgrehm/vagrant-boxen) (2013) tried to make Vagrant machines manageable without needing Puppet or Chef expertise. [Ventriloquist](https://fabiorehm.com/blog/2013/09/11/announcing-ventriloquist/) (2013) combined Vagrant and Docker to give developers portable, disposable dev VMs. [devstep](https://fabiorehm.com/blog/2014/08/26/devstep-development-environments-powered-by-docker-and-buildpacks/) (2014) took it further with "git clone, one command, hack" using Docker and Heroku-style buildpacks. The devcontainer spec has since standardized what that project was trying to achieve, so `crib` builds on that foundation instead of reinventing it.
+
+The [experience of using DevPod as a terminal-first developer](https://fabiorehm.com/blog/2025/11/11/devpod-ssh-devcontainers/), treating devcontainers as remote machines you SSH into rather than IDE-managed environments, shaped many of `crib`'s design decisions. The pain points (broken git signing wrappers, unnecessary cache invalidation, port forwarding conflicts, agent-related complexity) all pointed toward the same conclusion: the simplest path is often the best one.
+
+---
+
+## Installation
+
+## Prerequisites
+
+`crib` requires a container runtime:
+
+- [Docker](https://docs.docker.com/engine/install/) (with Docker Compose v2), or
+- [Podman](https://podman.io/docs/installation) (with [podman-compose](https://github.com/containers/podman-compose))
+
+`crib` auto-detects which runtime is available. To override, set `CRIB_RUNTIME=docker` or `CRIB_RUNTIME=podman`.
+
+> **🐧 Linux only**
+> `crib` is Linux-only. macOS and Windows support may be added if there's interest.
+
+## Install with mise
+
+The easiest way to install and manage `crib` versions:
+
+```bash
+mise use github:fgrehm/crib
+```
+
+See [mise documentation](https://mise.jdx.dev/) for setup instructions.
+
+## Download from GitHub releases
+
+Download the latest binary from [GitHub releases](https://github.com/fgrehm/crib/releases):
+
+```bash
+curl -Lo crib.tar.gz https://github.com/fgrehm/crib/releases/latest/download/crib_linux_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
+tar xzf crib.tar.gz crib
+install -m 755 crib ~/.local/bin/crib
+rm crib.tar.gz
+```
+
+Make sure `~/.local/bin` is in your `PATH`. You can also install the binary to `/usr/local/bin` or any other directory in your `PATH`.
+
+## Verify
+
+```bash
+crib version
+```
+
+---
+
+## Commands
+
+## Quick reference
+
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `up` | | Create or start the workspace container |
+| `down` | `stop` | Stop and remove the workspace container |
+| `remove` | `rm`, `delete` | Remove the workspace container and state |
+| `shell` | `sh` | Open an interactive shell (detects zsh/bash/sh) |
+| `exec` | | Execute a command in the workspace container |
+| `restart` | | Restart the workspace container (picks up safe config changes) |
+| `rebuild` | | Rebuild the workspace (down + up) |
+| `list` | `ls` | List all workspaces |
+| `status` | `ps` | Show workspace container status |
+| `version` | | Show version information |
+
+## Global flags
+
+| Flag | Description |
+|------|-------------|
+| `--config`, `-C` | Path to the devcontainer config directory |
+| `--debug` | Enable debug logging |
+| `--verbose`, `-V` | Show full compose output (suppressed by default) |
+
+## Commands
+
+### `crib up`
+
+Build the container image (if needed) and start the workspace. On first run, this builds the image, creates the container, syncs UID/GID, probes the user environment, and runs all [lifecycle hooks](/crib/guides/lifecycle-hooks/). On subsequent runs, it starts the existing container and runs only the resume hooks (`postStartCommand`, `postAttachCommand`).
+
+### `crib down`
+
+Stop and remove the workspace container. This clears lifecycle hook markers, so the next `crib up` runs all hooks from scratch. Use this when you want a clean restart.
+
+### `crib remove`
+
+Remove the workspace container and all stored state from `~/.crib/workspaces/`. Use this to fully clean up a workspace.
+
+### `crib shell`
+
+Open an interactive shell inside the container. crib detects the user's shell (zsh, bash, or sh) and uses the environment captured during `crib up` (including tools installed by version managers like mise, nvm, rbenv).
+
+### `crib exec`
+
+Run a command inside the container:
+
+```bash
+crib exec -- npm test
+crib exec -- bash -c "echo hello"
+```
+
+Like `shell`, inherits the probed environment from `crib up`.
+
+### `crib restart`
+
+Restart the workspace, detecting what changed since the last `crib up`. See [Smart Restart](/crib/guides/smart-restart/) for details on how change detection works.
+
+### `crib rebuild`
+
+Full rebuild: runs `down` followed by `up`. Use this when the image needs to be rebuilt (changed Dockerfile, base image, or features).
+
+### `crib list`
+
+List all known workspaces and their container status.
+
+### `crib status`
+
+Show the status of the current workspace's container, including published ports. For compose workspaces, shows all service statuses with their ports.
+
+---
+
+## Lifecycle Hooks
+
+The devcontainer spec defines [lifecycle hooks](https://containers.dev/implementors/spec/#lifecycle) that run at different stages. `crib` supports all of them:
+
+| Hook | Runs on | When | Runs once? |
+|------|---------|------|------------|
+| `initializeCommand` | Host | Before image build/pull, every `crib up` | No |
+| `onCreateCommand` | Container | After first container creation | Yes |
+| `updateContentCommand` | Container | After first container creation | Yes |
+| `postCreateCommand` | Container | After `onCreateCommand` + `updateContentCommand` | Yes |
+| `postStartCommand` | Container | After every container start | No |
+| `postAttachCommand` | Container | On every `crib up` | No |
+
+Note: in the official spec, `updateContentCommand` re-runs when source content changes (e.g. git pull in Codespaces). `crib` doesn't detect content updates, so it behaves identically to `onCreateCommand`. Similarly, `postAttachCommand` maps to "attach" in editors. `crib` runs it on every `crib up` since there's no separate attach step.
+
+Each hook accepts a string, an array, or a map of named commands:
+
+```jsonc
+// string
+"postCreateCommand": "npm install"
+
+// array
+"postCreateCommand": ["npm", "install"]
+
+// named commands (all run, order is not guaranteed)
+"postCreateCommand": {
+  "deps": "npm install",
+  "db": "rails db:setup"
+}
+```
+
+For `initializeCommand` (host-side), the array form runs as a direct exec without a shell. For container hooks, both string and array forms are run through `sh -c`.
+
+Here's a `devcontainer.json` showing all hooks:
+
+```jsonc
+{
+  // Host: fail fast if secrets are missing.
+  "initializeCommand": "test -f config/master.key || (echo 'Missing config/master.key' >&2 && exit 1)",
+
+  // Container, once: install dependencies and set up the database.
+  "onCreateCommand": "bundle install && rails db:setup",
+
+  // Container, once: same timing as onCreateCommand in crib (see note above).
+  "updateContentCommand": "bundle install",
+
+  // Container, once: runs after onCreateCommand + updateContentCommand finish.
+  "postCreateCommand": "git config --global --add safe.directory /workspaces/myapp",
+
+  // Container, every start: launch background services.
+  "postStartCommand": "redis-server --daemonize yes",
+
+  // Container, every crib up: per-session info.
+  "postAttachCommand": "ruby -v && rails --version"
+}
+```
+
+## `initializeCommand`
+
+`initializeCommand` is the only hook that runs on the host. It runs before the image is built or pulled, making it useful for pre-flight checks and local file setup.
+
+**Fail fast when required secrets are missing:**
+
+```jsonc
+{
+  "initializeCommand": "test -f config/master.key || (echo 'Missing config/master.key' >&2 && exit 1)"
+}
+```
+
+If `config/master.key` is missing, `crib up` fails immediately with a clear message instead of building an image that won't start.
+
+**Seed `.env` from a template:**
+
+```jsonc
+{
+  "initializeCommand": "test -f .env || cp .env.example .env"
+}
+```
+
+This ensures `.env` is present on the host before the container starts, so bind mounts and docker compose `env_file` directives pick it up.
+
+**Multiple checks with named commands:**
+
+```jsonc
+{
+  "initializeCommand": {
+    "env": "test -f .env || cp .env.example .env",
+    "credentials": "test -f config/master.key || (echo 'Missing config/master.key' >&2 && exit 1)"
+  }
+}
+```
+
+## `onCreateCommand`
+
+Runs once after the container is first created. Use it for one-time setup that should survive container restarts.
+
+**Install dependencies and set up the database:**
+
+```jsonc
+{
+  "onCreateCommand": "bundle install && rails db:setup"
+}
+```
+
+**Multiple setup tasks with named commands:**
+
+```jsonc
+{
+  "onCreateCommand": {
+    "deps": "npm install",
+    "db": "rails db:setup",
+    "tools": "mise install"
+  }
+}
+```
+
+## `postCreateCommand`
+
+Runs once after `onCreateCommand` and `updateContentCommand` finish. Good for configuration that depends on installed dependencies.
+
+**Configure git safe directory:**
+
+```jsonc
+{
+  "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}"
+}
+```
+
+## `postStartCommand`
+
+Runs after every container start (including restarts). Use it for services that need to be running.
+
+**Start background services:**
+
+```jsonc
+{
+  "postStartCommand": {
+    "redis": "redis-server --daemonize yes",
+    "postgres": "pg_ctlcluster 16 main start"
+  }
+}
+```
+
+## `postAttachCommand`
+
+Runs on every `crib up`. Use it for per-session output or checks.
+
+**Show tool versions:**
+
+```jsonc
+{
+  "postAttachCommand": "node -v && npm -v"
+}
+```
+
+---
+
+## Smart Restart
+
+`crib restart` is faster than `crib rebuild` because it knows what changed. When you edit your devcontainer config, `restart` compares the current config against the stored one and picks the right strategy:
+
+| What changed | What happens | Lifecycle hooks |
+|---|---|---|
+| Nothing | Simple container restart (`docker restart`) | `postStartCommand` + `postAttachCommand` |
+| Volumes, mounts, ports, env, runArgs, user | Container recreated with new config | `postStartCommand` + `postAttachCommand` |
+| Image, Dockerfile, features, build args | Error, suggests `crib rebuild` | - |
+
+This follows the [devcontainer spec's Resume Flow](https://containers.dev/implementors/spec/#lifecycle): on restart, only `postStartCommand` and `postAttachCommand` run. Creation-time hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`) are skipped since they already ran when the container was first created.
+
+The practical effect: you can tweak a volume mount or add an environment variable, run `crib restart`, and be back in your container in seconds instead of waiting for a full rebuild and all creation hooks to re-execute.
+
+```bash
+# Changed a volume in docker-compose.yml? Or added a mount in devcontainer.json?
+crib restart   # recreates the container, skips creation hooks
+
+# Changed the base image or added a feature?
+crib restart   # tells you to run 'crib rebuild' instead
+```
+
+---
+
+## Git Integration
+
+Since `crib` doesn't inject agents or set up SSH tunnels, git push and commit signing need to be configured through your devcontainer config. The setup has two parts: forwarding your SSH agent into the container, and configuring git to use SSH signing.
+
+## SSH agent forwarding
+
+Mount your host's SSH agent socket into the container and set the `SSH_AUTH_SOCK` environment variable so git (and ssh) can find it:
+
+**Image / Dockerfile:**
+
+```jsonc
+// devcontainer.json
+{
+  "mounts": [
+    "type=bind,source=${localEnv:SSH_AUTH_SOCK},target=/tmp/ssh-agent.sock"
+  ],
+  "containerEnv": {
+    "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
+  }
+}
+```
+  
+  **Docker Compose:**
+
+```yaml
+# docker-compose.yml
+services:
+  app:
+    volumes:
+      - ${SSH_AUTH_SOCK}:/tmp/ssh-agent.sock
+    environment:
+      SSH_AUTH_SOCK: /tmp/ssh-agent.sock
+```
+  
+Verify it works inside the container:
+
+```bash
+crib shell
+ssh-add -l          # should list your keys
+ssh -T git@github.com
+```
+
+## Commit signing with SSH keys
+
+Git supports signing commits with SSH keys (no GPG needed). Add this to a `.gitconfig` that gets mounted or copied into the container, or run the commands via a lifecycle hook.
+
+**Image / Dockerfile:**
+
+```jsonc
+// devcontainer.json
+{
+  "mounts": [
+    "type=bind,source=${localEnv:SSH_AUTH_SOCK},target=/tmp/ssh-agent.sock"
+  ],
+  "containerEnv": {
+    "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
+  },
+  "postCreateCommand": "git config --global gpg.format ssh && git config --global user.signingkey 'key::ssh-ed25519 AAAA...' && git config --global commit.gpgsign true"
+}
+```
+  
+  **Docker Compose:**
+
+```yaml
+# docker-compose.yml
+services:
+  app:
+    volumes:
+      - ${SSH_AUTH_SOCK}:/tmp/ssh-agent.sock
+    environment:
+      SSH_AUTH_SOCK: /tmp/ssh-agent.sock
+```
+
+```jsonc
+// devcontainer.json
+{
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "postCreateCommand": "git config --global gpg.format ssh && git config --global user.signingkey 'key::ssh-ed25519 AAAA...' && git config --global commit.gpgsign true"
+}
+```
+  
+Replace `ssh-ed25519 AAAA...` with your actual public key. You can get it from `ssh-add -L`.
+
+GitHub and GitLab verify SSH signatures on their end, so this is all you need for signed commits to show as "Verified" on push.
+
+**Optional: local signature verification.** If you also want `git log --show-signature` to work inside the container, you need an `allowed_signers` file on your host. Use [`initializeCommand`](/crib/guides/lifecycle-hooks/#initializecommand) to generate it automatically on every `crib up`, so the file is ready for bind mounting:
+
+```jsonc
+// add to devcontainer.json
+"initializeCommand": "mkdir -p ~/.ssh && ssh-add -L | head -1 | awk '{print \"your@email.com \" $0}' > ~/.ssh/allowed_signers"
+```
+
+The `mkdir -p` ensures `~/.ssh` exists on the host before writing the file. This matters on fresh machines or CI environments where the directory may not exist yet.
+
+Then mount it and tell git about it:
+
+```jsonc
+// add to devcontainer.json mounts
+"type=bind,source=${localEnv:HOME}/.ssh/allowed_signers,target=/home/vscode/.allowed_signers,readonly"
+```
+
+```bash
+# add to postCreateCommand
+git config --global gpg.ssh.allowedSignersFile ~/.allowed_signers
+```
+
+**Why mount outside `.ssh`?** When Docker creates intermediate directories for a bind mount, it sets ownership to `root:root`. If you mount into `/home/vscode/.ssh/allowed_signers` and `.ssh` doesn't already exist in the image, Docker creates it as `root:root`, making the entire directory inaccessible to the container user. Mounting to `~/.allowed_signers` (or any path outside `.ssh`) avoids this.
+
+> **Caution:**
+> Never `chown`/`chmod` bind-mounted paths from inside the container. These operations write through to the host filesystem in both rootful and rootless modes. With rootful Docker, it changes your host files to the container user's UID. With rootless Docker/Podman, it remaps through subordinate UID ranges, which can make your files owned by a UID your host user can't access. Either way, you can lose access to your own files. Mount to a path that avoids the problem instead. See [Troubleshooting](/crib/reference/troubleshooting/#bind-mount-changed-permissions-on-host-files) if this already happened.
+
+## Mounting your host gitconfig
+
+If you already have git configured on your host (user name, email, aliases), you can mount your gitconfig read-only instead of recreating it.
+
+**Image / Dockerfile:**
+
+```jsonc
+// devcontainer.json
+{
+  "mounts": [
+    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,readonly"
+  ]
+}
+```
+  
+  **Docker Compose:**
+
+```yaml
+# docker-compose.yml
+services:
+  app:
+    volumes:
+      - ${HOME}/.gitconfig:/home/vscode/.gitconfig:ro
+```
+  
+Note: if your host gitconfig references paths that don't exist in the container (e.g. credential helpers, include files), git will warn or error. A dedicated container gitconfig via `postCreateCommand` avoids this.
+
+---
+
+## Custom Config Directory
+
+By default `crib` finds your devcontainer config by walking up from the current directory, looking for `.devcontainer/devcontainer.json`. If your config lives elsewhere (e.g. you have multiple configs or a non-standard name), use `--config` / `-C` to point directly to the folder that contains `devcontainer.json`:
+
+```bash
+crib -C .devcontainer-custom up
+crib -C .devcontainer-custom shell
+```
+
+To avoid repeating that flag, create a `.cribrc` file in the directory you run `crib` from:
+
+```ini
+# .cribrc
+config = .devcontainer-custom
+```
+
+An explicit `--config` on the command line takes precedence over `.cribrc`.
+
+---
+
+## Troubleshooting
+
+## `.crib-features/` in your project directory
+
+When devcontainer features are installed, `crib` creates a `.crib-features/` directory inside your project's build context during image builds. It's cleaned up automatically after the build, but if the process is killed (e.g. SIGKILL, power loss), it may be left behind.
+
+Add it to your global gitignore so it never gets committed in any project:
+
+```bash
+echo '.crib-features/' >> ~/.config/git/ignore
+```
+
+Or if you use `~/.gitignore` as your global ignore file:
+
+```bash
+echo '.crib-features/' >> ~/.gitignore
+```
+
+Make sure git knows where your global ignore file is:
+
+```bash
+# only needed if you haven't set this before
+git config --global core.excludesFile '~/.config/git/ignore'
+```
+
+Note: `~/.config/git/ignore` is git's default location (since git 1.7.12), so `core.excludesFile` only needs to be set if you use a different path.
+
+## Podman: short-name image resolution
+
+Podman requires fully qualified image names by default. If you see errors like:
+
+```text
+Error: short-name "postgres:16-alpine" did not resolve to an alias and no
+unqualified-search registries are defined in "/etc/containers/registries.conf"
+```
+
+Add Docker Hub as an unqualified search registry:
+
+```ini
+# /etc/containers/registries.conf (or a drop-in under /etc/containers/registries.conf.d/)
+unqualified-search-registries = ["docker.io"]
+```
+
+This lets Podman resolve short names like `postgres:16-alpine` to `docker.io/library/postgres:16-alpine`, matching Docker's default behavior.
+
+## Podman: "Executing external compose provider" warning
+
+When using `podman compose` (which delegates to `podman-compose`), you'll see this on every invocation:
+
+```text
+>>>> Executing external compose provider "/usr/bin/podman-compose". Please see podman-compose(1) for how to disable this message. <<<<
+```
+
+Silence it by adding to `~/.config/containers/containers.conf`:
+
+```ini
+[engine]
+compose_warning_logs = false
+```
+
+Note: the `PODMAN_COMPOSE_WARNING_LOGS=false` env var is documented but [does not work](https://github.com/containers/podman/issues/23441).
+
+## Podman: missing `pasta` and `aardvark-dns`
+
+If you see errors about `pasta` not found or `aardvark-dns binary not found`, install the networking packages:
+
+```bash
+# Debian/Ubuntu
+sudo apt install passt aardvark-dns
+```
+
+`pasta` provides rootless network namespace setup and `aardvark-dns` enables container DNS resolution. Without them, rootless Podman containers can't start or resolve hostnames.
+
+## Rootless Podman and bind mount permissions
+
+In rootless Podman, the host UID is remapped to UID 0 inside the container's user namespace. This means bind-mounted workspace files appear as `root:root` inside the container, so a non-root `remoteUser` (like `vscode`) can't write to them.
+
+`crib` automatically adds `--userns=keep-id` when running rootless Podman. This maps your host UID to the same UID inside the container, so workspace files have correct ownership without any manual configuration.
+
+If you need to override this behavior, set a different `--userns` value in your `devcontainer.json`:
+
+```jsonc
+// devcontainer.json
+{
+  "runArgs": ["--userns=host"]
+}
+```
+
+When an explicit `--userns` is present in `runArgs`, `crib` won't inject `--userns=keep-id`.
+
+For Docker Compose workspaces, `crib` injects `userns_mode: "keep-id"` in the compose override. Since podman-compose 1.0+ creates pods by default and `--userns` is incompatible with `--pod`, `crib` also disables pod creation via `x-podman: { in_pod: false }` in the override.
+
+## Bind mount changed permissions on host files
+
+If you ran `chown` or `chmod` inside a container on a bind-mounted directory and your host files now have wrong ownership, here's how to recover.
+
+**Check the damage:**
+
+```bash
+ls -la ~/.ssh/
+```
+
+If you see an unexpected UID/GID (e.g., `100999` or `root`) instead of your username, the container wrote through to the host.
+
+**Rootless Podman/Docker:** Use `podman unshare` (or `docker` equivalent) to run the fix inside the same user namespace that caused the problem:
+
+```bash
+podman unshare chown -R 0:0 ~/.ssh
+```
+
+This maps container root (UID 0) back to your host user through the subordinate UID range, restoring your ownership. Then fix permissions:
+
+```bash
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/*
+chmod 644 ~/.ssh/*.pub ~/.ssh/allowed_signers 2>/dev/null
+```
+
+**Rootful Docker:** Your host user can't chown these back without root:
+
+```bash
+sudo chown -R $(id -u):$(id -g) ~/.ssh
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/*
+chmod 644 ~/.ssh/*.pub ~/.ssh/allowed_signers 2>/dev/null
+```
+
+**Prevention:** Avoid mounting into directories where ownership matters (like `.ssh/`). Mount individual files to paths outside sensitive directories instead, as shown in the [commit signing](/crib/guides/git-integration/#commit-signing-with-ssh-keys) section.
+
+---
+
+## CHANGELOG
+
+All notable changes to this project will be documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.3.1](https://github.com/fgrehm/crib/releases/tag/v0.3.1) - 2026-02-28
+
+### Fixed
+
+- `down` / `stop` on rootless Podman no longer fails with "no pod with name or
+  ID ... found". The `x-podman: { in_pod: false }` override was only passed
+  during `up`, so `compose down` tried to remove a pod that never existed.
+- `rebuild` now actually rebuilds images. Previously it passed `Recreate: false`
+  to `Up`, which took the stored-result shortcut and skipped the image build.
+- Environment probe now runs after lifecycle hooks (in addition to before), so
+  the persisted environment for `shell`/`exec` includes tools installed by hooks
+  (e.g. `mise install` in `bin/setup`).
+- Filter mise internal state variables (`__MISE_*`, `MISE_SHELL`) from the probed
+  environment. These are session-specific and confused mise when injected into a
+  new shell via `crib shell`.
+
+## [0.3.0](https://github.com/fgrehm/crib/releases/tag/v0.3.0) - 2026-02-27
+
+### Changed
+
+- Rename `stop` to `down` (alias: `stop`). Now stops and removes the container
+  instead of just stopping it, clearing lifecycle hook markers so the next `up`
+  runs all hooks from scratch.
+- Rename `delete` to `remove` (aliases: `rm`, `delete`). Removes container and
+  workspace state.
+- Add short aliases: `list` (`ls`), `status` (`ps`), `shell` (`sh`).
+- `rebuild` no longer needs to re-save workspace state after removing the
+  container (uses `down` instead of the old `delete`).
+- Display `crib` version at the start of `up`, `down`, `remove`, `rebuild`,
+  and `restart` commands. Dev builds include commit SHA and build timestamp.
+- Suppress noisy compose stdout (container name listings) during up/down/restart.
+  Use `--verbose` / `-V` to see full compose output.
+- `status` / `ps` now shows all compose service statuses for compose workspaces.
+
+### Fixed
+
+- Lifecycle hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`)
+  now run after `down` + `up` cycle. Previously, host-side hook markers persisted
+  across container removal, causing hooks to be skipped.
+- `restart` for compose workspaces now uses `compose up` instead of `compose restart`,
+  fixing failures when dependency services (databases, sidecars) were stopped.
+- `up` after `down` for compose workspaces no longer rebuilds images. When a
+  stored result exists with a previously built image, the build is skipped and
+  services are started directly.
+
+## [0.2.0](https://github.com/fgrehm/crib/releases/tag/v0.2.0) - 2026-02-26
+
+### Added
+
+- `crib restart` command with smart change detection
+  - No config changes: simple container restart, runs only resume-flow hooks
+    (`postStartCommand`, `postAttachCommand`)
+  - Safe changes (volumes, mounts, ports, env, runArgs, user): recreates container
+    without rebuilding the image, runs only resume-flow hooks
+  - Image-affecting changes (image, Dockerfile, features, build args): reports error
+    and suggests `crib rebuild`
+- New project logo
+
+## [0.1.0](https://github.com/fgrehm/crib/releases/tag/v0.1.0) - 2026-02-25
+
+### Added
+
+- Core `crib` CLI for managing dev containers
+- Support for Docker and Podman via single OCI driver
+- All three configuration scenarios: image-based, Dockerfile-based, Docker Compose-based
+- DevContainer Features support (OCI, HTTPS, local)
+- All lifecycle hooks with marker-file idempotency
+- `userEnvProbe` support for version managers (mise, rbenv, nvm, etc.)
+- `updateRemoteUserUID` with UID/GID sync and conflict resolution
+- Auto-injection of `--userns=keep-id` for rootless Podman
+- Implicit workspace resolution from current working directory
+- Commands: `up`, `stop`, `delete`, `status`, `list`, `exec`, `shell`, `rebuild`, `version`
+- Debug logging via `--debug` flag
+
+---
+
+## Development
+
+## Branching
+
+- All work happens on `main`. No long-lived feature branches.
+- Releases are tagged (e.g. `v0.3.0`) and the `stable` branch is updated to match.
+- `README.md` on `stable` is the source of truth for released functionality.
+- `README.md` on `main` may describe unreleased work.
+
+## Building
+
+Requires Go 1.26+.
+
+```bash
+make build            # produces bin/crib
+make test             # run unit tests
+make lint             # run linters (golangci-lint v2)
+make test-integration # integration tests (requires Docker or Podman)
+make test-e2e         # end-to-end tests against the crib binary
+make setup-hooks      # configure git pre-commit hooks
+```
+
+---
+
+## Roadmap
+
+Items move between sections as priorities shift.
+
+## Planned
+
+### Spec compliance gaps
+
+From the [implementation notes](/crib/contributing/implementation-notes/), these are parsed but not fully implemented:
+
+- **`build.options`**: Extra Docker build CLI flags. Field is parsed but not passed to the build driver.
+- **`waitFor`**: Field is parsed but lifecycle hooks always run sequentially to completion. Should block tool attachment until the specified stage finishes.
+- **Parallel object hooks**: Spec says object-syntax hook entries run in parallel. `crib` runs them sequentially.
+
+### Shared host configuration
+
+Auto-inject common host config (SSH keys, gitconfig, package caches) into containers without boilerplate in every devcontainer.json.
+
+### Zero-config project bootstrapping
+
+Detect project type (Ruby, Node, Go, etc.) from conventions and generate a working devcontainer config without the user writing one.
+
+### Transparent command dispatch
+
+Run `crib` commands from inside or outside the container, with automatic delegation.
+
+## Considering
+
+### Machine-readable output (`--json`)
+
+Add `--json` or `--format json` flag to commands like `status`, `list` for scripting and tooling integration. The internal data structures already support this.
+
+### Container health checks
+
+Detect when a container is unhealthy or stuck and surface it in `crib status` / `crib ps`.
+
+### `crib logs`
+
+Tail container logs, especially useful for compose workspaces with multiple services.
+
+## Not Planned
+
+These are explicitly out of scope for `crib`'s design philosophy.
+
+- **SSH / remote providers**: `crib` is local-only by design.
+- **IDE integration**: No VS Code extension, no JetBrains plugin. CLI only.
+- **Agent injection**: All setup happens via `docker exec` from the host.
+- **Kubernetes / cloud backends**: Local container runtimes only (Docker, Podman).
+
+---
+
+## Implementation Notes
+
+Notes on quirks, workarounds, and spec compliance gathered during development.
+
+## Quirks and Workarounds
+
+### Rootless Podman requires userns_mode / --userns=keep-id
+
+When running rootless Podman, bind-mounted files are owned by the host user's UID inside a
+user namespace. Without `--userns=keep-id`, the container sees these files as owned by
+`nobody:nogroup`, breaking all file operations.
+
+`crib` auto-injects `--userns=keep-id` for single containers and `userns_mode: "keep-id"` in
+compose overrides when it detects rootless Podman (non-root UID + `podman` in the runtime
+command). This is skipped when the user's compose files already set `userns_mode`.
+
+For compose, the override also sets `x-podman: { in_pod: false }` because podman-compose
+creates pods by default and `--userns` and `--pod` are incompatible in Podman.
+
+The same `x-podman: { in_pod: false }` directive must also be passed during `compose down`.
+Without it, podman-compose tries to remove a pod named `pod_crib-<id>` that was never created,
+causing a "no pod with name or ID ... found" error. `composeDown` generates a temporary
+override for this.
+
+**Files**: `internal/engine/single.go` (RunOptions), `internal/engine/compose.go`
+(generateComposeOverride, composeDown, writePodmanDownOverride),
+`internal/driver/oci/container.go` (buildRunArgs).
+
+### Version managers (mise, rbenv, nvm) not in PATH during lifecycle hooks
+
+Lifecycle hooks run via `sh -c "<command>"`. Tools installed by version managers like
+[mise](https://mise.jdx.dev/) activate in `~/.bashrc` (interactive shell), not in
+`/etc/profile.d/` (login shell). This means `sh -c` and even `bash -l -c` won't find them.
+
+`crib` implements the spec's `userEnvProbe` (default: `loginInteractiveShell`) to probe the
+container user's environment once during setup, then passes the probed variables to all
+lifecycle hooks via `docker exec -e` flags. The probed env is also persisted in
+`result.json` so `crib exec` and `crib shell` inherit it automatically.
+
+The probe shell type maps to:
+
+| userEnvProbe           | Shell flags |
+|------------------------|-------------|
+| `loginShell`           | `-l -c env` |
+| `interactiveShell`     | `-i -c env` |
+| `loginInteractiveShell`| `-l -i -c env` |
+| `none`                 | skip probing |
+
+**Files**: `internal/engine/setup.go` (probeUserEnv, detectUserShell),
+`internal/engine/env.go` (mergeEnv).
+
+### Container user detection for compose containers
+
+For single containers, `containerUser` and `remoteUser` from `devcontainer.json` control which
+user runs hooks. For compose containers, the Dockerfile's `USER` directive sets the running
+user, but `devcontainer.json` often doesn't set `remoteUser` or `containerUser`.
+
+If neither is set, `crib` runs `whoami` inside the container to detect the actual user. If the
+detected user is root, it falls through to the default "root" behavior. Non-root users (e.g.
+`vscode` from a `USER vscode` directive) are used as the remote user.
+
+**Files**: `internal/engine/single.go` (detectContainerUser, setupAndReturn).
+
+### Smart restart with change detection
+
+`crib restart` compares the current devcontainer config against the stored config from the
+last `crib up` to determine the minimal action needed:
+
+- **No changes**: Simple `docker restart` / `docker compose restart`, then run the spec's
+  Resume Flow hooks (`postStartCommand` + `postAttachCommand`).
+- **Safe changes** (volumes, mounts, ports, env, runArgs, user, etc.): Recreate the
+  container with the new config, then run Resume Flow hooks only. Creation-time hooks
+  (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`) are skipped since their
+  marker files still exist.
+- **Image-affecting changes** (image, Dockerfile, features, build args): Error with a
+  message suggesting `crib rebuild`, since the image needs to be rebuilt.
+
+This follows the devcontainer spec's distinction between Creation Flow (all hooks) and
+Resume Flow (only `postStartCommand` + `postAttachCommand`). The result is that tweaking
+a volume mount or environment variable takes seconds instead of minutes.
+
+Change detection uses JSON comparison of the stored `MergedConfig` against a freshly parsed
+and substituted config. Fields are classified as "image-affecting" or "safe" based on
+whether they require a new image build or just container runtime configuration.
+
+**Files**: `internal/engine/engine.go` (Restart, detectConfigChange, restartSimple,
+restartWithRecreate), `internal/engine/lifecycle.go` (runResumeHooks).
+
+### Early result persistence
+
+`crib` saves the workspace result (container ID, workspace folder, remote user) as soon as
+those values are known, before UID sync, environment probing, and lifecycle hooks run. This
+means `crib exec` and `crib shell` work immediately, even while hooks are still executing
+or if they fail. A second save after setup completes updates the result with the probed
+`remoteEnv`.
+
+This is particularly useful when iterating on a new devcontainer setup where lifecycle
+hooks often fail (missing dependencies, broken scripts, etc.).
+
+**Files**: `internal/engine/engine.go` (Up, saveResult),
+`internal/engine/single.go` (setupAndReturn).
+
+### UID/GID sync conflicts with existing users
+
+When `updateRemoteUserUID` is true (the default), `crib` syncs the container user's UID/GID to
+match the host user. On images like `ubuntu:24.04`, standard users/groups may already occupy
+the target UID/GID (e.g. the `ubuntu` user at UID 1000). `crib` detects these conflicts and
+moves the conflicting user/group to a free UID/GID before performing the sync.
+
+**Files**: `internal/engine/setup.go` (syncRemoteUserUID, execFindUserByUID,
+execFindGroupByGID).
+
+### chown skipped when UIDs already match
+
+After UID sync, if the container and host UIDs already match, `crib` skips `chown -R` on the
+workspace directory. This avoids failures on rootless Podman where `CAP_CHOWN` doesn't work
+over bind-mounted files (the kernel denies it even for root inside the user namespace).
+
+**Files**: `internal/engine/setup.go` (setupContainer).
+
+### overrideCommand default differs by scenario
+
+Per the spec, `overrideCommand` defaults to `true` for image/Dockerfile containers and
+`false` for compose containers. `crib`'s compose path handles this in the override YAML
+generation (injecting entrypoint/command only when the flag is explicitly or implicitly true).
+The single container path treats `nil` as `true`.
+
+**Files**: `internal/engine/single.go` (buildRunOptions),
+`internal/engine/compose.go` (generateComposeOverride).
+
+### Feature installation for compose containers
+
+Devcontainer features (e.g. `ghcr.io/devcontainers/features/node:1`) need special
+handling for compose-based containers. Unlike single containers where `crib` controls the
+entire image build, compose services define their own images or Dockerfiles.
+
+`crib` handles this by pre-building a feature image on top of the service's base image:
+
+1. Parse compose files to extract the service's image or build config
+2. For build-based services, run `compose build` first to produce the base image
+3. Generate a feature Dockerfile that layers features on the base image (same
+   `GenerateDockerfile` and `PrepareContext` used for single containers)
+4. Build the feature image via `doBuild` (with prebuild hash caching)
+5. Override the service image in the compose override YAML
+
+The compose `build` step for the primary service is skipped in the main flow since
+the feature build already produced the final image. Other services still build normally.
+
+**Files**: `internal/engine/compose.go` (buildComposeFeatures, generateComposeOverride),
+`internal/engine/build.go` (buildComposeFeatureImage, resolveComposeContainerUser),
+`internal/compose/project.go` (GetServiceInfo).
+
+### Environment probe runs twice: before and after lifecycle hooks
+
+`probeUserEnv` runs the user's login shell (`zsh -l -i -c env`) to capture environment
+variables set by shell profile files (mise, nvm, rbenv, etc.). This probe runs twice
+during `setupContainer`:
+
+1. **Before hooks**: provides lifecycle hooks with the user's shell environment (PATH,
+   tool paths, etc.) so hooks don't need to explicitly set up their own environment.
+2. **After hooks**: captures any changes made by hooks (e.g. `mise install` adding new
+   tool paths to PATH). This is the version that gets persisted for `crib shell`/`crib exec`.
+
+Without the post-hook probe, the saved PATH would be missing tools installed during
+lifecycle hooks (e.g. a `bin/setup` script that runs `mise install`).
+
+Tool-manager internal state variables (`__MISE_*`, `MISE_SHELL`) are filtered from the
+probed env. These are session-specific and would confuse tool managers when injected into
+a new shell session via `crib shell`.
+
+**Files**: `internal/engine/setup.go` (setupContainer),
+`internal/engine/env.go` (mergeEnv).
+
+### TTY detection for exec uses isatty, not ModeCharDevice
+
+`crib exec` passes `-i -t` to `docker exec` / `podman exec` only when stdin is an
+interactive terminal. The detection must use a proper `isatty` syscall
+(`term.IsTerminal(fd)`) rather than Go's `os.ModeCharDevice` file mode check.
+
+`/dev/null` is a character device on Linux, so `ModeCharDevice` returns true for it.
+This causes `crib exec` to pass `-t` when stdin is `/dev/null` (e.g. in CI, pipes,
+or `exec.Command` with no stdin). Docker strictly validates the TTY and errors with
+"the input device is not a TTY." Podman silently ignores `-t` without a real TTY.
+
+**Files**: `cmd/exec.go` (stdinIsTerminal).
+
+## Spec Compliance
+
+### Fully Implemented
+
+| Feature | Notes |
+|---------|-------|
+| Config file discovery | All three search paths |
+| Image/Dockerfile/Compose scenarios | All three paths |
+| Lifecycle hooks | All 6 hooks with marker-file idempotency |
+| DevContainer Features | OCI, HTTPS, local; ordering algorithm; feature lifecycle hooks; compose support |
+| Variable substitution | All 7 variables including `${localEnv}` and `${containerEnv}` |
+| Image metadata | Parsing `devcontainer.metadata` label, merge rules |
+| `updateRemoteUserUID` | UID/GID sync with conflict resolution |
+| `userEnvProbe` | Shell detection, env probing, merge with remoteEnv |
+| `overrideCommand` | Both single and compose paths |
+| `mounts` | String and object format, bind and volume types |
+| `forwardPorts` | Published as `-p` flags for single containers; compose uses native port config |
+| `appPort` (legacy) | Same handling as `forwardPorts`, deduplicated |
+| `init`, `privileged`, `capAdd`, `securityOpt` | Passed through to runtime |
+| `runArgs` | Passed through as extra CLI args |
+| `workspaceMount` / `workspaceFolder` | Custom mount parsing, variable expansion |
+| `containerEnv` / `remoteEnv` | Including `${containerEnv:VAR}` resolution |
+| Compose `runServices` | Selective service starting |
+| Build options | `dockerfile`, `context`, `args`, `target`, `cacheFrom` |
+
+### Parsed but Not Enforced
+
+These fields are parsed from `devcontainer.json` and merged from image metadata, but `crib`
+does not act on them. This is intentional for a CLI-only tool.
+
+| Feature | Reason |
+|---------|--------|
+| `portsAttributes` | Display/behavior hints for IDE port UI |
+| `shutdownAction` | `crib` manages container lifecycle explicitly via `down`/`remove` |
+| `hostRequirements` | Validation not implemented; runtime will fail naturally |
+
+### Not Implemented
+
+| Feature | Description |
+|---------|-------------|
+| `build.options` | Extra Docker build CLI flags; field parsed but not passed to driver |
+| `waitFor` | Field parsed but lifecycle hooks always run sequentially to completion |
+| Parallel object hooks | Spec says object-syntax hook entries run in parallel; `crib` runs them sequentially |
+
+---
+
+## DevContainer Spec Reference
+
+> **🤖 AI-generated reference**
+> This page was distilled from the [Dev Container Specification](https://containers.dev/implementors/spec/) by Claude (Opus 4.6) for quick lookup when working on crib. It may contain inaccuracies or be out of date. For the authoritative reference, see the [official spec](https://containers.dev/implementors/spec/).
+
+---
+
+## Config File Discovery
+
+> [Spec: Dev Containers](https://containers.dev/implementors/spec/)
+
+Tools search for `devcontainer.json` in this order:
+
+1. `.devcontainer/devcontainer.json`
+2. `.devcontainer.json`
+3. `.devcontainer/<folder>/devcontainer.json` (one level deep only)
+
+Multiple files may coexist. When more than one is found, the tool should let the user choose.
+The search starts at the **project workspace folder**, typically the git repository root.
+
+---
+
+## Three Configuration Scenarios
+
+> [Spec: Dev Containers](https://containers.dev/implementors/spec/)
+
+| Scenario | Required Fields | Notes |
+|---|---|---|
+| **Image-based** | `image` | Pulls a container image directly |
+| **Dockerfile-based** | `build.dockerfile` | Builds from a Dockerfile |
+| **Docker Compose-based** | `dockerComposeFile`, `service` | Uses Compose to orchestrate one or more services |
+
+Compose configurations handle images and Dockerfiles natively, so `image` and `build.dockerfile`
+are not used in that scenario.
+
+---
+
+## devcontainer.json Properties
+
+> [JSON Reference](https://containers.dev/implementors/json_reference/)
+
+### General Properties (All Scenarios)
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `name` | string | - | Display name for the dev container |
+| `features` | object | - | Feature IDs mapped to their options |
+| `overrideFeatureInstallOrder` | string[] | - | Override automatic Feature install ordering |
+| `forwardPorts` | (number\|string)[] | `[]` | Ports to forward from container to host |
+| `portsAttributes` | object | - | Per-port configuration (see [Port Attributes](#port-attributes)) |
+| `otherPortsAttributes` | object | - | Defaults for ports not listed in `portsAttributes` |
+| `containerEnv` | object | - | Env vars set on the container itself |
+| `remoteEnv` | object | - | Env vars injected by the tool post-ENTRYPOINT |
+| `containerUser` | string | root or last Dockerfile USER | User for all container operations |
+| `remoteUser` | string | same as containerUser | User for lifecycle hooks and tool processes |
+| `updateRemoteUserUID` | boolean | `true` | Sync UID/GID to local user (Linux only) |
+| `userEnvProbe` | enum | `loginInteractiveShell` | Shell type for probing env vars (`none`, `interactiveShell`, `loginShell`, `loginInteractiveShell`) |
+| `overrideCommand` | boolean | `true` (image/Dockerfile), `false` (Compose) | Replace default command with a sleep loop |
+| `shutdownAction` | enum | `stopContainer` or `stopCompose` | Action on close (`none`, `stopContainer`, `stopCompose`) |
+| `init` | boolean | `false` | Use tini init process |
+| `privileged` | boolean | `false` | Run in privileged mode |
+| `capAdd` | string[] | `[]` | Linux capabilities to add |
+| `securityOpt` | string[] | `[]` | Security options |
+| `mounts` | (string\|object)[] | - | Additional mounts (Docker `--mount` syntax) |
+| `customizations` | object | - | Tool-specific properties (namespaced by tool) |
+| `hostRequirements` | object | - | See [Host Requirements](#host-requirements) |
+
+### Image / Dockerfile Properties
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `image` | string | **required** (image scenario) | Container registry image |
+| `build.dockerfile` | string | **required** (Dockerfile scenario) | Path to Dockerfile, relative to devcontainer.json |
+| `build.context` | string | `"."` | Docker build context directory |
+| `build.args` | object | - | Docker build arguments |
+| `build.options` | string[] | `[]` | Extra Docker build CLI flags |
+| `build.target` | string | - | Multi-stage build target |
+| `build.cacheFrom` | string\|string[] | - | Cache source images |
+| `workspaceMount` | string | - | Custom mount for source code |
+| `workspaceFolder` | string | - | Default path opened inside the container |
+| `runArgs` | string[] | `[]` | Extra `docker run` CLI flags |
+| `appPort` | int\|string\|array | `[]` | **Legacy**, use `forwardPorts` instead |
+
+### Docker Compose Properties
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `dockerComposeFile` | string\|string[] | **required** | Path(s) to Compose file(s) |
+| `service` | string | **required** | Primary service to connect to |
+| `runServices` | string[] | all services | Subset of services to start. The primary `service` is always started regardless. |
+| `workspaceFolder` | string | `"/"` | Default path opened inside the container |
+
+### Lifecycle Hooks
+
+| Property | Type | Runs | When |
+|---|---|---|---|
+| `initializeCommand` | string\|string[]\|object | On **host** | Initialization (may run multiple times) |
+| `onCreateCommand` | string\|string[]\|object | In container | First creation only |
+| `updateContentCommand` | string\|string[]\|object | In container | After content is available (creation only) |
+| `postCreateCommand` | string\|string[]\|object | In container | After user setup (creation only, background by default) |
+| `postStartCommand` | string\|string[]\|object | In container | Every container start |
+| `postAttachCommand` | string\|string[]\|object | In container | Every tool attachment |
+| `waitFor` | enum | - | Block until this stage completes. Default: `updateContentCommand`. Values: `initializeCommand`, `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand` |
+
+Command type details:
+
+- **string**: Executed via the default shell (`/bin/sh`).
+- **string[]**: Direct exec, no shell interpretation.
+- **object**: Keys are unique names, values are string or string[]. All entries run in **parallel**. Every entry must succeed for the stage to succeed.
+
+### Host Requirements
+
+| Property | Type | Description |
+|---|---|---|
+| `hostRequirements.cpus` | integer | Minimum CPU count |
+| `hostRequirements.memory` | string | Minimum RAM (suffix: `tb`, `gb`, `mb`, `kb`) |
+| `hostRequirements.storage` | string | Minimum storage (same suffixes) |
+| `hostRequirements.gpu` | boolean\|string\|object | `true` = required, `"optional"` = preferred, or `{"cores": N, "memory": "Xgb"}` |
+
+### Port Attributes
+
+Properties inside `portsAttributes` entries:
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `label` | string | - | Display name |
+| `protocol` | enum | - | `http` or `https` |
+| `onAutoForward` | enum | `notify` | `notify`, `openBrowser`, `openBrowserOnce`, `openPreview`, `silent`, `ignore` |
+| `requireLocalPort` | boolean | `false` | Require the same port number locally |
+| `elevateIfNeeded` | boolean | `false` | Auto-elevate permissions for low ports |
+
+---
+
+## Variable Substitution
+
+> [JSON Reference: Variables](https://containers.dev/implementors/json_reference/)
+
+| Variable | Usable In | Description |
+|---|---|---|
+| `${localEnv:VAR}` | Any property | Host env var. Supports default: `${localEnv:VAR:fallback}` |
+| `${containerEnv:VAR}` | `remoteEnv` only | Container env var. Supports default: `${containerEnv:VAR:fallback}` |
+| `${localWorkspaceFolder}` | Any property | Full path to the opened local folder |
+| `${containerWorkspaceFolder}` | Any property | Full path inside the container |
+| `${localWorkspaceFolderBasename}` | Any property | Local folder basename only |
+| `${containerWorkspaceFolderBasename}` | Any property | Container folder basename only |
+| `${devcontainerId}` | `name`, lifecycle hooks, `mounts`, env vars, user properties, `customizations` | Stable unique ID across rebuilds |
+
+Substitution happens at the time the value is applied (runtime, not build time).
+`${containerEnv}` is restricted to `remoteEnv` because container env vars only exist after
+the container is running.
+
+---
+
+## Lifecycle
+
+> [Spec: Lifecycle](https://containers.dev/implementors/spec/)
+
+### Creation Flow
+
+```
+initializeCommand          (host, may run multiple times)
+        |
+        v
+Image build / pull         (Features applied as Dockerfile layers)
+        |
+        v
+Container creation         (mounts, containerEnv, containerUser applied)
+        |                  (remoteUser/remoteEnv NOT applied yet)
+        v
+onCreateCommand            (in container, with remoteUser/remoteEnv)
+        |
+        v
+updateContentCommand       (in container)
+        |
+        v
+postCreateCommand          (in container, background by default)
+        |
+        v
+[implementation-specific]  (tool-specific init, e.g. extension install)
+        |
+        v
+postStartCommand           (in container)
+        |
+        v
+postAttachCommand          (in container)
+```
+
+The `waitFor` property controls at which point the tool reports the environment as ready and
+proceeds to implementation-specific steps. Default is `updateContentCommand`.
+
+### Resume Flow
+
+```
+Restart containers
+        |
+        v
+[implementation-specific steps]
+        |
+        v
+postStartCommand
+        |
+        v
+postAttachCommand
+```
+
+Remote env vars and user configuration apply during resume.
+
+### Hook Execution Details
+
+- Commands within an **object** run in **parallel**. All must succeed.
+- Feature-provided lifecycle hooks run **before** user-defined hooks, in Feature installation order.
+- `onCreateCommand`, `updateContentCommand`, and `postCreateCommand` run only on first creation.
+- `postStartCommand` runs on every start (creation and resume).
+- `postAttachCommand` runs on every tool attachment.
+- Remote env vars and `userEnvProbe` results are available for all post-creation hooks.
+
+---
+
+## Users and Permissions
+
+> [Spec: Users](https://containers.dev/implementors/spec/)
+
+Two distinct user concepts:
+
+- **Container User** (`containerUser` for image/Dockerfile, `user` in Compose): Runs all
+  container operations including the ENTRYPOINT.
+- **Remote User** (`remoteUser`): Runs lifecycle hooks and tool processes. Defaults to
+  `containerUser` if not set. This separation allows different permissions for container
+  operations vs. developer activity.
+
+### updateRemoteUserUID
+
+- Linux only, default `true`.
+- When enabled and a remote/container user is specified, the tool updates the image user's
+  UID/GID to match the local user before container creation.
+- Prevents permission mismatches on bind mounts.
+- Implementations may skip this when not using bind mounts or when the container engine
+  provides automatic UID translation.
+
+---
+
+## Environment Variables
+
+> [Spec: Environment Variables](https://containers.dev/implementors/spec/)
+
+Two classes:
+
+| Type | Property | Set When | Available |
+|---|---|---|---|
+| **Container** | `containerEnv` | At container build/create time | Entire container lifecycle |
+| **Remote** | `remoteEnv` | Post-ENTRYPOINT by the tool | Lifecycle hooks and tool processes |
+
+Remote env vars support `${containerEnv:VAR}` substitution since the container is already
+running when they are applied.
+
+### userEnvProbe
+
+Tools probe the user's environment using the configured shell type and merge the resulting
+variables with `remoteEnv` for injected processes. This emulates the behavior developers
+expect from their profile/rc files.
+
+---
+
+## Workspace Mount and Folder
+
+> [Spec: Workspace](https://containers.dev/implementors/spec/)
+
+- `workspaceMount` (image/Dockerfile only): Defines the source mount for the workspace.
+  The default is a bind mount of the local folder into `/workspaces/<folder-name>`.
+- `workspaceFolder`: The default working directory inside the container.
+- Both should reference the repository root (where `.git` lives) for proper source control.
+- For monorepos, `workspaceFolder` can point to a subfolder while `workspaceMount` targets
+  the repo root.
+
+---
+
+## Image Metadata
+
+> [Spec: Image Metadata](https://containers.dev/implementors/spec/)
+
+Configuration can be baked into images via the `devcontainer.metadata` label. The label value
+is a JSON string containing either:
+
+- An **array** of metadata objects (one per Feature, plus one for the devcontainer.json config).
+- A **single top-level object**.
+
+The array format is preferred because subsequent builds can simply append entries.
+
+### Storable Properties
+
+These properties can appear in image metadata: `forwardPorts`, `portsAttributes`,
+`otherPortsAttributes`, `containerEnv`, `remoteEnv`, `remoteUser`, `containerUser`,
+`updateRemoteUserUID`, `userEnvProbe`, `overrideCommand`, `shutdownAction`, `init`,
+`privileged`, `capAdd`, `securityOpt`, `mounts`, `customizations`, `hostRequirements`,
+all lifecycle hooks (`onCreateCommand` through `postAttachCommand`), and `waitFor`.
+
+### Metadata Merge Rules
+
+When merging image metadata with `devcontainer.json`, the local file is considered **last**
+(highest priority where order matters).
+
+| Strategy | Properties |
+|---|---|
+| Boolean OR (true if any is true) | `init`, `privileged` |
+| Union without duplicates | `capAdd`, `securityOpt` |
+| Union, last wins on conflicts | `forwardPorts` |
+| Collected list (append in order) | All lifecycle hooks, `entrypoint` |
+| Collected list, last wins on conflicts | `mounts` |
+| Last value wins (scalar) | `waitFor`, `containerUser`, `remoteUser`, `userEnvProbe`, `shutdownAction`, `updateRemoteUserUID`, `overrideCommand` |
+| Per-variable, last wins | `remoteEnv`, `containerEnv` |
+| Per-port, last wins | `portsAttributes` |
+| Last value wins | `otherPortsAttributes` |
+| Maximum value wins | `hostRequirements` (cpus, memory, storage, gpu) |
+| Tool-specific logic | `customizations` |
+
+---
+
+## Features
+
+> [Features Specification](https://containers.dev/implementors/features/) |
+> [Features Overview](https://containers.dev/features/)
+
+Features are modular, self-contained units that add tools, runtimes, and capabilities to dev
+containers without writing complex Dockerfiles.
+
+### Feature Structure
+
+A Feature is a directory containing:
+
+- `devcontainer-feature.json` (metadata, required)
+- `install.sh` (entrypoint script, required)
+- Additional supporting files (optional)
+
+### devcontainer-feature.json
+
+#### Required
+
+| Property | Type | Description |
+|---|---|---|
+| `id` | string | Unique within the repository, must match directory name |
+| `version` | string | Semver (e.g., `1.0.0`) |
+| `name` | string | Human-friendly display name |
+
+#### Optional Metadata
+
+| Property | Type | Description |
+|---|---|---|
+| `description` | string | Feature overview |
+| `documentationURL` | string | Docs link |
+| `licenseURL` | string | License link |
+| `keywords` | string[] | Search terms |
+| `deprecated` | boolean | Deprecation flag |
+| `legacyIds` | string[] | Previous IDs (for renaming) |
+
+#### Configuration
+
+| Property | Type | Description |
+|---|---|---|
+| `options` | object | User-configurable parameters (see [Feature Options](#feature-options)) |
+| `containerEnv` | object | Env vars added as Dockerfile `ENV` before `install.sh` |
+| `privileged` | boolean | Requires privileged mode |
+| `init` | boolean | Requires tini init |
+| `capAdd` | string[] | Linux capabilities |
+| `securityOpt` | string[] | Security options |
+| `entrypoint` | string | Custom startup script path |
+| `mounts` | object | Additional mounts |
+
+#### Dependencies
+
+| Property | Type | Description |
+|---|---|---|
+| `dependsOn` | object | Hard dependencies (recursive). Feature fails if unresolvable. Values include options and version. |
+| `installsAfter` | string[] | Soft ordering (non-recursive). Only affects ordering of already-queued Features. Ignored if the referenced Feature is not being installed. |
+
+#### Lifecycle Hooks
+
+Features can declare their own lifecycle hooks: `onCreateCommand`, `updateContentCommand`,
+`postCreateCommand`, `postStartCommand`, `postAttachCommand`. Same types as the main config.
+
+#### Customizations
+
+| Property | Type | Description |
+|---|---|---|
+| `customizations` | object | Tool-specific config. Arrays merge as union, objects merge values. |
+
+### Feature Options
+
+```json
+"options": {
+  "optionId": {
+    "type": "string|boolean",
+    "description": "What this option controls",
+    "proposals": ["val1", "val2"],
+    "enum": ["strict1", "strict2"],
+    "default": "val1"
+  }
+}
+```
+
+- `proposals`: Suggested values, free-form input allowed.
+- `enum`: Strict allowed values only.
+- `default`: Fallback when the user provides nothing.
+
+Option IDs are converted to environment variables for `install.sh`:
+
+```
+replace non-word chars with _  ->  strip leading digits/underscores  ->  UPPERCASE
+```
+
+Written to `devcontainer-features.env` and sourced before the script runs.
+
+### Built-in Variables for install.sh
+
+| Variable | Description |
+|---|---|
+| `_REMOTE_USER` | Configured remote user |
+| `_CONTAINER_USER` | Container user |
+| `_REMOTE_USER_HOME` | Remote user's home directory |
+| `_CONTAINER_USER_HOME` | Container user's home directory |
+
+Features always execute as **root** during image build.
+
+### Referencing Features
+
+In `devcontainer.json`:
+
+```json
+"features": {
+  "ghcr.io/devcontainers/features/go:1": {},
+  "ghcr.io/user/repo/node:18": {"version": "18"},
+  "https://example.com/feature.tgz": {},
+  "./local-feature": {"optionA": "value"}
+}
+```
+
+Three source types:
+1. **OCI Registry**: `<registry>/<namespace>/<id>[:<semver>]`
+2. **HTTPS Tarball**: Direct URL to `.tgz`
+3. **Local Directory**: `./path` relative to devcontainer.json
+
+### Installation Order Algorithm
+
+> [Features Spec: Installation Order](https://containers.dev/implementors/features/)
+
+**Step 1 - Build dependency graph:**
+- Traverse `dependsOn` recursively and `installsAfter` non-recursively.
+- Deduplicate using [Feature Equality](#feature-equality).
+
+**Step 2 - Assign round priority:**
+- Default: 0.
+- `overrideFeatureInstallOrder` assigns priorities: `array_length - index` (first item = highest priority).
+
+**Step 3 - Round-based sorting:**
+1. Identify Features whose dependencies are all satisfied.
+2. From those, commit only Features with the maximum `roundPriority`.
+3. Return lower-priority Features to the worklist for the next round.
+4. Within a round, stable sort lexicographically by: resource name, version tag, options count, option keys/values, canonical name.
+5. If a round makes no progress, fail (circular dependency).
+
+### Feature Equality
+
+| Source | Equal When |
+|---|---|
+| OCI Registry | Manifest digests match AND options are identical |
+| HTTPS Tarball | Content hashes match AND options are identical |
+| Local Directory | Always unique |
+
+### Dockerfile Layer Generation
+
+- Each Feature's `install.sh` runs as its own Dockerfile layer (for caching).
+- `containerEnv` values become `ENV` instructions **before** `install.sh` runs.
+- `install.sh` is invoked as: `chmod +x install.sh && ./install.sh`
+- Default shell: `/bin/sh`.
+- `privileged` and `init`: required if **any** Feature needs them (boolean OR across all).
+- `capAdd` and `securityOpt`: union across all Features.
+
+### Feature Lifecycle Hooks
+
+- Feature hooks execute **before** user-defined hooks.
+- Hooks run in Feature installation order.
+- Object-syntax commands within a single Feature run in parallel.
+- All hooks run from the project workspace folder.
+
+---
+
+## Features Distribution (OCI)
+
+> [Features Distribution](https://containers.dev/implementors/features-distribution/)
+
+### Packaging
+
+Distributed as `devcontainer-feature-<id>.tgz` tarballs containing the Feature directory.
+
+### OCI Artifact Format
+
+| Artifact | Media Type |
+|---|---|
+| Config | `application/vnd.devcontainers` |
+| Feature layer | `application/vnd.devcontainers.layer.v1+tar` |
+| Collection metadata | `application/vnd.devcontainers.collection.layer.v1+json` |
+
+### Naming
+
+`<registry>/<namespace>/<id>[:version]`
+
+Example: `ghcr.io/devcontainers/features/go:1.2.3`
+
+### Version Tags
+
+Multiple tags are pushed for each release: `1`, `1.2`, `1.2.3`, and `latest`.
+
+### Collection Metadata
+
+An auto-generated `devcontainer-collection.json` aggregates all Feature metadata in a namespace.
+Published at `<registry>/<namespace>:latest`.
+
+### Manifest Annotations
+
+Published manifests include a `dev.containers.metadata` annotation containing the escaped JSON
+from `devcontainer-feature.json`.
+
+### Authentication
+
+1. Docker config: `$HOME/.docker/config.json`
+2. Environment variable: `DEVCONTAINERS_OCI_AUTH` (format: `service|user|token`)
+
+---
+
+## Templates
+
+> [Templates Specification](https://containers.dev/implementors/templates/) |
+> [Templates Distribution](https://containers.dev/implementors/templates-distribution/) |
+> [Templates Overview](https://containers.dev/templates/)
+
+Templates are pre-configured dev environment blueprints. They are not directly relevant to
+crib's runtime behavior but are useful context for understanding the ecosystem.
+
+### Structure
+
+```
+template/
+  devcontainer-template.json
+  .devcontainer.json   (or .devcontainer/devcontainer.json)
+  (supporting files)
+```
+
+### devcontainer-template.json
+
+Required: `id`, `version`, `name`, `description`.
+
+Optional: `documentationURL`, `licenseURL`, `platforms`, `publisher`, `keywords`, `options`,
+`optionalPaths`.
+
+### Option Substitution
+
+Template options use `${templateOption:optionId}` syntax. The tool replaces these placeholders
+with user-selected values when applying a template.
+
+### Distribution
+
+Same OCI pattern as Features (tarballs with custom media types, semver tagging).
+The namespace for Templates **must be different** from the namespace for Features.
+
+---
+
+## devcontainerId Computation
+
+> [Spec: devcontainerId](https://containers.dev/implementors/spec/)
+
+Computed from container labels:
+
+1. Serialize labels as sorted JSON (keys alphabetically, no whitespace).
+2. Compute SHA-256 of the UTF-8 encoded string.
+3. Base-32 encode the hash.
+4. Left-pad to 52 characters with `0`.
+
+The ID is deterministic across rebuilds and unique per Docker host.
+
+---
+
+## JSON Schema
+
+> [JSON Schema](https://containers.dev/implementors/json_schema/)
+
+- Conforms to **JSON Schema Draft 7**.
+- Permits comments (JSONC), disallows trailing commas.
+- Base schema: `devContainer.base.schema.json`.
+- Main schema: `devContainer.schema.json` (references base + tool-specific schemas).
+- Source: [devcontainers/spec on GitHub](https://github.com/devcontainers/spec).
+
+---
+
+## Official Reference Links
+
+| Resource | URL |
+|---|---|
+| Main Specification | https://containers.dev/implementors/spec/ |
+| JSON Reference | https://containers.dev/implementors/json_reference/ |
+| JSON Schema | https://containers.dev/implementors/json_schema/ |
+| Features Overview | https://containers.dev/features/ |
+| Features Spec (Implementors) | https://containers.dev/implementors/features/ |
+| Features Distribution | https://containers.dev/implementors/features-distribution/ |
+| Templates Overview | https://containers.dev/templates/ |
+| Templates Spec (Implementors) | https://containers.dev/implementors/templates/ |
+| Templates Distribution | https://containers.dev/implementors/templates-distribution/ |
+| Supporting Tools | https://containers.dev/supporting |
+| GitHub Repository | https://github.com/devcontainers/spec |
