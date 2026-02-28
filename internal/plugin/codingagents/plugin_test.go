@@ -67,7 +67,7 @@ func TestPreContainerRun_CredentialsExist(t *testing.T) {
 
 	// First copy: credentials file.
 	creds := resp.Copies[0]
-	expectedCredsSource := filepath.Join(wsDir, "plugins", "coding-agents", "credentials.json")
+	expectedCredsSource := filepath.Join(wsDir, "plugins", "coding-agents", "claude-code", "credentials.json")
 	if creds.Source != expectedCredsSource {
 		t.Errorf("credentials source: expected %s, got %s", expectedCredsSource, creds.Source)
 	}
@@ -83,7 +83,7 @@ func TestPreContainerRun_CredentialsExist(t *testing.T) {
 
 	// Second copy: generated claude.json.
 	config := resp.Copies[1]
-	expectedConfigSource := filepath.Join(wsDir, "plugins", "coding-agents", "claude.json")
+	expectedConfigSource := filepath.Join(wsDir, "plugins", "coding-agents", "claude-code", "claude.json")
 	if config.Source != expectedConfigSource {
 		t.Errorf("config source: expected %s, got %s", expectedConfigSource, config.Source)
 	}
@@ -195,7 +195,7 @@ func TestPreContainerRun_CredentialsCopiedToStaging(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	copiedCreds := filepath.Join(wsDir, "plugins", "coding-agents", "credentials.json")
+	copiedCreds := filepath.Join(wsDir, "plugins", "coding-agents", "claude-code", "credentials.json")
 	data, err := os.ReadFile(copiedCreds)
 	if err != nil {
 		t.Fatalf("expected credentials to be staged: %v", err)
@@ -220,7 +220,7 @@ func TestPreContainerRun_ConfigGenerated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	configPath := filepath.Join(wsDir, "plugins", "coding-agents", "claude.json")
+	configPath := filepath.Join(wsDir, "plugins", "coding-agents", "claude-code", "claude.json")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("expected claude.json to be generated: %v", err)

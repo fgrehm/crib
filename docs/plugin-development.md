@@ -242,7 +242,8 @@ if [ ! -f "${CREDS}" ]; then
   exit 0
 fi
 
-PLUGIN_DIR="${CRIB_WORKSPACE_DIR}/plugins/coding-agents"
+# Scope staging directory per agent so different tools don't collide.
+PLUGIN_DIR="${CRIB_WORKSPACE_DIR}/plugins/coding-agents/claude-code"
 mkdir -p "${PLUGIN_DIR}"
 
 # Stage credentials.

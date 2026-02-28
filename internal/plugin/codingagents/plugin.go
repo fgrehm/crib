@@ -44,7 +44,7 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 		return nil, fmt.Errorf("checking credentials: %w", err)
 	}
 
-	pluginDir := filepath.Join(req.WorkspaceDir, "plugins", "coding-agents")
+	pluginDir := filepath.Join(req.WorkspaceDir, "plugins", "coding-agents", "claude-code")
 	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating plugin dir: %w", err)
 	}
