@@ -147,6 +147,10 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 // restartWithRecreate stops the container, recreates it with the new config,
 // and runs resume-flow hooks (not the full creation lifecycle).
 func (e *Engine) restartWithRecreate(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string) (*RestartResult, error) {
+	// Capture stored result before Down clears hook markers and potentially
+	// makes it harder to recover image names for Dockerfile-based workspaces.
+	storedResult, _ := e.store.LoadResult(ws.ID)
+
 	// Remove existing container first.
 	if err := e.Down(ctx, ws); err != nil {
 		e.logger.Warn("failed to remove container before recreate", "error", err)
@@ -157,7 +161,7 @@ func (e *Engine) restartWithRecreate(ctx context.Context, ws *workspace.Workspac
 		return e.restartRecreateCompose(ctx, ws, cfg, workspaceFolder)
 	}
 
-	return e.restartRecreateSingle(ctx, ws, cfg, workspaceFolder)
+	return e.restartRecreateSingle(ctx, ws, cfg, workspaceFolder, storedResult)
 }
 
 // restartRecreateCompose handles the compose path for restartWithRecreate.
@@ -190,7 +194,7 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 }
 
 // restartRecreateSingle handles the single-container path for restartWithRecreate.
-func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string) (*RestartResult, error) {
+func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, storedResult *workspace.Result) (*RestartResult, error) {
 	// Delete old container.
 	container, err := e.driver.FindContainer(ctx, ws.ID)
 	if err != nil {
@@ -203,14 +207,19 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 	}
 
 	// Determine the image name. For image-based, it's in the config.
-	// For Dockerfile-based, use the stored result's image.
-	storedResult, _ := e.store.LoadResult(ws.ID)
+	// For Dockerfile-based, use the stored result's image. If neither has it
+	// (e.g. early save without ImageName), rebuild the image.
 	imageName := cfg.Image
 	if imageName == "" && storedResult != nil {
 		imageName = storedResult.ImageName
 	}
 	if imageName == "" {
-		return nil, fmt.Errorf("cannot determine image name; run 'crib rebuild' instead")
+		e.reportProgress("Image name not found in stored result, rebuilding...")
+		buildRes, err := e.buildImage(ctx, ws, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("rebuilding image: %w", err)
+		}
+		imageName = buildRes.imageName
 	}
 
 	runOpts := e.buildRunOptions(cfg, imageName, ws.Source, workspaceFolder)
