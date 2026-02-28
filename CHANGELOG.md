@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Automatic port publishing for single-container workspaces. `forwardPorts` and
+  `appPort` from `devcontainer.json` are now translated into `--publish` flags on
+  `docker run`, so ports work without manual `runArgs` workarounds.
+- `crib status` / `crib ps` now shows published ports for both single-container
+  and Docker Compose workspaces.
+
 ## [0.3.1] - 2026-02-28
 
 ### Fixed
