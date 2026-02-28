@@ -155,7 +155,14 @@ func (d *OCIDriver) RestartContainer(ctx context.Context, _, containerID string)
 
 // DeleteContainer removes a container forcefully with no grace period.
 func (d *OCIDriver) DeleteContainer(ctx context.Context, _, containerID string) error {
-	_, err := d.helper.Output(ctx, "rm", "-f", "-t", "0", containerID)
+	args := []string{"rm", "-f"}
+	// Podman supports -t to set a stop timeout before force-killing;
+	// Docker's rm does not have this flag.
+	if d.runtime == RuntimePodman {
+		args = append(args, "-t", "0")
+	}
+	args = append(args, containerID)
+	_, err := d.helper.Output(ctx, args...)
 	return err
 }
 
