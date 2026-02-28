@@ -66,6 +66,7 @@ type RunOptions struct {
 	Init           bool
 	WorkspaceMount config.Mount
 	Mounts         []config.Mount
+	Ports          []string // Publish specs (e.g. "8080:8080")
 	ExtraArgs      []string // Raw CLI args passed through from runArgs
 }
 

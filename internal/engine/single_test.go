@@ -147,6 +147,62 @@ func TestBuildRunOptions_NoRunArgs(t *testing.T) {
 	}
 }
 
+func TestBuildRunOptions_ForwardPorts(t *testing.T) {
+	e := &Engine{}
+	cfg := &config.DevContainerConfig{}
+	cfg.ForwardPorts = config.StrIntArray{"8080", "9090:3000"}
+
+	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+
+	if len(opts.Ports) != 2 {
+		t.Fatalf("Ports length = %d, want 2", len(opts.Ports))
+	}
+	if opts.Ports[0] != "8080:8080" {
+		t.Errorf("Ports[0] = %q, want %q", opts.Ports[0], "8080:8080")
+	}
+	if opts.Ports[1] != "9090:3000" {
+		t.Errorf("Ports[1] = %q, want %q", opts.Ports[1], "9090:3000")
+	}
+}
+
+func TestBuildRunOptions_AppPort(t *testing.T) {
+	e := &Engine{}
+	cfg := &config.DevContainerConfig{}
+	cfg.AppPort = config.StrIntArray{"3000", "5000:5000"}
+
+	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+
+	if len(opts.Ports) != 2 {
+		t.Fatalf("Ports length = %d, want 2", len(opts.Ports))
+	}
+	if opts.Ports[0] != "3000:3000" {
+		t.Errorf("Ports[0] = %q, want %q", opts.Ports[0], "3000:3000")
+	}
+	if opts.Ports[1] != "5000:5000" {
+		t.Errorf("Ports[1] = %q, want %q", opts.Ports[1], "5000:5000")
+	}
+}
+
+func TestBuildRunOptions_PortsDedup(t *testing.T) {
+	e := &Engine{}
+	cfg := &config.DevContainerConfig{}
+	cfg.ForwardPorts = config.StrIntArray{"8080", "3000"}
+	cfg.AppPort = config.StrIntArray{"8080", "5000"}
+
+	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+
+	if len(opts.Ports) != 3 {
+		t.Fatalf("Ports length = %d, want 3", len(opts.Ports))
+	}
+	// 8080 from forwardPorts wins, not duplicated from appPort.
+	expected := []string{"8080:8080", "3000:3000", "5000:5000"}
+	for i, want := range expected {
+		if opts.Ports[i] != want {
+			t.Errorf("Ports[%d] = %q, want %q", i, opts.Ports[i], want)
+		}
+	}
+}
+
 func TestResolveContainerUser(t *testing.T) {
 	tests := []struct {
 		containerUser string

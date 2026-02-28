@@ -111,6 +111,11 @@ func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) []
 		args = append(args, "--mount", m.String())
 	}
 
+	// Published ports.
+	for _, p := range opts.Ports {
+		args = append(args, "--publish", p)
+	}
+
 	// Entrypoint.
 	if opts.Entrypoint != "" {
 		args = append(args, "--entrypoint", opts.Entrypoint)

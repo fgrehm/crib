@@ -138,6 +138,9 @@ func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, proj
 	// Additional mounts.
 	opts.Mounts = cfg.Mounts
 
+	// Published ports from forwardPorts and appPort.
+	opts.Ports = collectPorts(cfg.ForwardPorts, cfg.AppPort)
+
 	// Passthrough CLI args from runArgs.
 	opts.ExtraArgs = cfg.RunArgs
 
@@ -181,6 +184,27 @@ func (e *Engine) detectContainerUser(ctx context.Context, workspaceID, container
 		return ""
 	}
 	return user
+}
+
+// collectPorts combines forwardPorts and appPort into publish specs.
+// Bare numbers become "port:port"; entries with ":" pass through as-is.
+// Duplicates are removed (first occurrence wins).
+func collectPorts(forwardPorts, appPort config.StrIntArray) []string {
+	seen := make(map[string]bool)
+	var result []string
+	for _, list := range []config.StrIntArray{forwardPorts, appPort} {
+		for _, p := range list {
+			spec := p
+			if !strings.Contains(p, ":") {
+				spec = p + ":" + p
+			}
+			if !seen[spec] {
+				seen[spec] = true
+				result = append(result, spec)
+			}
+		}
+	}
+	return result
 }
 
 // resolveWorkspaceFolder determines the workspace folder path inside the container.

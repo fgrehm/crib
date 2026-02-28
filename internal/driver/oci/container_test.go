@@ -220,6 +220,32 @@ func TestBuildRunArgs_UserUsernsOverrideSkipsAutoInject(t *testing.T) {
 	}
 }
 
+func TestBuildRunArgs_Ports(t *testing.T) {
+	d := &OCIDriver{
+		helper:  NewHelper("docker", slog.Default()),
+		runtime: RuntimeDocker,
+		logger:  slog.Default(),
+	}
+
+	opts := &driver.RunOptions{
+		Image: "alpine",
+		Ports: []string{"8080:8080", "9090:3000"},
+	}
+
+	args := d.buildRunArgs("ws1", opts)
+	got := strings.Join(args, " ")
+
+	assertContains(t, got, "--publish 8080:8080")
+	assertContains(t, got, "--publish 9090:3000")
+
+	// Ports should appear before the image name.
+	imageIdx := strings.Index(got, "alpine")
+	portIdx := strings.Index(got, "--publish")
+	if portIdx > imageIdx {
+		t.Errorf("--publish should appear before image, got: %s", got)
+	}
+}
+
 func TestBuildRunArgs_ExtraArgsPassthrough(t *testing.T) {
 	origGetuid := getuid
 	t.Cleanup(func() { getuid = origGetuid })
