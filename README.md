@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./images/icon.png" alt="crib logo" width="200">
+  <img src="./images/logo.png" alt="crib logo" width="200">
 </p>
 
 # crib
