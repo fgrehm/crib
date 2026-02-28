@@ -29,7 +29,7 @@ export default defineConfig({
         {
           label: "Getting Started",
           items: [
-            { label: "Introduction", link: "/" },
+            { label: "Overview", slug: "overview" },
             { label: "Installation", slug: "installation" },
             { label: "Commands", slug: "commands" },
           ],
@@ -50,10 +50,6 @@ export default defineConfig({
           label: "Reference",
           items: [
             { label: "Troubleshooting", slug: "reference/troubleshooting" },
-            {
-              label: "Design Principles",
-              slug: "reference/design-principles",
-            },
             { label: "Changelog", slug: "reference/changelog" },
           ],
         },

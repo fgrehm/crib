@@ -1,7 +1,9 @@
 ---
-title: Design Principles
-description: Why crib exists and the philosophy behind it.
+title: Overview
+description: What crib is, why it exists, and the philosophy behind it.
 ---
+
+crib is a CLI tool that reads your `.devcontainer` config, builds the container, and gets out of your way. No agents injected into your container, no SSH tunnels, no IDE integration. Just Docker (or Podman) doing what Docker does.
 
 ## Principles
 
@@ -10,10 +12,6 @@ description: Why crib exists and the philosophy behind it.
 - **No SSH, no providers, no IDE integration.** crib is a CLI tool. It starts containers. What you do inside them is your business.
 - **Docker and Podman as first-class runtimes.** Auto-detected, configurable via `CRIB_RUNTIME`.
 - **Human-readable naming.** Containers show up as `crib-myproject` in `docker ps`, not opaque hashes.
-
-## Status
-
-Working and usable. Core devcontainer workflows (image, Dockerfile, and Docker Compose based) are implemented, including lifecycle hooks, feature installation, and workspace state management.
 
 ## Why
 
