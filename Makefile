@@ -1,4 +1,4 @@
-.PHONY: build install clean test lint test-integration test-e2e setup-hooks help
+.PHONY: build install clean test lint test-integration test-e2e setup-hooks help docs
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -32,6 +32,9 @@ setup-hooks: ## Configure git hooks
 	@git config core.hooksPath .githooks
 	@chmod +x .githooks/*
 	@echo "Git hooks configured"
+
+docs: ## Serve documentation from http://localhost:4321/crib
+	cd website && npm run dev
 
 clean: ## Remove build artifacts
 	rm -rf bin/
