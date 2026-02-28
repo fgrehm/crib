@@ -95,6 +95,9 @@ type UpResult struct {
 
 	// RemoteUser is the user to run commands as inside the container.
 	RemoteUser string
+
+	// Ports lists the published port specs (e.g. "8080:8080").
+	Ports []string
 }
 
 // Up brings a devcontainer up for the given workspace.

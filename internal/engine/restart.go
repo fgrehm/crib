@@ -25,6 +25,9 @@ type RestartResult struct {
 	// Recreated indicates whether the container was recreated (config changed)
 	// rather than simply restarted.
 	Recreated bool
+
+	// Ports lists the published port specs (e.g. "8080:8080").
+	Ports []string
 }
 
 // Restart restarts the container for the given workspace. It implements a
@@ -130,17 +133,21 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		e.logger.Warn("resume hooks failed", "error", err)
 	}
 
+	ports := collectPorts(cfg.ForwardPorts, cfg.AppPort)
+
 	// Update timestamps.
 	e.saveResult(ws, cfg, &UpResult{
 		ContainerID:     containerID,
 		WorkspaceFolder: workspaceFolder,
 		RemoteUser:      remoteUser,
+		Ports:           ports,
 	})
 
 	return &RestartResult{
 		ContainerID:     containerID,
 		WorkspaceFolder: workspaceFolder,
 		RemoteUser:      remoteUser,
+		Ports:           ports,
 	}, nil
 }
 
@@ -180,16 +187,20 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 		e.logger.Warn("resume hooks failed", "error", err)
 	}
 
+	ports := collectPorts(cfg.ForwardPorts, cfg.AppPort)
+
 	e.saveResult(ws, cfg, &UpResult{
 		ContainerID:     containerID,
 		WorkspaceFolder: workspaceFolder,
 		RemoteUser:      remoteUser,
+		Ports:           ports,
 	})
 
 	return &RestartResult{
 		ContainerID:     containerID,
 		WorkspaceFolder: workspaceFolder,
 		RemoteUser:      remoteUser,
+		Ports:           ports,
 	}, nil
 }
 
@@ -241,16 +252,20 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 		e.logger.Warn("resume hooks failed", "error", err)
 	}
 
+	ports := collectPorts(cfg.ForwardPorts, cfg.AppPort)
+
 	e.saveResult(ws, cfg, &UpResult{
 		ContainerID:     container.ID,
 		WorkspaceFolder: workspaceFolder,
 		RemoteUser:      remoteUser,
+		Ports:           ports,
 	})
 
 	return &RestartResult{
 		ContainerID:     container.ID,
 		WorkspaceFolder: workspaceFolder,
 		RemoteUser:      remoteUser,
+		Ports:           ports,
 	}, nil
 }
 

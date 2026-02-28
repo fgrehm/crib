@@ -157,6 +157,7 @@ func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cf
 		ContainerID:     containerID,
 		WorkspaceFolder: workspaceFolder,
 		RemoteUser:      remoteUser,
+		Ports:           collectPorts(cfg.ForwardPorts, cfg.AppPort),
 	}
 
 	// Save an early result so crib exec/shell can find the container,

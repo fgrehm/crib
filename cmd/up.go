@@ -42,6 +42,9 @@ var upCmd = &cobra.Command{
 		if result.RemoteUser != "" {
 			u.Keyval("user", result.RemoteUser)
 		}
+		if ports := formatPortSpecs(result.Ports); ports != "" {
+			u.Keyval("ports", ports)
+		}
 
 		return nil
 	},

@@ -216,6 +216,15 @@ func shortID(id string) string {
 	return id[:12]
 }
 
+// formatPortSpecs formats publish specs (e.g. "8080:8080") for display.
+// Returns empty string if no ports.
+func formatPortSpecs(ports []string) string {
+	if len(ports) == 0 {
+		return ""
+	}
+	return strings.Join(ports, ", ")
+}
+
 // appendRemoteEnv appends -e KEY=VALUE flags for each entry in result.RemoteEnv.
 // result may be nil, in which case args is returned unchanged.
 func appendRemoteEnv(args []string, result *workspace.Result) []string {
