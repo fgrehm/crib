@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -64,7 +65,8 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 	runOpts := e.buildRunOptions(cfg, buildRes.imageName, ws.Source, workspaceFolder)
 
 	// Run pre-container-run plugins to inject mounts, env, and extra args.
-	if err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, buildRes.imageName, workspaceFolder); err != nil {
+	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, buildRes.imageName, workspaceFolder)
+	if err != nil {
 		return nil, err
 	}
 
@@ -80,6 +82,11 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 	}
 	if container == nil {
 		return nil, fmt.Errorf("container not found after creation")
+	}
+
+	// Copy plugin files into the container.
+	if pluginResp != nil {
+		e.execPluginCopies(ctx, ws.ID, container.ID, pluginResp.Copies)
 	}
 
 	result, setupErr := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
@@ -241,10 +248,11 @@ func resolveWorkspaceFolder(cfg *config.DevContainerConfig, projectRoot string) 
 }
 
 // runPreContainerRunPlugins dispatches the pre-container-run event to the
-// plugin manager and merges the response into the run options.
-func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, runOpts *driver.RunOptions, imageName, workspaceFolder string) error {
+// plugin manager and merges the response into the run options. Returns the
+// merged response so the caller can process file copies after container creation.
+func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, runOpts *driver.RunOptions, imageName, workspaceFolder string) (*plugin.PreContainerRunResponse, error) {
 	if e.plugins == nil {
-		return nil
+		return nil, nil
 	}
 
 	remoteUser := cfg.RemoteUser
@@ -265,7 +273,7 @@ func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Wo
 
 	resp, err := e.plugins.RunPreContainerRun(ctx, req)
 	if err != nil {
-		return fmt.Errorf("running pre-container-run plugins: %w", err)
+		return nil, fmt.Errorf("running pre-container-run plugins: %w", err)
 	}
 
 	runOpts.Mounts = append(runOpts.Mounts, resp.Mounts...)
@@ -274,5 +282,33 @@ func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Wo
 	}
 	runOpts.ExtraArgs = append(runOpts.ExtraArgs, resp.RunArgs...)
 
-	return nil
+	return resp, nil
+}
+
+// execPluginCopies copies staged files into the container via exec.
+func (e *Engine) execPluginCopies(ctx context.Context, workspaceID, containerID string, copies []plugin.FileCopy) {
+	for _, cp := range copies {
+		data, err := os.ReadFile(cp.Source)
+		if err != nil {
+			e.logger.Warn("plugin copy: failed to read source", "source", cp.Source, "error", err)
+			continue
+		}
+
+		// Build a shell command that creates the parent dir and writes the file.
+		dir := filepath.Dir(cp.Target)
+		shellCmd := fmt.Sprintf("mkdir -p %s && cat > %s", dir, cp.Target)
+		if cp.Mode != "" {
+			shellCmd += fmt.Sprintf(" && chmod %s %s", cp.Mode, cp.Target)
+		}
+		if cp.User != "" {
+			shellCmd += fmt.Sprintf(" && chown %s %s", cp.User, cp.Target)
+		}
+
+		err = e.driver.ExecContainer(ctx, workspaceID, containerID,
+			[]string{"sh", "-c", shellCmd},
+			bytes.NewReader(data), io.Discard, io.Discard, nil, "root")
+		if err != nil {
+			e.logger.Warn("plugin copy: exec failed", "target", cp.Target, "error", err)
+		}
+	}
 }

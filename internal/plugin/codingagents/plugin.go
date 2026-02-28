@@ -6,13 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/plugin"
 )
 
 // Plugin provides coding-agent credential sharing. Currently supports
-// Claude Code by copying ~/.claude/.credentials.json and generating a
-// minimal ~/.claude.json for the container.
+// Claude Code by staging ~/.claude/.credentials.json and a minimal
+// ~/.claude.json, then requesting they be copied into the container.
 type Plugin struct {
 	homeDir string // overridable for testing; defaults to os.UserHomeDir()
 }
@@ -26,9 +25,8 @@ func New() *Plugin {
 func (p *Plugin) Name() string { return "coding-agents" }
 
 // PreContainerRun checks for ~/.claude/.credentials.json on the host. If
-// present, it copies the credentials file into the workspace state dir,
-// generates a minimal ~/.claude.json with hasCompletedOnboarding, and returns
-// bind mounts for both.
+// present, it stages the credentials and a minimal config in the workspace
+// state dir, then returns file copies to inject into the container.
 func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunRequest) (*plugin.PreContainerRunResponse, error) {
 	home := p.homeDir
 	if home == "" {
@@ -51,10 +49,10 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 		return nil, fmt.Errorf("creating plugin dir: %w", err)
 	}
 
-	// Copy credentials file.
+	// Stage credentials file.
 	credsDst := filepath.Join(pluginDir, "credentials.json")
 	if err := copyFile(credsSrc, credsDst, 0o600); err != nil {
-		return nil, fmt.Errorf("copying credentials: %w", err)
+		return nil, fmt.Errorf("staging credentials: %w", err)
 	}
 
 	// Generate minimal config so Claude Code skips onboarding.
@@ -64,18 +62,23 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 	}
 
 	remoteHome := inferRemoteHome(req.RemoteUser)
+	owner := req.RemoteUser
+	if owner == "" {
+		owner = "root"
+	}
 
 	return &plugin.PreContainerRunResponse{
-		Mounts: []config.Mount{
+		Copies: []plugin.FileCopy{
 			{
-				Type:   "bind",
 				Source: credsDst,
 				Target: filepath.Join(remoteHome, ".claude", ".credentials.json"),
+				Mode:   "0600",
+				User:   owner,
 			},
 			{
-				Type:   "bind",
 				Source: configDst,
 				Target: filepath.Join(remoteHome, ".claude.json"),
+				User:   owner,
 			},
 		},
 	}, nil

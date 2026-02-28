@@ -57,16 +57,16 @@ func TestPreContainerRun_CredentialsExist(t *testing.T) {
 		t.Fatal("expected non-nil response")
 	}
 
-	// Should produce two mounts: .credentials.json and .claude.json.
-	if len(resp.Mounts) != 2 {
-		t.Fatalf("expected 2 mounts, got %d", len(resp.Mounts))
+	// Should produce two file copies, no mounts.
+	if len(resp.Mounts) != 0 {
+		t.Errorf("expected 0 mounts, got %d", len(resp.Mounts))
+	}
+	if len(resp.Copies) != 2 {
+		t.Fatalf("expected 2 copies, got %d", len(resp.Copies))
 	}
 
-	// First mount: credentials file.
-	creds := resp.Mounts[0]
-	if creds.Type != "bind" {
-		t.Errorf("expected bind mount, got %s", creds.Type)
-	}
+	// First copy: credentials file.
+	creds := resp.Copies[0]
 	expectedCredsSource := filepath.Join(wsDir, "plugins", "coding-agents", "credentials.json")
 	if creds.Source != expectedCredsSource {
 		t.Errorf("credentials source: expected %s, got %s", expectedCredsSource, creds.Source)
@@ -74,18 +74,24 @@ func TestPreContainerRun_CredentialsExist(t *testing.T) {
 	if creds.Target != "/home/vscode/.claude/.credentials.json" {
 		t.Errorf("credentials target: expected /home/vscode/.claude/.credentials.json, got %s", creds.Target)
 	}
-
-	// Second mount: generated claude.json.
-	config := resp.Mounts[1]
-	if config.Type != "bind" {
-		t.Errorf("expected bind mount, got %s", config.Type)
+	if creds.Mode != "0600" {
+		t.Errorf("credentials mode: expected 0600, got %s", creds.Mode)
 	}
+	if creds.User != "vscode" {
+		t.Errorf("credentials user: expected vscode, got %s", creds.User)
+	}
+
+	// Second copy: generated claude.json.
+	config := resp.Copies[1]
 	expectedConfigSource := filepath.Join(wsDir, "plugins", "coding-agents", "claude.json")
 	if config.Source != expectedConfigSource {
 		t.Errorf("config source: expected %s, got %s", expectedConfigSource, config.Source)
 	}
 	if config.Target != "/home/vscode/.claude.json" {
 		t.Errorf("config target: expected /home/vscode/.claude.json, got %s", config.Target)
+	}
+	if config.User != "vscode" {
+		t.Errorf("config user: expected vscode, got %s", config.User)
 	}
 }
 
@@ -128,11 +134,14 @@ func TestPreContainerRun_RemoteUserVscode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.Mounts[0].Target != "/home/vscode/.claude/.credentials.json" {
-		t.Errorf("credentials target: expected /home/vscode/.claude/.credentials.json, got %s", resp.Mounts[0].Target)
+	if resp.Copies[0].Target != "/home/vscode/.claude/.credentials.json" {
+		t.Errorf("credentials target: expected /home/vscode/.claude/.credentials.json, got %s", resp.Copies[0].Target)
 	}
-	if resp.Mounts[1].Target != "/home/vscode/.claude.json" {
-		t.Errorf("config target: expected /home/vscode/.claude.json, got %s", resp.Mounts[1].Target)
+	if resp.Copies[0].User != "vscode" {
+		t.Errorf("credentials user: expected vscode, got %s", resp.Copies[0].User)
+	}
+	if resp.Copies[1].Target != "/home/vscode/.claude.json" {
+		t.Errorf("config target: expected /home/vscode/.claude.json, got %s", resp.Copies[1].Target)
 	}
 }
 
@@ -145,11 +154,14 @@ func TestPreContainerRun_RemoteUserRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.Mounts[0].Target != "/root/.claude/.credentials.json" {
-		t.Errorf("credentials target: expected /root/.claude/.credentials.json, got %s", resp.Mounts[0].Target)
+	if resp.Copies[0].Target != "/root/.claude/.credentials.json" {
+		t.Errorf("credentials target: expected /root/.claude/.credentials.json, got %s", resp.Copies[0].Target)
 	}
-	if resp.Mounts[1].Target != "/root/.claude.json" {
-		t.Errorf("config target: expected /root/.claude.json, got %s", resp.Mounts[1].Target)
+	if resp.Copies[0].User != "root" {
+		t.Errorf("credentials user: expected root, got %s", resp.Copies[0].User)
+	}
+	if resp.Copies[1].Target != "/root/.claude.json" {
+		t.Errorf("config target: expected /root/.claude.json, got %s", resp.Copies[1].Target)
 	}
 }
 
@@ -162,15 +174,18 @@ func TestPreContainerRun_RemoteUserEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.Mounts[0].Target != "/root/.claude/.credentials.json" {
-		t.Errorf("credentials target: expected /root/.claude/.credentials.json, got %s", resp.Mounts[0].Target)
+	if resp.Copies[0].Target != "/root/.claude/.credentials.json" {
+		t.Errorf("credentials target: expected /root/.claude/.credentials.json, got %s", resp.Copies[0].Target)
 	}
-	if resp.Mounts[1].Target != "/root/.claude.json" {
-		t.Errorf("config target: expected /root/.claude.json, got %s", resp.Mounts[1].Target)
+	if resp.Copies[0].User != "root" {
+		t.Errorf("credentials user: expected root, got %s", resp.Copies[0].User)
+	}
+	if resp.Copies[1].Target != "/root/.claude.json" {
+		t.Errorf("config target: expected /root/.claude.json, got %s", resp.Copies[1].Target)
 	}
 }
 
-func TestPreContainerRun_CredentialsCopied(t *testing.T) {
+func TestPreContainerRun_CredentialsCopiedToStaging(t *testing.T) {
 	home := t.TempDir()
 	setupCredentials(t, home)
 
@@ -183,24 +198,15 @@ func TestPreContainerRun_CredentialsCopied(t *testing.T) {
 	copiedCreds := filepath.Join(wsDir, "plugins", "coding-agents", "credentials.json")
 	data, err := os.ReadFile(copiedCreds)
 	if err != nil {
-		t.Fatalf("expected credentials to be copied: %v", err)
+		t.Fatalf("expected credentials to be staged: %v", err)
 	}
 
 	var parsed map[string]any
 	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("copied credentials not valid JSON: %v", err)
+		t.Fatalf("staged credentials not valid JSON: %v", err)
 	}
 	if _, ok := parsed["claudeAiOauth"]; !ok {
-		t.Errorf("expected claudeAiOauth key in copied credentials")
-	}
-
-	// Verify permissions are restrictive.
-	info, err := os.Stat(copiedCreds)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("expected credentials perm 0600, got %o", info.Mode().Perm())
+		t.Errorf("expected claudeAiOauth key in staged credentials")
 	}
 }
 

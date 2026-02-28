@@ -32,4 +32,13 @@ type PreContainerRunResponse struct {
 	Mounts  []config.Mount
 	Env     map[string]string
 	RunArgs []string
+	Copies  []FileCopy
+}
+
+// FileCopy describes a file to copy into the container after creation.
+type FileCopy struct {
+	Source string      // path on host
+	Target string      // path inside container
+	Mode   string      // chmod mode (e.g. "0600"), empty for default
+	User   string      // chown user inside container (e.g. "vscode"), empty for default
 }

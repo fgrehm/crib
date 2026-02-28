@@ -42,6 +42,7 @@ func (m *Manager) RunPreContainerRun(ctx context.Context, req *PreContainerRunRe
 
 		merged.Mounts = append(merged.Mounts, resp.Mounts...)
 		merged.RunArgs = append(merged.RunArgs, resp.RunArgs...)
+		merged.Copies = append(merged.Copies, resp.Copies...)
 		for k, v := range resp.Env {
 			merged.Env[k] = v
 		}

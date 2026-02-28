@@ -167,6 +167,33 @@ func TestRunPreContainerRun_NilResponse(t *testing.T) {
 	}
 }
 
+func TestRunPreContainerRun_CopiesAppended(t *testing.T) {
+	mgr := testManager()
+	mgr.Register(&stubPlugin{
+		name: "plugin-a",
+		resp: &PreContainerRunResponse{
+			Copies: []FileCopy{{Source: "/host/a", Target: "/container/a", Mode: "0600", User: "vscode"}},
+		},
+	})
+	mgr.Register(&stubPlugin{
+		name: "plugin-b",
+		resp: &PreContainerRunResponse{
+			Copies: []FileCopy{{Source: "/host/b", Target: "/container/b"}},
+		},
+	})
+
+	resp, err := mgr.RunPreContainerRun(context.Background(), testRequest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Copies) != 2 {
+		t.Fatalf("expected 2 copies, got %d", len(resp.Copies))
+	}
+	if resp.Copies[0].Source != "/host/a" || resp.Copies[1].Source != "/host/b" {
+		t.Errorf("copies not in expected order: %v", resp.Copies)
+	}
+}
+
 func TestRunPreContainerRun_NoPlugins(t *testing.T) {
 	mgr := testManager()
 
@@ -182,5 +209,8 @@ func TestRunPreContainerRun_NoPlugins(t *testing.T) {
 	}
 	if len(resp.RunArgs) != 0 {
 		t.Errorf("expected 0 runArgs, got %d", len(resp.RunArgs))
+	}
+	if len(resp.Copies) != 0 {
+		t.Errorf("expected 0 copies, got %d", len(resp.Copies))
 	}
 }
