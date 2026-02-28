@@ -153,9 +153,9 @@ func (d *OCIDriver) RestartContainer(ctx context.Context, _, containerID string)
 	return err
 }
 
-// DeleteContainer removes a container forcefully.
+// DeleteContainer removes a container forcefully with no grace period.
 func (d *OCIDriver) DeleteContainer(ctx context.Context, _, containerID string) error {
-	_, err := d.helper.Output(ctx, "rm", "-f", containerID)
+	_, err := d.helper.Output(ctx, "rm", "-f", "-t", "0", containerID)
 	return err
 }
 
