@@ -74,6 +74,33 @@ sudo apt install passt aardvark-dns
 
 `pasta` provides rootless network namespace setup and `aardvark-dns` enables container DNS resolution. Without them, rootless Podman containers can't start or resolve hostnames.
 
+## `localhost:port` not reachable even though the port is published
+
+If a container port is published but `http://localhost:PORT` fails (connection refused or reset),
+check how `localhost` resolves on your machine:
+
+```bash
+getent hosts localhost
+```
+
+If it resolves to `::1` (IPv6) rather than `127.0.0.1` (IPv4), the port listener and the
+address don't match. Podman publishes ports to `0.0.0.0` (IPv4 only) by default in rootless
+mode, so `localhost` → `::1` misses it.
+
+**Fix:** Use `127.0.0.1` instead of `localhost`:
+
+```
+http://127.0.0.1:PORT
+```
+
+Or, if you need `localhost` to work, add an explicit IPv4 entry to `/etc/hosts`:
+
+```
+127.0.0.1  localhost
+```
+
+(Most systems have this but some distros only keep the IPv6 entry.)
+
 ## Rootless Podman and bind mount permissions
 
 In rootless Podman, the host UID is remapped to UID 0 inside the container's user namespace. This means bind-mounted workspace files appear as `root:root` inside the container, so a non-root `remoteUser` (like `vscode`) can't write to them.
@@ -92,6 +119,41 @@ If you need to override this behavior, set a different `--userns` value in your 
 When an explicit `--userns` is present in `runArgs`, `crib` won't inject `--userns=keep-id`.
 
 For Docker Compose workspaces, `crib` injects `userns_mode: "keep-id"` in the compose override. Since podman-compose 1.0+ creates pods by default and `--userns` is incompatible with `--pod`, `crib` also disables pod creation via `x-podman: { in_pod: false }` in the override.
+
+## Workspace files owned by a high UID (100000+) after switching to a non-root user
+
+If a lifecycle hook (e.g. `postCreateCommand: npm install`) fails with permission denied, and
+the workspace contains files owned by a UID like `100000`, it means an earlier container run
+created those files as root inside a rootless Podman container.
+
+**Why this happens:** In rootless Podman with `--userns=keep-id`, container root (UID 0) maps to
+a subordinate UID on the host (typically `100000`). Any files created inside the container as
+root — such as from a first run without `remoteUser` set, or before adding `remoteUser` to
+`devcontainer.json` — are owned by that subordinate UID on the host filesystem. A subsequent run
+with `remoteUser` set to a non-root user (like `node` or `vscode`) can't write to those files.
+
+**Check for affected files:**
+
+```bash
+ls -lan /path/to/project/node_modules | head -5
+```
+
+If you see a high UID (100000+) instead of your own UID, those files are from a previous root
+container run.
+
+**Fix:** Delete the affected directories from the host and then rebuild:
+
+```bash
+rm -rf node_modules  # or whatever directory was created by the hook
+crib rebuild
+```
+
+If the directory is large and `rm -rf` is slow, you can use `podman unshare` to remove it
+faster from inside the same user namespace:
+
+```bash
+podman unshare rm -rf node_modules
+```
 
 ## Bind mount changed permissions on host files
 
