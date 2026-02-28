@@ -1,6 +1,6 @@
 ---
 title: devcontainers without the ceremony
-description: Dev containers without the ceremony.
+description: A CLI tool that reads .devcontainer configs, builds containers, and gets out of the way. Supports Docker and Podman.
 template: splash
 hero:
   tagline: Read your <code>devcontainer.json</code> config, build the container, get out of the way.
@@ -20,14 +20,19 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
 
 ## Quick Start
 
+If your project has a `.devcontainer/` directory, you're ready:
+
 ```
 cd my-project
 crib up        # build and start the devcontainer
 crib shell     # drop into a shell
 crib restart   # restart (picks up config changes)
 crib down      # stop and remove the container
-crib remove    # remove container and workspace state
 ```
+
+:::note
+`crib` is being developed against **Linux** only. macOS and Windows support may be added if there's interest.
+:::
 
 ## Features
 
@@ -37,12 +42,20 @@ crib remove    # remove container and workspace state
     installed inside your container that you didn't ask for.
   </Card>
   <Card title="Docker and Podman" icon="setting">
-    Both runtimes are first-class citizens. Auto-detected, configurable via
-    `CRIB_RUNTIME`.
+    Both runtimes are first-class citizens. Auto-detected or configurable via
+    environment variable.
   </Card>
-  <Card title="Implicit workspace resolution" icon="magnifier">
-    `cd` into a project directory and run commands. crib walks up to find your
-    `.devcontainer/` config automatically.
+  <Card title="DevContainer Features" icon="puzzle">
+    Full support for OCI-based devcontainer features. Install tools like Node,
+    Go, or Docker-in-Docker without touching your Dockerfile.
+  </Card>
+  <Card title="Lifecycle hooks" icon="list-format">
+    All six devcontainer lifecycle hooks run automatically, from
+    `onCreateCommand` through `postAttachCommand`.
+  </Card>
+  <Card title="Docker Compose" icon="open-book">
+    Multi-service setups work out of the box. crib reads your compose files,
+    builds services, and manages the full stack.
   </Card>
   <Card title="Smart restart" icon="rocket">
     `crib restart` detects what changed and picks the fastest strategy, from a
