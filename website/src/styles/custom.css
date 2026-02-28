@@ -1,3 +1,15 @@
+/* Brand color: teal from the logo */
+:root {
+  --sl-color-accent-low: #1a3a36;
+  --sl-color-accent: #3d9d92;
+  --sl-color-accent-high: #b8e0db;
+}
+:root[data-theme="light"] {
+  --sl-color-accent-low: #b8e0db;
+  --sl-color-accent: #2d7a71;
+  --sl-color-accent-high: #1a3a36;
+}
+
 /* Style inline code in the hero tagline */
 .hero .tagline code {
   background: var(--sl-color-gray-6);

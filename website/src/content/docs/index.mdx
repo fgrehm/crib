@@ -13,6 +13,8 @@ hero:
       variant: primary
     - text: Learn More
       link: /crib/overview/
+      icon: open-book
+      variant: minimal
 ---
 
 import { Card, CardGrid } from "@astrojs/starlight/components";
@@ -21,7 +23,7 @@ import { Card, CardGrid } from "@astrojs/starlight/components";
 
 If your project has a `.devcontainer/` directory, you're ready:
 
-```
+```bash
 cd my-project
 crib up        # build and start the devcontainer
 crib shell     # drop into a shell
@@ -29,8 +31,8 @@ crib restart   # restart (picks up config changes)
 crib down      # stop and remove the container
 ```
 
-:::note
-`crib` is being developed against **Linux** only. macOS and Windows support may be added if there's interest.
+:::note[🐧 Linux only]
+`crib` is being developed against Linux only. macOS and Windows support may be added if there's interest.
 :::
 
 ## Features
@@ -52,7 +54,7 @@ crib down      # stop and remove the container
     All six devcontainer lifecycle hooks run automatically, from
     `onCreateCommand` through `postAttachCommand`.
   </Card>
-  <Card title="Docker Compose" icon="open-book">
+  <Card title="Docker Compose" icon="random">
     Multi-service setups work out of the box. crib reads your compose files,
     builds services, and manages the full stack.
   </Card>

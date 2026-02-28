@@ -3,7 +3,7 @@ title: Lifecycle Hooks
 description: How crib handles devcontainer lifecycle hooks.
 ---
 
-The devcontainer spec defines [lifecycle hooks](https://containers.dev/implementors/spec/#lifecycle) that run at different stages. crib supports all of them:
+The devcontainer spec defines [lifecycle hooks](https://containers.dev/implementors/spec/#lifecycle) that run at different stages. `crib` supports all of them:
 
 | Hook | Runs on | When | Runs once? |
 |------|---------|------|------------|
@@ -14,7 +14,7 @@ The devcontainer spec defines [lifecycle hooks](https://containers.dev/implement
 | `postStartCommand` | Container | After every container start | No |
 | `postAttachCommand` | Container | On every `crib up` | No |
 
-Note: in the official spec, `updateContentCommand` re-runs when source content changes (e.g. git pull in Codespaces). crib doesn't detect content updates, so it behaves identically to `onCreateCommand`. Similarly, `postAttachCommand` maps to "attach" in editors. crib runs it on every `crib up` since there's no separate attach step.
+Note: in the official spec, `updateContentCommand` re-runs when source content changes (e.g. git pull in Codespaces). `crib` doesn't detect content updates, so it behaves identically to `onCreateCommand`. Similarly, `postAttachCommand` maps to "attach" in editors. `crib` runs it on every `crib up` since there's no separate attach step.
 
 Each hook accepts a string, an array, or a map of named commands:
 
@@ -34,7 +34,7 @@ Each hook accepts a string, an array, or a map of named commands:
 
 For `initializeCommand` (host-side), the array form runs as a direct exec without a shell. For container hooks, both string and array forms are run through `sh -c`.
 
-Here's a devcontainer.json showing all hooks:
+Here's a `devcontainer.json` showing all hooks:
 
 ```jsonc
 {
@@ -58,7 +58,7 @@ Here's a devcontainer.json showing all hooks:
 }
 ```
 
-## initializeCommand
+## `initializeCommand`
 
 `initializeCommand` is the only hook that runs on the host. It runs before the image is built or pulled, making it useful for pre-flight checks and local file setup.
 
@@ -90,5 +90,68 @@ This ensures `.env` is present on the host before the container starts, so bind 
     "env": "test -f .env || cp .env.example .env",
     "credentials": "test -f config/master.key || (echo 'Missing config/master.key' >&2 && exit 1)"
   }
+}
+```
+
+## `onCreateCommand`
+
+Runs once after the container is first created. Use it for one-time setup that should survive container restarts.
+
+**Install dependencies and set up the database:**
+
+```jsonc
+{
+  "onCreateCommand": "bundle install && rails db:setup"
+}
+```
+
+**Multiple setup tasks with named commands:**
+
+```jsonc
+{
+  "onCreateCommand": {
+    "deps": "npm install",
+    "db": "rails db:setup",
+    "tools": "mise install"
+  }
+}
+```
+
+## `postCreateCommand`
+
+Runs once after `onCreateCommand` and `updateContentCommand` finish. Good for configuration that depends on installed dependencies.
+
+**Configure git safe directory:**
+
+```jsonc
+{
+  "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}"
+}
+```
+
+## `postStartCommand`
+
+Runs after every container start (including restarts). Use it for services that need to be running.
+
+**Start background services:**
+
+```jsonc
+{
+  "postStartCommand": {
+    "redis": "redis-server --daemonize yes",
+    "postgres": "pg_ctlcluster 16 main start"
+  }
+}
+```
+
+## `postAttachCommand`
+
+Runs on every `crib up`. Use it for per-session output or checks.
+
+**Show tool versions:**
+
+```jsonc
+{
+  "postAttachCommand": "node -v && npm -v"
 }
 ```

@@ -15,7 +15,7 @@ This follows the [devcontainer spec's Resume Flow](https://containers.dev/implem
 
 The practical effect: you can tweak a volume mount or add an environment variable, run `crib restart`, and be back in your container in seconds instead of waiting for a full rebuild and all creation hooks to re-execute.
 
-```
+```bash
 # Changed a volume in docker-compose.yml? Or added a mount in devcontainer.json?
 crib restart   # recreates the container, skips creation hooks
 

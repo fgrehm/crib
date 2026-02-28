@@ -1,5 +1,5 @@
 ---
-title: Changelog
+title: CHANGELOG
 description: All notable changes to crib.
 ---
 
@@ -8,7 +8,7 @@ All notable changes to this project will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.1] - 2026-02-28
+## [0.3.1](https://github.com/fgrehm/crib/releases/tag/v0.3.1) - 2026-02-28
 
 ### Fixed
 
@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   environment. These are session-specific and confused mise when injected into a
   new shell via `crib shell`.
 
-## [0.3.0] - 2026-02-27
+## [0.3.0](https://github.com/fgrehm/crib/releases/tag/v0.3.0) - 2026-02-27
 
 ### Changed
 
@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add short aliases: `list` (`ls`), `status` (`ps`), `shell` (`sh`).
 - `rebuild` no longer needs to re-save workspace state after removing the
   container (uses `down` instead of the old `delete`).
-- Display crib version at the start of `up`, `down`, `remove`, `rebuild`,
+- Display `crib` version at the start of `up`, `down`, `remove`, `rebuild`,
   and `restart` commands. Dev builds include commit SHA and build timestamp.
 - Suppress noisy compose stdout (container name listings) during up/down/restart.
   Use `--verbose` / `-V` to see full compose output.
@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stored result exists with a previously built image, the build is skipped and
   services are started directly.
 
-## [0.2.0] - 2026-02-26
+## [0.2.0](https://github.com/fgrehm/crib/releases/tag/v0.2.0) - 2026-02-26
 
 ### Added
 
@@ -66,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     and suggests `crib rebuild`
 - New project logo
 
-## [0.1.0] - 2026-02-25
+## [0.1.0](https://github.com/fgrehm/crib/releases/tag/v0.1.0) - 2026-02-25
 
 ### Added
 

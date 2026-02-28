@@ -13,7 +13,7 @@ From the [implementation notes](/crib/contributing/implementation-notes/), these
 
 - **`build.options`**: Extra Docker build CLI flags. Field is parsed but not passed to the build driver.
 - **`waitFor`**: Field is parsed but lifecycle hooks always run sequentially to completion. Should block tool attachment until the specified stage finishes.
-- **Parallel object hooks**: Spec says object-syntax hook entries run in parallel. crib runs them sequentially.
+- **Parallel object hooks**: Spec says object-syntax hook entries run in parallel. `crib` runs them sequentially.
 
 ### Shared host configuration
 
@@ -25,7 +25,7 @@ Detect project type (Ruby, Node, Go, etc.) from conventions and generate a worki
 
 ### Transparent command dispatch
 
-Run crib commands from inside or outside the container, with automatic delegation.
+Run `crib` commands from inside or outside the container, with automatic delegation.
 
 ## Considering
 
@@ -43,9 +43,9 @@ Tail container logs, especially useful for compose workspaces with multiple serv
 
 ## Not Planned
 
-These are explicitly out of scope for crib's design philosophy.
+These are explicitly out of scope for `crib`'s design philosophy.
 
-- **SSH / remote providers**: crib is local-only by design.
+- **SSH / remote providers**: `crib` is local-only by design.
 - **IDE integration**: No VS Code extension, no JetBrains plugin. CLI only.
 - **Agent injection**: All setup happens via `docker exec` from the host.
 - **Kubernetes / cloud backends**: Local container runtimes only (Docker, Podman).

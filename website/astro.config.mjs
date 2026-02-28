@@ -1,9 +1,21 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import rehypeExternalLinks from "rehype-external-links";
 
 export default defineConfig({
   site: "https://fgrehm.github.io",
   base: "/crib",
+  markdown: {
+    rehypePlugins: [
+      [
+        rehypeExternalLinks,
+        {
+          target: "_blank",
+          rel: ["noopener", "noreferrer"],
+        },
+      ],
+    ],
+  },
   integrations: [
     starlight({
       title: "crib docs",
@@ -50,7 +62,7 @@ export default defineConfig({
           label: "Reference",
           items: [
             { label: "Troubleshooting", slug: "reference/troubleshooting" },
-            { label: "Changelog", slug: "reference/changelog" },
+            { label: "CHANGELOG", slug: "reference/changelog" },
           ],
         },
         {

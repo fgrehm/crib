@@ -14,7 +14,7 @@ description: Building, testing, and contributing to crib.
 
 Requires Go 1.26+.
 
-```
+```bash
 make build            # produces bin/crib
 make test             # run unit tests
 make lint             # run linters (golangci-lint v2)

@@ -13,7 +13,7 @@ When running rootless Podman, bind-mounted files are owned by the host user's UI
 user namespace. Without `--userns=keep-id`, the container sees these files as owned by
 `nobody:nogroup`, breaking all file operations.
 
-crib auto-injects `--userns=keep-id` for single containers and `userns_mode: "keep-id"` in
+`crib` auto-injects `--userns=keep-id` for single containers and `userns_mode: "keep-id"` in
 compose overrides when it detects rootless Podman (non-root UID + `podman` in the runtime
 command). This is skipped when the user's compose files already set `userns_mode`.
 
@@ -35,7 +35,7 @@ Lifecycle hooks run via `sh -c "<command>"`. Tools installed by version managers
 [mise](https://mise.jdx.dev/) activate in `~/.bashrc` (interactive shell), not in
 `/etc/profile.d/` (login shell). This means `sh -c` and even `bash -l -c` won't find them.
 
-crib implements the spec's `userEnvProbe` (default: `loginInteractiveShell`) to probe the
+`crib` implements the spec's `userEnvProbe` (default: `loginInteractiveShell`) to probe the
 container user's environment once during setup, then passes the probed variables to all
 lifecycle hooks via `docker exec -e` flags. The probed env is also persisted in
 `result.json` so `crib exec` and `crib shell` inherit it automatically.
@@ -54,11 +54,11 @@ The probe shell type maps to:
 
 ### Container user detection for compose containers
 
-For single containers, `containerUser` and `remoteUser` from devcontainer.json control which
+For single containers, `containerUser` and `remoteUser` from `devcontainer.json` control which
 user runs hooks. For compose containers, the Dockerfile's `USER` directive sets the running
-user, but devcontainer.json often doesn't set `remoteUser` or `containerUser`.
+user, but `devcontainer.json` often doesn't set `remoteUser` or `containerUser`.
 
-If neither is set, crib runs `whoami` inside the container to detect the actual user. If the
+If neither is set, `crib` runs `whoami` inside the container to detect the actual user. If the
 detected user is root, it falls through to the default "root" behavior. Non-root users (e.g.
 `vscode` from a `USER vscode` directive) are used as the remote user.
 
@@ -91,7 +91,7 @@ restartWithRecreate), `internal/engine/lifecycle.go` (runResumeHooks).
 
 ### Early result persistence
 
-crib saves the workspace result (container ID, workspace folder, remote user) as soon as
+`crib` saves the workspace result (container ID, workspace folder, remote user) as soon as
 those values are known, before UID sync, environment probing, and lifecycle hooks run. This
 means `crib exec` and `crib shell` work immediately, even while hooks are still executing
 or if they fail. A second save after setup completes updates the result with the probed
@@ -105,9 +105,9 @@ hooks often fail (missing dependencies, broken scripts, etc.).
 
 ### UID/GID sync conflicts with existing users
 
-When `updateRemoteUserUID` is true (the default), crib syncs the container user's UID/GID to
+When `updateRemoteUserUID` is true (the default), `crib` syncs the container user's UID/GID to
 match the host user. On images like `ubuntu:24.04`, standard users/groups may already occupy
-the target UID/GID (e.g. the `ubuntu` user at UID 1000). crib detects these conflicts and
+the target UID/GID (e.g. the `ubuntu` user at UID 1000). `crib` detects these conflicts and
 moves the conflicting user/group to a free UID/GID before performing the sync.
 
 **Files**: `internal/engine/setup.go` (syncRemoteUserUID, execFindUserByUID,
@@ -115,7 +115,7 @@ execFindGroupByGID).
 
 ### chown skipped when UIDs already match
 
-After UID sync, if the container and host UIDs already match, crib skips `chown -R` on the
+After UID sync, if the container and host UIDs already match, `crib` skips `chown -R` on the
 workspace directory. This avoids failures on rootless Podman where `CAP_CHOWN` doesn't work
 over bind-mounted files (the kernel denies it even for root inside the user namespace).
 
@@ -124,7 +124,7 @@ over bind-mounted files (the kernel denies it even for root inside the user name
 ### overrideCommand default differs by scenario
 
 Per the spec, `overrideCommand` defaults to `true` for image/Dockerfile containers and
-`false` for compose containers. crib's compose path handles this in the override YAML
+`false` for compose containers. `crib`'s compose path handles this in the override YAML
 generation (injecting entrypoint/command only when the flag is explicitly or implicitly true).
 The single container path treats `nil` as `true`.
 
@@ -134,10 +134,10 @@ The single container path treats `nil` as `true`.
 ### Feature installation for compose containers
 
 Devcontainer features (e.g. `ghcr.io/devcontainers/features/node:1`) need special
-handling for compose-based containers. Unlike single containers where crib controls the
+handling for compose-based containers. Unlike single containers where `crib` controls the
 entire image build, compose services define their own images or Dockerfiles.
 
-crib handles this by pre-building a feature image on top of the service's base image:
+`crib` handles this by pre-building a feature image on top of the service's base image:
 
 1. Parse compose files to extract the service's image or build config
 2. For build-based services, run `compose build` first to produce the base image
@@ -212,14 +212,14 @@ or `exec.Command` with no stdin). Docker strictly validates the TTY and errors w
 
 ### Parsed but Not Enforced
 
-These fields are parsed from devcontainer.json and merged from image metadata, but crib
+These fields are parsed from `devcontainer.json` and merged from image metadata, but `crib`
 does not act on them. This is intentional for a CLI-only tool.
 
 | Feature | Reason |
 |---------|--------|
 | `forwardPorts` | Port forwarding is IDE-specific; use `runArgs` with `-p` instead |
 | `portsAttributes` | Display/behavior hints for IDE port UI |
-| `shutdownAction` | crib manages container lifecycle explicitly via `down`/`remove` |
+| `shutdownAction` | `crib` manages container lifecycle explicitly via `down`/`remove` |
 | `hostRequirements` | Validation not implemented; runtime will fail naturally |
 | `appPort` (legacy) | Spec says use `forwardPorts` instead |
 
@@ -229,4 +229,4 @@ does not act on them. This is intentional for a CLI-only tool.
 |---------|-------------|
 | `build.options` | Extra Docker build CLI flags; field parsed but not passed to driver |
 | `waitFor` | Field parsed but lifecycle hooks always run sequentially to completion |
-| Parallel object hooks | Spec says object-syntax hook entries run in parallel; crib runs them sequentially |
+| Parallel object hooks | Spec says object-syntax hook entries run in parallel; `crib` runs them sequentially |

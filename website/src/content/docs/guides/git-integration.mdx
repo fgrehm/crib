@@ -3,41 +3,44 @@ title: Git Integration
 description: Setting up git push, commit signing, and SSH agent forwarding inside devcontainers.
 ---
 
-Since crib doesn't inject agents or set up SSH tunnels, git push and commit signing need to be configured through your devcontainer config. The setup has two parts: forwarding your SSH agent into the container, and configuring git to use SSH signing.
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+Since `crib` doesn't inject agents or set up SSH tunnels, git push and commit signing need to be configured through your devcontainer config. The setup has two parts: forwarding your SSH agent into the container, and configuring git to use SSH signing.
 
 ## SSH agent forwarding
 
 Mount your host's SSH agent socket into the container and set the `SSH_AUTH_SOCK` environment variable so git (and ssh) can find it:
 
-**Image/Dockerfile-based:**
-
-```jsonc
-// devcontainer.json
-{
-  "mounts": [
-    "type=bind,source=${localEnv:SSH_AUTH_SOCK},target=/tmp/ssh-agent.sock"
-  ],
-  "containerEnv": {
-    "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
-  }
-}
-```
-
-**Docker Compose-based:**
-
-```yaml
-# docker-compose.yml
-services:
-  app:
-    volumes:
-      - ${SSH_AUTH_SOCK}:/tmp/ssh-agent.sock
-    environment:
-      SSH_AUTH_SOCK: /tmp/ssh-agent.sock
-```
+<Tabs syncKey="container-type">
+  <TabItem label="Image / Dockerfile">
+    ```jsonc
+    // devcontainer.json
+    {
+      "mounts": [
+        "type=bind,source=${localEnv:SSH_AUTH_SOCK},target=/tmp/ssh-agent.sock"
+      ],
+      "containerEnv": {
+        "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
+      }
+    }
+    ```
+  </TabItem>
+  <TabItem label="Docker Compose">
+    ```yaml
+    # docker-compose.yml
+    services:
+      app:
+        volumes:
+          - ${SSH_AUTH_SOCK}:/tmp/ssh-agent.sock
+        environment:
+          SSH_AUTH_SOCK: /tmp/ssh-agent.sock
+    ```
+  </TabItem>
+</Tabs>
 
 Verify it works inside the container:
 
-```
+```bash
 crib shell
 ssh-add -l          # should list your keys
 ssh -T git@github.com
@@ -47,41 +50,42 @@ ssh -T git@github.com
 
 Git supports signing commits with SSH keys (no GPG needed). Add this to a `.gitconfig` that gets mounted or copied into the container, or run the commands via a lifecycle hook.
 
-**Image/Dockerfile-based:**
+<Tabs syncKey="container-type">
+  <TabItem label="Image / Dockerfile">
+    ```jsonc
+    // devcontainer.json
+    {
+      "mounts": [
+        "type=bind,source=${localEnv:SSH_AUTH_SOCK},target=/tmp/ssh-agent.sock"
+      ],
+      "containerEnv": {
+        "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
+      },
+      "postCreateCommand": "git config --global gpg.format ssh && git config --global user.signingkey 'key::ssh-ed25519 AAAA...' && git config --global commit.gpgsign true"
+    }
+    ```
+  </TabItem>
+  <TabItem label="Docker Compose">
+    ```yaml
+    # docker-compose.yml
+    services:
+      app:
+        volumes:
+          - ${SSH_AUTH_SOCK}:/tmp/ssh-agent.sock
+        environment:
+          SSH_AUTH_SOCK: /tmp/ssh-agent.sock
+    ```
 
-```jsonc
-// devcontainer.json
-{
-  "mounts": [
-    "type=bind,source=${localEnv:SSH_AUTH_SOCK},target=/tmp/ssh-agent.sock"
-  ],
-  "containerEnv": {
-    "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
-  },
-  "postCreateCommand": "git config --global gpg.format ssh && git config --global user.signingkey 'key::ssh-ed25519 AAAA...' && git config --global commit.gpgsign true"
-}
-```
-
-**Docker Compose-based:**
-
-```yaml
-# docker-compose.yml
-services:
-  app:
-    volumes:
-      - ${SSH_AUTH_SOCK}:/tmp/ssh-agent.sock
-    environment:
-      SSH_AUTH_SOCK: /tmp/ssh-agent.sock
-```
-
-```jsonc
-// devcontainer.json
-{
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "app",
-  "postCreateCommand": "git config --global gpg.format ssh && git config --global user.signingkey 'key::ssh-ed25519 AAAA...' && git config --global commit.gpgsign true"
-}
-```
+    ```jsonc
+    // devcontainer.json
+    {
+      "dockerComposeFile": "docker-compose.yml",
+      "service": "app",
+      "postCreateCommand": "git config --global gpg.format ssh && git config --global user.signingkey 'key::ssh-ed25519 AAAA...' && git config --global commit.gpgsign true"
+    }
+    ```
+  </TabItem>
+</Tabs>
 
 Replace `ssh-ed25519 AAAA...` with your actual public key. You can get it from `ssh-add -L`.
 
@@ -118,25 +122,26 @@ Never `chown`/`chmod` bind-mounted paths from inside the container. These operat
 
 If you already have git configured on your host (user name, email, aliases), you can mount your gitconfig read-only instead of recreating it.
 
-**Image/Dockerfile-based:**
-
-```jsonc
-// devcontainer.json
-{
-  "mounts": [
-    "type=bind,source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,readonly"
-  ]
-}
-```
-
-**Docker Compose-based:**
-
-```yaml
-# docker-compose.yml
-services:
-  app:
-    volumes:
-      - ${HOME}/.gitconfig:/home/vscode/.gitconfig:ro
-```
+<Tabs syncKey="container-type">
+  <TabItem label="Image / Dockerfile">
+    ```jsonc
+    // devcontainer.json
+    {
+      "mounts": [
+        "type=bind,source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,readonly"
+      ]
+    }
+    ```
+  </TabItem>
+  <TabItem label="Docker Compose">
+    ```yaml
+    # docker-compose.yml
+    services:
+      app:
+        volumes:
+          - ${HOME}/.gitconfig:/home/vscode/.gitconfig:ro
+    ```
+  </TabItem>
+</Tabs>
 
 Note: if your host gitconfig references paths that don't exist in the container (e.g. credential helpers, include files), git will warn or error. A dedicated container gitconfig via `postCreateCommand` avoids this.

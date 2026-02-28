@@ -5,7 +5,7 @@ description: Common issues and solutions when using crib.
 
 ## `.crib-features/` in your project directory
 
-When devcontainer features are installed, crib creates a `.crib-features/` directory inside your project's build context during image builds. It's cleaned up automatically after the build, but if the process is killed (e.g. SIGKILL, power loss), it may be left behind.
+When devcontainer features are installed, `crib` creates a `.crib-features/` directory inside your project's build context during image builds. It's cleaned up automatically after the build, but if the process is killed (e.g. SIGKILL, power loss), it may be left behind.
 
 Add it to your global gitignore so it never gets committed in any project:
 
@@ -32,7 +32,7 @@ Note: `~/.config/git/ignore` is git's default location (since git 1.7.12), so `c
 
 Podman requires fully qualified image names by default. If you see errors like:
 
-```
+```text
 Error: short-name "postgres:16-alpine" did not resolve to an alias and no
 unqualified-search registries are defined in "/etc/containers/registries.conf"
 ```
@@ -50,7 +50,7 @@ This lets Podman resolve short names like `postgres:16-alpine` to `docker.io/lib
 
 When using `podman compose` (which delegates to `podman-compose`), you'll see this on every invocation:
 
-```
+```text
 >>>> Executing external compose provider "/usr/bin/podman-compose". Please see podman-compose(1) for how to disable this message. <<<<
 ```
 
@@ -67,7 +67,7 @@ Note: the `PODMAN_COMPOSE_WARNING_LOGS=false` env var is documented but [does no
 
 If you see errors about `pasta` not found or `aardvark-dns binary not found`, install the networking packages:
 
-```
+```bash
 # Debian/Ubuntu
 sudo apt install passt aardvark-dns
 ```
@@ -78,9 +78,9 @@ sudo apt install passt aardvark-dns
 
 In rootless Podman, the host UID is remapped to UID 0 inside the container's user namespace. This means bind-mounted workspace files appear as `root:root` inside the container, so a non-root `remoteUser` (like `vscode`) can't write to them.
 
-crib automatically adds `--userns=keep-id` when running rootless Podman. This maps your host UID to the same UID inside the container, so workspace files have correct ownership without any manual configuration.
+`crib` automatically adds `--userns=keep-id` when running rootless Podman. This maps your host UID to the same UID inside the container, so workspace files have correct ownership without any manual configuration.
 
-If you need to override this behavior, set a different `--userns` value in your devcontainer.json:
+If you need to override this behavior, set a different `--userns` value in your `devcontainer.json`:
 
 ```jsonc
 // devcontainer.json
@@ -89,9 +89,9 @@ If you need to override this behavior, set a different `--userns` value in your 
 }
 ```
 
-When an explicit `--userns` is present in `runArgs`, crib won't inject `--userns=keep-id`.
+When an explicit `--userns` is present in `runArgs`, `crib` won't inject `--userns=keep-id`.
 
-For Docker Compose workspaces, crib injects `userns_mode: "keep-id"` in the compose override. Since podman-compose 1.0+ creates pods by default and `--userns` is incompatible with `--pod`, crib also disables pod creation via `x-podman: { in_pod: false }` in the override.
+For Docker Compose workspaces, `crib` injects `userns_mode: "keep-id"` in the compose override. Since podman-compose 1.0+ creates pods by default and `--userns` is incompatible with `--pod`, `crib` also disables pod creation via `x-podman: { in_pod: false }` in the override.
 
 ## Bind mount changed permissions on host files
 
@@ -99,7 +99,7 @@ If you ran `chown` or `chmod` inside a container on a bind-mounted directory and
 
 **Check the damage:**
 
-```
+```bash
 ls -la ~/.ssh/
 ```
 
@@ -107,13 +107,13 @@ If you see an unexpected UID/GID (e.g., `100999` or `root`) instead of your user
 
 **Rootless Podman/Docker:** Use `podman unshare` (or `docker` equivalent) to run the fix inside the same user namespace that caused the problem:
 
-```
+```bash
 podman unshare chown -R 0:0 ~/.ssh
 ```
 
 This maps container root (UID 0) back to your host user through the subordinate UID range, restoring your ownership. Then fix permissions:
 
-```
+```bash
 chmod 700 ~/.ssh
 chmod 600 ~/.ssh/*
 chmod 644 ~/.ssh/*.pub ~/.ssh/allowed_signers 2>/dev/null
@@ -121,7 +121,7 @@ chmod 644 ~/.ssh/*.pub ~/.ssh/allowed_signers 2>/dev/null
 
 **Rootful Docker:** Your host user can't chown these back without root:
 
-```
+```bash
 sudo chown -R $(id -u):$(id -g) ~/.ssh
 chmod 700 ~/.ssh
 chmod 600 ~/.ssh/*
