@@ -15,8 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Published ports shown on `crib ps`, `crib up`, `crib restart`, and `crib rebuild`.
   For compose workspaces, ports are parsed from `docker compose ps` output.
 - Documentation website at [fgrehm.github.io/crib](https://fgrehm.github.io/crib/).
+- `-V` / `--verbose` now prints each lifecycle hook command before running it
+  (e.g. `  $ npm install`), making it easier to diagnose hook failures.
 
-### Fixed
+### Changed
 
 - `--debug` now implies `--verbose`: subprocess stdout (hooks, build, compose) is shown
   when debug logging is active.

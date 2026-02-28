@@ -72,6 +72,7 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 		stdout:      e.stdout,
 		stderr:      e.stderr,
 		progress:    e.progress,
+		verbose:     e.verbose,
 	}
 
 	hookErr := runner.runLifecycleHooks(ctx, cfg, workspaceFolder)

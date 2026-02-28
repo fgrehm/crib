@@ -24,6 +24,7 @@ type lifecycleRunner struct {
 	stdout      io.Writer
 	stderr      io.Writer
 	progress    func(string)
+	verbose     bool
 }
 
 // runLifecycleHooks executes the devcontainer lifecycle hooks in order.
@@ -134,6 +135,9 @@ func (r *lifecycleRunner) runHook(ctx context.Context, name string, hook config.
 		execCmd := r.wrapCommand(cmdStr, workspaceFolder)
 
 		r.logger.Debug("executing hook command", "hook", label, "cmd", execCmd)
+		if r.verbose {
+			fmt.Fprintf(r.stderr, "  $ %s\n", cmdStr)
+		}
 		if err := r.driver.ExecContainer(ctx, r.workspaceID, r.containerID, execCmd, nil, r.stdout, r.stderr, envSlice(r.remoteEnv), r.remoteUser); err != nil {
 			return fmt.Errorf("lifecycle hook %q failed: %w", label, err)
 		}
