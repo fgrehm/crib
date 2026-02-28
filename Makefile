@@ -13,8 +13,8 @@ build: ## Build the crib binary
 		-o bin/crib .
 
 install: build ## Install crib to ~/.local/bin
-	install -d -m 755 ~/.local/bin
-	install -m 755 bin/crib ~/.local/bin/crib
+	install -d -m 775 ~/.local/bin
+	install -m 775 bin/crib ~/.local/bin/crib
 
 test: ## Run unit tests
 	go test ./internal/... -short -count=1
