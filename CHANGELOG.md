@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `--debug` now implies `--verbose`: subprocess stdout (hooks, build, compose) is shown
+  when debug logging is active.
+
+### Fixed
+
 - `crib restart` no longer fails with "cannot determine image name" on
   Dockerfile-based workspaces where the stored result had an empty image name.
   Falls back to rebuilding the image instead of erroring.
