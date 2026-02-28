@@ -21,6 +21,12 @@ The shell command automatically detects the best available shell
 (zsh, bash, or sh in order of preference), sets the SHELL environment
 variable, and starts it as a login shell inside the running container.
 Working directory is set to the workspace folder if available.`,
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) > 0 {
+			return fmt.Errorf("shell does not accept arguments (did you mean 'crib exec -- %s'?)", strings.Join(args, " "))
+		}
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		eng, ociDrv, store, err := newEngine()
 		if err != nil {
