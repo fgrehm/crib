@@ -21,6 +21,10 @@ Run `crib` commands from inside or outside the container, with automatic delegat
 
 ## Considering
 
+### Package cache sharing
+
+Share host-level package caches (apt, pip, npm, Go modules, etc.) across all workspaces via bind mounts. Like [vagrant-cachier](https://github.com/fgrehm/vagrant-cachier) for containers. Avoids re-downloading the world on every rebuild. Would be implemented as a bundled plugin using `pre-container-run` mounts.
+
 ### Machine-readable output (`--json`)
 
 Add `--json` or `--format json` flag to commands like `status`, `list` for scripting and tooling integration. The internal data structures already support this.
