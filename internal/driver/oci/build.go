@@ -97,6 +97,9 @@ func (d *OCIDriver) buildBuildArgs(imageName string, opts *driver.BuildOptions, 
 		args = append(args, "--cache-from", c)
 	}
 
+	// Extra options from build.options (before context).
+	args = append(args, opts.Options...)
+
 	// Build context (required, must be last).
 	buildCtx := opts.Context
 	if buildCtx == "" {

@@ -92,6 +92,26 @@ func TestBuildBuildArgs_Minimal(t *testing.T) {
 	}
 }
 
+func TestBuildBuildArgs_WithOptions(t *testing.T) {
+	d := newTestDockerDriver()
+
+	opts := &driver.BuildOptions{
+		Context: "/ctx",
+		Options: []string{"--network=host", "--progress=plain"},
+	}
+
+	args := d.buildBuildArgs("img:latest", opts, false)
+	got := strings.Join(args, " ")
+
+	assertContains(t, got, "--network=host")
+	assertContains(t, got, "--progress=plain")
+
+	// Context must still be last.
+	if !strings.HasSuffix(got, "/ctx") {
+		t.Errorf("expected context at end, got: %s", got)
+	}
+}
+
 func TestBuildBuildArgs_NoBuildArgsNoTarget(t *testing.T) {
 	d := newTestDockerDriver()
 

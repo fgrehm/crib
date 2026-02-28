@@ -210,7 +210,9 @@ or `exec.Command` with no stdin). Docker strictly validates the TTY and errors w
 | `workspaceMount` / `workspaceFolder` | Custom mount parsing, variable expansion |
 | `containerEnv` / `remoteEnv` | Including `${containerEnv:VAR}` resolution |
 | Compose `runServices` | Selective service starting |
-| Build options | `dockerfile`, `context`, `args`, `target`, `cacheFrom` |
+| Build options | `dockerfile`, `context`, `args`, `target`, `cacheFrom`, `options` |
+| `waitFor` | Progress message emitted after the specified stage; default `updateContentCommand` |
+| Parallel object hooks | Object-syntax hook entries run in parallel via `errgroup` |
 
 ### Parsed but Not Enforced
 
@@ -223,10 +225,3 @@ does not act on them. This is intentional for a CLI-only tool.
 | `shutdownAction` | `crib` manages container lifecycle explicitly via `down`/`remove` |
 | `hostRequirements` | Validation not implemented; runtime will fail naturally |
 
-### Not Implemented
-
-| Feature | Description |
-|---------|-------------|
-| `build.options` | Extra Docker build CLI flags; field parsed but not passed to driver |
-| `waitFor` | Field parsed but lifecycle hooks always run sequentially to completion |
-| Parallel object hooks | Spec says object-syntax hook entries run in parallel; `crib` runs them sequentially |

@@ -113,6 +113,9 @@ func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions
 	if err := e.runInitializeCommand(ctx, ws, cfg); err != nil {
 		return nil, fmt.Errorf("initializeCommand: %w", err)
 	}
+	if cfg.WaitFor == "initializeCommand" {
+		e.reportProgress("Container ready.")
+	}
 
 	// Route by config type.
 	var result *UpResult

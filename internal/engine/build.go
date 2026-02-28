@@ -188,6 +188,11 @@ func (e *Engine) doBuild(ctx context.Context, ws *workspace.Workspace, cfg *conf
 		cacheFrom = cfg.Build.CacheFrom
 	}
 
+	var buildOptions []string
+	if cfg.Build != nil {
+		buildOptions = cfg.Build.Options
+	}
+
 	e.reportProgress("Building image...")
 	err = e.driver.BuildImage(ctx, ws.ID, &driver.BuildOptions{
 		PrebuildHash: hash,
@@ -197,6 +202,7 @@ func (e *Engine) doBuild(ctx context.Context, ws *workspace.Workspace, cfg *conf
 		Args:         buildArgs,
 		Target:       buildTarget,
 		CacheFrom:    cacheFrom,
+		Options:      buildOptions,
 		Stdout:       e.stdout,
 		Stderr:       e.stderr,
 	})

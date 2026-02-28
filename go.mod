@@ -13,6 +13,7 @@ require (
 	github.com/moby/patternmatcher v0.6.0
 	github.com/spf13/cobra v1.10.2
 	github.com/tidwall/jsonc v0.3.2
+	golang.org/x/sync v0.19.0
 )
 
 require (
@@ -230,7 +231,6 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.3 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20260209203927-2842357ff358 // indirect
 	golang.org/x/mod v0.33.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect

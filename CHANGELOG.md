@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation website at [fgrehm.github.io/crib](https://fgrehm.github.io/crib/).
 - `-V` / `--verbose` now prints each lifecycle hook command before running it
   (e.g. `  $ npm install`), making it easier to diagnose hook failures.
+- `build.options` from `devcontainer.json` is now passed to `docker build` /
+  `podman build` as extra CLI flags (e.g. `--network=host`, `--progress=plain`).
+- Object-syntax lifecycle hooks now run their named entries in parallel, matching
+  the devcontainer spec. String and array hooks are unchanged (sequential).
+- `waitFor` is now respected: a "Container ready." progress message is emitted
+  after the specified lifecycle stage completes (default: `updateContentCommand`).
 
 ### Changed
 

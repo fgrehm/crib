@@ -88,6 +88,7 @@ type BuildOptions struct {
 	Args         map[string]string
 	Target       string
 	CacheFrom    []string
+	Options      []string // Extra CLI flags from build.options
 	Stdout       io.Writer
 	Stderr       io.Writer
 }
