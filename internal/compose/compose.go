@@ -170,6 +170,15 @@ func (h *Helper) ListContainers(ctx context.Context, projectName string, files [
 type ServiceStatus struct {
 	Service string
 	State   string
+	Ports   []PortBinding
+}
+
+// PortBinding describes a published port mapping for a compose service.
+type PortBinding struct {
+	ContainerPort int
+	HostPort      int
+	HostIP        string
+	Protocol      string
 }
 
 // ListServiceStatuses returns the status of all services in a compose project.
@@ -192,10 +201,16 @@ func (h *Helper) ListServiceStatuses(ctx context.Context, projectName string, fi
 	}
 
 	// Parse JSON output. Both Docker and Podman output a JSON array of objects
-	// with "Labels" and "State" fields.
+	// with "Labels", "State", and "Publishers" fields.
 	var containers []struct {
-		Labels map[string]string `json:"Labels"`
-		State  string            `json:"State"`
+		Labels     map[string]string `json:"Labels"`
+		State      string            `json:"State"`
+		Publishers []struct {
+			URL           string `json:"URL"`
+			TargetPort    int    `json:"TargetPort"`
+			PublishedPort int    `json:"PublishedPort"`
+			Protocol      string `json:"Protocol"`
+		} `json:"Publishers"`
 	}
 	if err := json.Unmarshal(stdoutBuf.Bytes(), &containers); err != nil {
 		return nil, fmt.Errorf("parsing compose ps output: %w", err)
@@ -207,10 +222,22 @@ func (h *Helper) ListServiceStatuses(ctx context.Context, projectName string, fi
 		if svc == "" {
 			continue
 		}
-		statuses = append(statuses, ServiceStatus{
+		ss := ServiceStatus{
 			Service: svc,
 			State:   strings.ToLower(c.State),
-		})
+		}
+		for _, p := range c.Publishers {
+			if p.PublishedPort == 0 {
+				continue
+			}
+			ss.Ports = append(ss.Ports, PortBinding{
+				ContainerPort: p.TargetPort,
+				HostPort:      p.PublishedPort,
+				HostIP:        p.URL,
+				Protocol:      p.Protocol,
+			})
+		}
+		statuses = append(statuses, ss)
 	}
 
 	return statuses, nil

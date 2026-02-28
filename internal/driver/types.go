@@ -13,6 +13,15 @@ type ContainerDetails struct {
 	Created string
 	State   ContainerState
 	Config  ContainerConfig
+	Ports   []PortBinding
+}
+
+// PortBinding describes a published port mapping.
+type PortBinding struct {
+	ContainerPort int    // Port inside the container
+	HostPort      int    // Port on the host
+	HostIP        string // Host bind address (e.g. "0.0.0.0")
+	Protocol      string // "tcp" or "udp"
 }
 
 // ContainerState holds the runtime state of a container.
