@@ -11,6 +11,7 @@ import (
 
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/driver"
+	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
@@ -61,6 +62,11 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 
 	// Build run options.
 	runOpts := e.buildRunOptions(cfg, buildRes.imageName, ws.Source, workspaceFolder)
+
+	// Run pre-container-run plugins to inject mounts, env, and extra args.
+	if err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, buildRes.imageName, workspaceFolder); err != nil {
+		return nil, err
+	}
 
 	e.reportProgress("Creating container...")
 	if err := e.driver.RunContainer(ctx, ws.ID, runOpts); err != nil {
@@ -232,4 +238,41 @@ func resolveWorkspaceFolder(cfg *config.DevContainerConfig, projectRoot string) 
 		return cfg.WorkspaceFolder
 	}
 	return "/workspaces/" + filepath.Base(projectRoot)
+}
+
+// runPreContainerRunPlugins dispatches the pre-container-run event to the
+// plugin manager and merges the response into the run options.
+func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, runOpts *driver.RunOptions, imageName, workspaceFolder string) error {
+	if e.plugins == nil {
+		return nil
+	}
+
+	remoteUser := cfg.RemoteUser
+	if remoteUser == "" {
+		remoteUser = cfg.ContainerUser
+	}
+
+	req := &plugin.PreContainerRunRequest{
+		WorkspaceID:     ws.ID,
+		WorkspaceDir:    e.store.WorkspaceDir(ws.ID),
+		SourceDir:       ws.Source,
+		Runtime:         e.runtimeName,
+		ImageName:       imageName,
+		RemoteUser:      remoteUser,
+		WorkspaceFolder: workspaceFolder,
+		ContainerName:   "crib-" + ws.ID,
+	}
+
+	resp, err := e.plugins.RunPreContainerRun(ctx, req)
+	if err != nil {
+		return fmt.Errorf("running pre-container-run plugins: %w", err)
+	}
+
+	runOpts.Mounts = append(runOpts.Mounts, resp.Mounts...)
+	for k, v := range resp.Env {
+		runOpts.Env = append(runOpts.Env, k+"="+v)
+	}
+	runOpts.ExtraArgs = append(runOpts.ExtraArgs, resp.RunArgs...)
+
+	return nil
 }

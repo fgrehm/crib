@@ -195,6 +195,12 @@ func (s *Store) ClearHookMarkers(id string) error {
 	return nil
 }
 
-func (s *Store) workspaceDir(id string) string {
+// WorkspaceDir returns the on-disk directory for a workspace.
+func (s *Store) WorkspaceDir(id string) string {
 	return filepath.Join(s.baseDir, id)
+}
+
+// workspaceDir is an internal alias kept for backward compatibility within the package.
+func (s *Store) workspaceDir(id string) string {
+	return s.WorkspaceDir(id)
 }

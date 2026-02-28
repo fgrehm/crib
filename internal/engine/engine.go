@@ -14,19 +14,22 @@ import (
 	"github.com/fgrehm/crib/internal/compose"
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/driver"
+	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
 // Engine orchestrates devcontainer lifecycle operations.
 type Engine struct {
-	driver   driver.Driver
-	compose  *compose.Helper
-	store    *workspace.Store
-	logger   *slog.Logger
-	stdout   io.Writer
-	stderr   io.Writer
-	verbose  bool
-	progress func(string)
+	driver      driver.Driver
+	compose     *compose.Helper
+	store       *workspace.Store
+	plugins     *plugin.Manager
+	runtimeName string
+	logger      *slog.Logger
+	stdout      io.Writer
+	stderr      io.Writer
+	verbose     bool
+	progress    func(string)
 }
 
 // New creates an Engine with the given dependencies.
@@ -65,6 +68,16 @@ func (e *Engine) composeStdout() io.Writer {
 // SetProgress sets a callback for user-facing progress messages.
 func (e *Engine) SetProgress(fn func(string)) {
 	e.progress = fn
+}
+
+// SetPlugins attaches a plugin manager to the engine.
+func (e *Engine) SetPlugins(m *plugin.Manager) {
+	e.plugins = m
+}
+
+// SetRuntime stores the runtime name (e.g. "docker", "podman") for plugin requests.
+func (e *Engine) SetRuntime(name string) {
+	e.runtimeName = name
 }
 
 // reportProgress sends a message to the progress callback (if set)
