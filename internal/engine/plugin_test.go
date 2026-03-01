@@ -159,6 +159,84 @@ func TestRunPreContainerRunPlugins_RemoteUserFallback(t *testing.T) {
 	}
 }
 
+func TestRunPreContainerRunPlugins_CustomizationsPassthrough(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-1", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	tp := &testPlugin{resp: &plugin.PreContainerRunResponse{}}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(tp)
+
+	eng := &Engine{
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Customizations = map[string]any{
+		"crib": map[string]any{
+			"coding-agents": map[string]any{
+				"credentials": "workspace",
+			},
+		},
+	}
+	runOpts := &driver.RunOptions{}
+
+	if _, err := eng.runPreContainerRunPlugins(context.Background(), ws, cfg, runOpts, "img", "/workspaces/project"); err != nil {
+		t.Fatal(err)
+	}
+
+	if tp.req.Customizations == nil {
+		t.Fatal("expected Customizations to be set")
+	}
+	caConfig, ok := tp.req.Customizations["coding-agents"]
+	if !ok {
+		t.Fatal("expected coding-agents key in Customizations")
+	}
+	m, ok := caConfig.(map[string]any)
+	if !ok {
+		t.Fatal("expected coding-agents to be a map")
+	}
+	if m["credentials"] != "workspace" {
+		t.Errorf("expected credentials=workspace, got %v", m["credentials"])
+	}
+}
+
+func TestRunPreContainerRunPlugins_NilCustomizations(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-1", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	tp := &testPlugin{resp: &plugin.PreContainerRunResponse{}}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(tp)
+
+	eng := &Engine{
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+	}
+
+	cfg := &config.DevContainerConfig{}
+	runOpts := &driver.RunOptions{}
+
+	if _, err := eng.runPreContainerRunPlugins(context.Background(), ws, cfg, runOpts, "img", "/workspaces/project"); err != nil {
+		t.Fatal(err)
+	}
+
+	if tp.req.Customizations != nil {
+		t.Errorf("expected nil Customizations when config has none, got %v", tp.req.Customizations)
+	}
+}
+
 func TestExecPluginCopies(t *testing.T) {
 	// Create a staging file on "host".
 	staging := t.TempDir()

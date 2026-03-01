@@ -16,14 +16,15 @@ type Plugin interface {
 // that is about to be created. Plugins use this to decide what mounts,
 // env vars, or extra args to inject.
 type PreContainerRunRequest struct {
-	WorkspaceID     string // unique workspace identifier
-	WorkspaceDir    string // ~/.crib/workspaces/{id}/
-	SourceDir       string // project root on host
-	Runtime         string // "docker" or "podman"
-	ImageName       string // resolved image name
-	RemoteUser      string // user inside the container
-	WorkspaceFolder string // path inside container
-	ContainerName   string // crib-{workspace-id}
+	WorkspaceID     string         // unique workspace identifier
+	WorkspaceDir    string         // ~/.crib/workspaces/{id}/
+	SourceDir       string         // project root on host
+	Runtime         string         // "docker" or "podman"
+	ImageName       string         // resolved image name
+	RemoteUser      string         // user inside the container
+	WorkspaceFolder string         // path inside container
+	ContainerName   string         // crib-{workspace-id}
+	Customizations  map[string]any // customizations.crib from devcontainer.json
 }
 
 // PreContainerRunResponse carries additions that the plugin wants injected

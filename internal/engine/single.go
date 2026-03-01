@@ -260,6 +260,16 @@ func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Wo
 		remoteUser = cfg.ContainerUser
 	}
 
+	// Extract customizations.crib from devcontainer.json for plugins.
+	var cribCustomizations map[string]any
+	if cfg.Customizations != nil {
+		if crib, ok := cfg.Customizations["crib"]; ok {
+			if m, ok := crib.(map[string]any); ok {
+				cribCustomizations = m
+			}
+		}
+	}
+
 	req := &plugin.PreContainerRunRequest{
 		WorkspaceID:     ws.ID,
 		WorkspaceDir:    e.store.WorkspaceDir(ws.ID),
@@ -269,6 +279,7 @@ func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Wo
 		RemoteUser:      remoteUser,
 		WorkspaceFolder: workspaceFolder,
 		ContainerName:   "crib-" + ws.ID,
+		Customizations:  cribCustomizations,
 	}
 
 	resp, err := e.plugins.RunPreContainerRun(ctx, req)
