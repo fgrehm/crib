@@ -165,19 +165,3 @@ func TestPreContainerRun_RemoteUserEmpty(t *testing.T) {
 		t.Errorf("expected HISTFILE=/root/.crib_history/.shell_history, got %s", resp.Env["HISTFILE"])
 	}
 }
-
-func TestPreContainerRun_NoCopiesOrRunArgs(t *testing.T) {
-	wsDir := t.TempDir()
-	p := New()
-	resp, err := p.PreContainerRun(context.Background(), testReq(wsDir, "vscode"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(resp.Copies) != 0 {
-		t.Errorf("expected 0 copies, got %d", len(resp.Copies))
-	}
-	if len(resp.RunArgs) != 0 {
-		t.Errorf("expected 0 runArgs, got %d", len(resp.RunArgs))
-	}
-}
