@@ -19,6 +19,7 @@ const pages = [
   "commands.md",
   "guides/lifecycle-hooks.md",
   "guides/smart-restart.md",
+  "guides/plugins.md",
   "guides/custom-config.md",
   "reference/troubleshooting.md",
   "reference/changelog.md",
