@@ -190,7 +190,7 @@ chmod 600 ~/.ssh/*
 chmod 644 ~/.ssh/*.pub ~/.ssh/allowed_signers 2>/dev/null
 ```
 
-**Prevention:** Avoid mounting into directories where ownership matters (like `.ssh/`). Mount individual files to paths outside sensitive directories instead, as shown in the [commit signing](/crib/guides/git-integration/#commit-signing-with-ssh-keys) section.
+**Prevention:** Avoid bind-mounting directories where ownership matters (like `.ssh/`). The SSH plugin copies individual files into the container via `docker exec` rather than bind mounts, which sidesteps this entirely.
 
 ## Go: "permission denied" writing to module cache
 

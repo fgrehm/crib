@@ -19,7 +19,6 @@ const pages = [
   "commands.md",
   "guides/lifecycle-hooks.md",
   "guides/smart-restart.md",
-  "guides/git-integration.mdx",
   "guides/custom-config.md",
   "reference/troubleshooting.md",
   "reference/changelog.md",

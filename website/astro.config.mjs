@@ -76,7 +76,6 @@ export default defineConfig({
           items: [
             { label: "Lifecycle Hooks", slug: "guides/lifecycle-hooks" },
             { label: "Smart Restart", slug: "guides/smart-restart" },
-            { label: "Git Integration", slug: "guides/git-integration" },
             {
               label: "Custom Config Directory",
               slug: "guides/custom-config",
