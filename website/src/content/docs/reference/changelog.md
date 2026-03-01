@@ -8,7 +8,7 @@ All notable changes to this project will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.0](https://github.com/fgrehm/crib/releases/tag/v0.4.0) - 2026-02-28
+## [0.4.0](https://github.com/fgrehm/crib/releases/tag/v0.4.0) - 2026-03-01
 
 ### Added
 
@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **coding-agents plugin**: automatically injects Claude Code credentials into
   containers so AI coding tools work without re-authentication. Detects
   `~/.claude/.credentials.json` on the host and copies it into the container.
+  Supports a **workspace credentials mode** for teams that need org-specific
+  accounts: set `customizations.crib.coding-agents.credentials` to `"workspace"`
+  in `devcontainer.json` to persist container-created credentials across rebuilds
+  instead of injecting host credentials.
+- **ssh plugin**: shares SSH configuration with containers. Forwards the SSH
+  agent socket, copies `~/.ssh/config` and public keys, and extracts git SSH
+  signing config (`gpg.format=ssh`) into a minimal `.gitconfig`. Private keys
+  stay on the host; commit signing works via the forwarded agent (OpenSSH 8.2+).
 - **shell-history plugin**: persists bash/zsh history across container
   recreations. Bind-mounts a history directory from workspace state and sets
   `HISTFILE`.
@@ -27,6 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docker run`, so ports work without manual `runArgs` workarounds.
 - Published ports shown on `crib ps`, `crib up`, `crib restart`, and `crib rebuild`.
   For compose workspaces, ports are parsed from `docker compose ps` output.
+- **Plugin customizations**: plugins now receive `customizations.crib` from
+  `devcontainer.json`, enabling per-project plugin configuration.
 - `-V` / `--verbose` now prints each lifecycle hook command before running it
   (e.g. `  $ npm install`), making it easier to diagnose hook failures.
 - `build.options` from `devcontainer.json` is now passed to `docker build` /

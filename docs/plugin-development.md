@@ -13,6 +13,7 @@ internal/plugin/
   manager.go          -> Registration and event dispatch
   codingagents/       -> Claude Code credentials plugin
   shellhistory/       -> Persistent shell history plugin
+  ssh/                -> SSH agent forwarding, keys, and git signing
 ```
 
 Plugins are registered in `cmd/root.go` via `setupPlugins()` and dispatched by the engine during `upSingle()`.
@@ -42,6 +43,37 @@ type Plugin interface {
 | `RemoteUser`      | User inside the container (from config)         |
 | `WorkspaceFolder` | Path inside container (e.g. `/workspaces/proj`) |
 | `ContainerName`   | `crib-{workspace-id}`                           |
+| `Customizations`  | `customizations.crib` from devcontainer.json    |
+
+The `Customizations` field contains the `crib` namespace from devcontainer.json customizations. Plugins can look up their own config key:
+
+```go
+func getMyConfig(customizations map[string]any) map[string]any {
+    if customizations == nil {
+        return nil
+    }
+    if v, ok := customizations["my-plugin"]; ok {
+        if m, ok := v.(map[string]any); ok {
+            return m
+        }
+    }
+    return nil
+}
+```
+
+Example devcontainer.json:
+
+```json
+{
+  "customizations": {
+    "crib": {
+      "my-plugin": {
+        "setting": "value"
+      }
+    }
+  }
+}
+```
 
 ### Response
 
@@ -180,6 +212,48 @@ upSingle()
   execPluginCopies()                   <- file copies injected via docker exec
   setupAndReturn()                     <- lifecycle hooks, env probe, etc.
 ```
+
+## Bundled Plugins
+
+### coding-agents
+
+Shares Claude Code credentials with containers. Two modes:
+
+**Host mode (default):** Copies `~/.claude/.credentials.json` from the host into the container. Uses `FileCopy` (not bind mounts) because Claude Code does atomic renames on `~/.claude.json`.
+
+**Workspace mode:** Configured via devcontainer.json:
+
+```json
+{
+  "customizations": {
+    "crib": {
+      "coding-agents": {
+        "credentials": "workspace"
+      }
+    }
+  }
+}
+```
+
+In workspace mode, host credentials are not injected. Instead, a persistent directory is bind-mounted to `~/.claude/` inside the container. The user authenticates inside the container on first use, and credentials survive container rebuilds.
+
+A minimal `~/.claude.json` with `{"hasCompletedOnboarding":true}` is re-injected via FileCopy on each rebuild to skip the Claude Code onboarding flow. This file is not persisted because Claude Code does atomic renames on it.
+
+### shell-history
+
+Persists bash/zsh history across container recreations by bind-mounting a history directory from workspace state and setting `HISTFILE`.
+
+### ssh
+
+Shares SSH configuration and enables agent forwarding. Four components:
+
+1. **SSH agent forwarding:** Bind-mounts the host's `SSH_AUTH_SOCK` socket into the container at `/tmp/ssh-agent.sock` and sets the `SSH_AUTH_SOCK` env var. No-op if the agent is not running.
+
+2. **SSH config:** Copies `~/.ssh/config` into the container so host aliases, proxy settings, and other SSH config are available.
+
+3. **SSH public keys:** Copies `*.pub` files from `~/.ssh/` into the container. Private keys are not copied. Git commit signing works via the forwarded SSH agent (requires OpenSSH 8.2+, which can sign using only the public key plus the agent).
+
+4. **Git SSH signing config:** If the host's git config has `gpg.format = ssh`, the plugin extracts signing-related settings (`user.name`, `user.email`, `user.signingkey`, `gpg.format`, `gpg.ssh.program`, `commit.gpgsign`, `tag.gpgsign`) and generates a minimal `.gitconfig` for the container. The `user.signingkey` path is rewritten from the host home to the container home. Skipped entirely if git is not configured for SSH signing.
 
 ## Future: External Plugins
 
