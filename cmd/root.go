@@ -18,6 +18,7 @@ import (
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/plugin/codingagents"
 	"github.com/fgrehm/crib/internal/plugin/shellhistory"
+	pluginssh "github.com/fgrehm/crib/internal/plugin/ssh"
 	"github.com/fgrehm/crib/internal/ui"
 	"github.com/fgrehm/crib/internal/workspace"
 	"github.com/spf13/cobra"
@@ -242,6 +243,7 @@ func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
 	mgr := plugin.NewManager(logger)
 	mgr.Register(codingagents.New())
 	mgr.Register(shellhistory.New())
+	mgr.Register(pluginssh.New())
 	eng.SetPlugins(mgr)
 }
 
