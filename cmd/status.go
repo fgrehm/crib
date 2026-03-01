@@ -82,7 +82,11 @@ func formatPorts(ports []driver.PortBinding) string {
 		if proto == "" {
 			proto = "tcp"
 		}
-		parts[i] = fmt.Sprintf("%d->%d/%s", p.HostPort, p.ContainerPort, proto)
+		if p.RawSpec != "" {
+			parts[i] = p.RawSpec + "/" + proto
+		} else {
+			parts[i] = fmt.Sprintf("%d->%d/%s", p.HostPort, p.ContainerPort, proto)
+		}
 	}
 	return strings.Join(parts, ", ")
 }

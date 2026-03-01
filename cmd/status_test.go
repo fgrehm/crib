@@ -44,6 +44,17 @@ func TestFormatPorts_DefaultProtocol(t *testing.T) {
 	}
 }
 
+func TestFormatPorts_RangeSpec(t *testing.T) {
+	ports := []driver.PortBinding{
+		{HostPort: 8080, ContainerPort: 80, Protocol: "tcp"},
+		{RawSpec: "8000-8010:8000-8010", Protocol: "tcp"},
+	}
+	want := "8000-8010:8000-8010/tcp, 8080->80/tcp"
+	if got := formatPorts(ports); got != want {
+		t.Errorf("formatPorts = %q, want %q", got, want)
+	}
+}
+
 func TestComposePortsToDriver(t *testing.T) {
 	composePorts := []compose.PortBinding{
 		{ContainerPort: 5432, HostPort: 5432, HostIP: "0.0.0.0", Protocol: "tcp"},

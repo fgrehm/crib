@@ -235,6 +235,13 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 	}
 
 	runOpts := e.buildRunOptions(cfg, imageName, ws.Source, workspaceFolder)
+
+	// Run pre-container-run plugins to inject mounts, env, and extra args.
+	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, imageName, workspaceFolder)
+	if err != nil {
+		return nil, err
+	}
+
 	e.reportProgress("Creating container...")
 	if err := e.driver.RunContainer(ctx, ws.ID, runOpts); err != nil {
 		return nil, fmt.Errorf("creating container: %w", err)
@@ -246,6 +253,11 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 	}
 	if container == nil {
 		return nil, fmt.Errorf("container not found after recreation")
+	}
+
+	// Copy plugin files into the container.
+	if pluginResp != nil {
+		e.execPluginCopies(ctx, ws.ID, container.ID, pluginResp.Copies)
 	}
 
 	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, container.ID)
@@ -284,6 +296,7 @@ func (e *Engine) runResumeHooks(ctx context.Context, ws *workspace.Workspace, cf
 		stdout:      e.stdout,
 		stderr:      e.stderr,
 		progress:    e.progress,
+		verbose:     e.verbose,
 	}
 	return runner.runResumeHooks(ctx, cfg, workspaceFolder)
 }

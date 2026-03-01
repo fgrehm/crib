@@ -22,6 +22,7 @@ type PortBinding struct {
 	HostPort      int    // Port on the host
 	HostIP        string // Host bind address (e.g. "0.0.0.0")
 	Protocol      string // "tcp" or "udp"
+	RawSpec       string // Original spec when ports can't be represented as ints (e.g. ranges)
 }
 
 // ContainerState holds the runtime state of a container.

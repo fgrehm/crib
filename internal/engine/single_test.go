@@ -272,6 +272,23 @@ func TestPortSpecToBindings_Empty(t *testing.T) {
 	}
 }
 
+func TestPortSpecToBindings_RangeSpec(t *testing.T) {
+	specs := []string{"8080:80", "8000-8010:8000-8010", "9090:3000"}
+	got := portSpecToBindings(specs)
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3", len(got))
+	}
+	if got[0].HostPort != 8080 || got[0].ContainerPort != 80 {
+		t.Errorf("got[0] = %+v", got[0])
+	}
+	if got[1].RawSpec != "8000-8010:8000-8010" {
+		t.Errorf("got[1].RawSpec = %q, want \"8000-8010:8000-8010\"", got[1].RawSpec)
+	}
+	if got[2].HostPort != 9090 || got[2].ContainerPort != 3000 {
+		t.Errorf("got[2] = %+v", got[2])
+	}
+}
+
 func TestResolveContainerUser(t *testing.T) {
 	tests := []struct {
 		containerUser string

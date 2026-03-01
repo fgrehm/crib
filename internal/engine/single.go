@@ -223,13 +223,22 @@ func collectPorts(forwardPorts, appPort config.StrIntArray) []string {
 }
 
 // portSpecToBindings converts publish spec strings (e.g. "8080:3000") into
-// driver.PortBinding values for display purposes.
+// driver.PortBinding values for display purposes. Specs that cannot be parsed
+// as simple integer ports (e.g. range specs like "8000-8010:8000-8010") are
+// stored with RawSpec for display as-is.
 func portSpecToBindings(specs []string) []driver.PortBinding {
 	var result []driver.PortBinding
 	for _, spec := range specs {
 		host, container, _ := strings.Cut(spec, ":")
-		hostPort, _ := strconv.Atoi(host)
-		containerPort, _ := strconv.Atoi(container)
+		hostPort, errH := strconv.Atoi(host)
+		containerPort, errC := strconv.Atoi(container)
+		if errH != nil || errC != nil {
+			result = append(result, driver.PortBinding{
+				RawSpec:  spec,
+				Protocol: "tcp",
+			})
+			continue
+		}
 		result = append(result, driver.PortBinding{
 			HostPort:      hostPort,
 			ContainerPort: containerPort,
@@ -297,6 +306,12 @@ func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Wo
 }
 
 // execPluginCopies copies staged files into the container via exec.
+//
+// NOTE: Values are embedded in single-quoted shell arguments. This is safe for
+// all current callers (bundled plugins with hardcoded paths like
+// ~/.claude/.credentials.json). If we add external/user-defined plugins, the
+// values must be shell-escaped first (e.g. replace ' with '\'' ) to prevent
+// breakage or injection from paths containing single quotes.
 func (e *Engine) execPluginCopies(ctx context.Context, workspaceID, containerID string, copies []plugin.FileCopy) {
 	for _, cp := range copies {
 		data, err := os.ReadFile(cp.Source)

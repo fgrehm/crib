@@ -92,10 +92,11 @@ Example devcontainer.json:
 
 ```go
 type FileCopy struct {
-    Source string // path on host
-    Target string // path inside container
-    Mode   string // chmod mode (e.g. "0600"), empty for default
-    User   string // chown user (e.g. "vscode"), empty for default
+    Source      string // path on host
+    Target      string // path inside container
+    Mode        string // chmod mode (e.g. "0600"), empty for default
+    User        string // chown user (e.g. "vscode"), empty for default
+    IfNotExists bool   // if true, skip copy when target already exists
 }
 ```
 
