@@ -7,10 +7,6 @@ Items move between sections as priorities shift.
 
 ## Planned
 
-### Shared host configuration
-
-Auto-inject common host config (SSH keys, gitconfig, package caches) into containers without boilerplate in every devcontainer.json.
-
 ### Zero-config project bootstrapping
 
 Detect project type (Ruby, Node, Go, etc.) from conventions and generate a working devcontainer config without the user writing one.
@@ -20,6 +16,10 @@ Detect project type (Ruby, Node, Go, etc.) from conventions and generate a worki
 Run `crib` commands from inside or outside the container, with automatic delegation.
 
 ## Considering
+
+### Standardize container-side plugin paths
+
+Currently plugin mounts land at ad-hoc paths (`~/.crib_history/`, `/tmp/ssh-agent.sock`). A standard base (XDG `$XDG_DATA_HOME/crib/` for persistent data, `/tmp/crib/` for runtime sockets) would be cleaner, but we need more plugins and real-world usage to understand the right shape before committing to a convention.
 
 ### Package cache sharing
 
