@@ -68,7 +68,7 @@ func (p *Plugin) hostMode(req *plugin.PreContainerRunRequest) (*plugin.PreContai
 
 	// Stage credentials file.
 	credsDst := filepath.Join(pluginDir, "credentials.json")
-	if err := copyFile(credsSrc, credsDst, 0o600); err != nil {
+	if err := plugin.CopyFile(credsSrc, credsDst, 0o600); err != nil {
 		return nil, fmt.Errorf("staging credentials: %w", err)
 	}
 
@@ -79,10 +79,7 @@ func (p *Plugin) hostMode(req *plugin.PreContainerRunRequest) (*plugin.PreContai
 	}
 
 	remoteHome := plugin.InferRemoteHome(req.RemoteUser)
-	owner := req.RemoteUser
-	if owner == "" {
-		owner = "root"
-	}
+	owner := plugin.InferOwner(req.RemoteUser)
 
 	return &plugin.PreContainerRunResponse{
 		Copies: []plugin.FileCopy{
@@ -123,10 +120,7 @@ func (p *Plugin) workspaceMode(req *plugin.PreContainerRunRequest) (*plugin.PreC
 	}
 
 	remoteHome := plugin.InferRemoteHome(req.RemoteUser)
-	owner := req.RemoteUser
-	if owner == "" {
-		owner = "root"
-	}
+	owner := plugin.InferOwner(req.RemoteUser)
 
 	return &plugin.PreContainerRunResponse{
 		Mounts: []config.Mount{
@@ -164,13 +158,4 @@ func getCredentialsMode(customizations map[string]any) string {
 		return "workspace"
 	}
 	return "host"
-}
-
-// copyFile copies a single file from src to dst with the given permissions.
-func copyFile(src, dst string, perm os.FileMode) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, data, perm)
 }

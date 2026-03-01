@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"os"
 
 	"github.com/fgrehm/crib/internal/config"
 )
@@ -47,10 +48,29 @@ func InferRemoteHome(user string) string {
 	return "/home/" + user
 }
 
+// InferOwner returns the container user for chown operations.
+// Empty user maps to "root", otherwise returns the user as-is.
+func InferOwner(user string) string {
+	if user == "" {
+		return "root"
+	}
+	return user
+}
+
+// CopyFile copies a single file from src to dst with the given permissions.
+// Shared by plugins that stage host files into workspace state directories.
+func CopyFile(src, dst string, perm os.FileMode) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, perm)
+}
+
 // FileCopy describes a file to copy into the container after creation.
 type FileCopy struct {
-	Source string      // path on host
-	Target string      // path inside container
-	Mode   string      // chmod mode (e.g. "0600"), empty for default
-	User   string      // chown user inside container (e.g. "vscode"), empty for default
+	Source string // path on host
+	Target string // path inside container
+	Mode   string // chmod mode (e.g. "0600"), empty for default
+	User   string // chown user inside container (e.g. "vscode"), empty for default
 }

@@ -68,10 +68,7 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 	}
 
 	remoteHome := plugin.InferRemoteHome(req.RemoteUser)
-	owner := req.RemoteUser
-	if owner == "" {
-		owner = "root"
-	}
+	owner := plugin.InferOwner(req.RemoteUser)
 
 	pluginDir := filepath.Join(req.WorkspaceDir, "plugins", "ssh")
 
@@ -150,7 +147,7 @@ func (p *Plugin) sshConfig(home, pluginDir, remoteHome, owner string) *plugin.Fi
 	}
 
 	dst := filepath.Join(pluginDir, "config")
-	if err := copyFile(src, dst, 0o644); err != nil {
+	if err := plugin.CopyFile(src, dst, 0o644); err != nil {
 		return nil
 	}
 
@@ -189,7 +186,7 @@ func (p *Plugin) sshPublicKeys(home, pluginDir, remoteHome, owner string) []plug
 
 		src := filepath.Join(sshDir, name)
 		dst := filepath.Join(keysDir, name)
-		if err := copyFile(src, dst, 0o644); err != nil {
+		if err := plugin.CopyFile(src, dst, 0o644); err != nil {
 			continue
 		}
 
@@ -289,13 +286,4 @@ func rewriteKeyPath(keyPath, hostHome, remoteHome string) string {
 		return filepath.Join(remoteHome, ".ssh", keyPath[len(hostSSH):])
 	}
 	return keyPath
-}
-
-// copyFile copies a single file from src to dst with the given permissions.
-func copyFile(src, dst string, perm os.FileMode) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, data, perm)
 }
