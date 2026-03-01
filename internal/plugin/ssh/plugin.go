@@ -169,6 +169,10 @@ func (p *Plugin) sshPublicKeys(home, pluginDir, remoteHome, owner string) []plug
 	}
 
 	keysDir := filepath.Join(pluginDir, "keys")
+	if err := os.MkdirAll(keysDir, 0o755); err != nil {
+		return nil
+	}
+
 	var copies []plugin.FileCopy
 
 	for _, entry := range entries {
@@ -178,10 +182,6 @@ func (p *Plugin) sshPublicKeys(home, pluginDir, remoteHome, owner string) []plug
 		}
 		if strings.HasPrefix(name, "authorized_keys") {
 			continue
-		}
-
-		if err := os.MkdirAll(keysDir, 0o755); err != nil {
-			return copies
 		}
 
 		src := filepath.Join(sshDir, name)
