@@ -10,6 +10,12 @@
   --sl-color-accent-high: #1a3a36;
 }
 
+/* Constrain the hero logo on small screens */
+.hero img {
+  max-width: min(400px, 60vw);
+  height: auto;
+}
+
 /* Style inline code in the hero tagline */
 .hero .tagline code {
   background: var(--sl-color-gray-6);
