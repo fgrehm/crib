@@ -23,6 +23,12 @@ func testReq(workspaceDir, remoteUser string) *plugin.PreContainerRunRequest {
 	}
 }
 
+func testReqWithCustomizations(workspaceDir, remoteUser string, customizations map[string]any) *plugin.PreContainerRunRequest {
+	req := testReq(workspaceDir, remoteUser)
+	req.Customizations = customizations
+	return req
+}
+
 // setupCredentials creates the minimal ~/.claude/.credentials.json file.
 func setupCredentials(t *testing.T, home string) {
 	t.Helper()
@@ -42,6 +48,8 @@ func TestName(t *testing.T) {
 		t.Errorf("expected name coding-agents, got %s", p.Name())
 	}
 }
+
+// --- Host mode tests (default behavior) ---
 
 func TestPreContainerRun_CredentialsExist(t *testing.T) {
 	home := t.TempDir()
@@ -232,5 +240,199 @@ func TestPreContainerRun_ConfigGenerated(t *testing.T) {
 	}
 	if parsed["hasCompletedOnboarding"] != true {
 		t.Errorf("expected hasCompletedOnboarding=true, got %v", parsed["hasCompletedOnboarding"])
+	}
+}
+
+func TestPreContainerRun_HostModeExplicit(t *testing.T) {
+	home := t.TempDir()
+	setupCredentials(t, home)
+
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: home}
+	req := testReqWithCustomizations(wsDir, "vscode", map[string]any{
+		"coding-agents": map[string]any{
+			"credentials": "host",
+		},
+	})
+	resp, err := p.PreContainerRun(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Same behavior as default: two copies, no mounts.
+	if len(resp.Mounts) != 0 {
+		t.Errorf("expected 0 mounts in host mode, got %d", len(resp.Mounts))
+	}
+	if len(resp.Copies) != 2 {
+		t.Fatalf("expected 2 copies in host mode, got %d", len(resp.Copies))
+	}
+}
+
+// --- Workspace mode tests ---
+
+func TestPreContainerRun_WorkspaceMode(t *testing.T) {
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: t.TempDir()} // home doesn't matter in workspace mode
+	req := testReqWithCustomizations(wsDir, "vscode", map[string]any{
+		"coding-agents": map[string]any{
+			"credentials": "workspace",
+		},
+	})
+	resp, err := p.PreContainerRun(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+
+	// Should produce one mount (persistent ~/.claude/) and one copy (onboarding config).
+	if len(resp.Mounts) != 1 {
+		t.Fatalf("expected 1 mount, got %d", len(resp.Mounts))
+	}
+	mount := resp.Mounts[0]
+	expectedSource := filepath.Join(wsDir, "plugins", "coding-agents", "claude-state")
+	if mount.Source != expectedSource {
+		t.Errorf("mount source: expected %s, got %s", expectedSource, mount.Source)
+	}
+	if mount.Target != "/home/vscode/.claude" {
+		t.Errorf("mount target: expected /home/vscode/.claude, got %s", mount.Target)
+	}
+	if mount.Type != "bind" {
+		t.Errorf("mount type: expected bind, got %s", mount.Type)
+	}
+
+	if len(resp.Copies) != 1 {
+		t.Fatalf("expected 1 copy (onboarding config only), got %d", len(resp.Copies))
+	}
+	copy := resp.Copies[0]
+	if copy.Target != "/home/vscode/.claude.json" {
+		t.Errorf("config target: expected /home/vscode/.claude.json, got %s", copy.Target)
+	}
+	if copy.User != "vscode" {
+		t.Errorf("config user: expected vscode, got %s", copy.User)
+	}
+}
+
+func TestPreContainerRun_WorkspaceMode_CreatesStateDir(t *testing.T) {
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: t.TempDir()}
+	req := testReqWithCustomizations(wsDir, "vscode", map[string]any{
+		"coding-agents": map[string]any{
+			"credentials": "workspace",
+		},
+	})
+
+	if _, err := p.PreContainerRun(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := filepath.Join(wsDir, "plugins", "coding-agents", "claude-state")
+	info, err := os.Stat(stateDir)
+	if err != nil {
+		t.Fatalf("expected state dir to exist: %v", err)
+	}
+	if !info.IsDir() {
+		t.Errorf("expected state dir to be a directory")
+	}
+}
+
+func TestPreContainerRun_WorkspaceMode_RootUser(t *testing.T) {
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: t.TempDir()}
+	req := testReqWithCustomizations(wsDir, "root", map[string]any{
+		"coding-agents": map[string]any{
+			"credentials": "workspace",
+		},
+	})
+
+	resp, err := p.PreContainerRun(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.Mounts[0].Target != "/root/.claude" {
+		t.Errorf("mount target: expected /root/.claude, got %s", resp.Mounts[0].Target)
+	}
+	if resp.Copies[0].Target != "/root/.claude.json" {
+		t.Errorf("config target: expected /root/.claude.json, got %s", resp.Copies[0].Target)
+	}
+	if resp.Copies[0].User != "root" {
+		t.Errorf("config user: expected root, got %s", resp.Copies[0].User)
+	}
+}
+
+func TestPreContainerRun_WorkspaceMode_EmptyUser(t *testing.T) {
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: t.TempDir()}
+	req := testReqWithCustomizations(wsDir, "", map[string]any{
+		"coding-agents": map[string]any{
+			"credentials": "workspace",
+		},
+	})
+
+	resp, err := p.PreContainerRun(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.Mounts[0].Target != "/root/.claude" {
+		t.Errorf("mount target: expected /root/.claude, got %s", resp.Mounts[0].Target)
+	}
+	if resp.Copies[0].User != "root" {
+		t.Errorf("config user: expected root, got %s", resp.Copies[0].User)
+	}
+}
+
+func TestPreContainerRun_WorkspaceMode_IgnoresHostCreds(t *testing.T) {
+	home := t.TempDir()
+	setupCredentials(t, home) // credentials exist on host but should be ignored
+
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: home}
+	req := testReqWithCustomizations(wsDir, "vscode", map[string]any{
+		"coding-agents": map[string]any{
+			"credentials": "workspace",
+		},
+	})
+
+	resp, err := p.PreContainerRun(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Should not copy credentials even though they exist on host.
+	for _, c := range resp.Copies {
+		if c.Target == "/home/vscode/.claude/.credentials.json" {
+			t.Errorf("workspace mode should not copy host credentials")
+		}
+	}
+}
+
+// --- getCredentialsMode tests ---
+
+func TestGetCredentialsMode(t *testing.T) {
+	tests := []struct {
+		name           string
+		customizations map[string]any
+		want           string
+	}{
+		{"nil", nil, "host"},
+		{"empty", map[string]any{}, "host"},
+		{"no coding-agents key", map[string]any{"other": "value"}, "host"},
+		{"coding-agents not a map", map[string]any{"coding-agents": "string"}, "host"},
+		{"credentials not set", map[string]any{"coding-agents": map[string]any{}}, "host"},
+		{"credentials host", map[string]any{"coding-agents": map[string]any{"credentials": "host"}}, "host"},
+		{"credentials workspace", map[string]any{"coding-agents": map[string]any{"credentials": "workspace"}}, "workspace"},
+		{"credentials unknown", map[string]any{"coding-agents": map[string]any{"credentials": "unknown"}}, "host"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getCredentialsMode(tt.customizations)
+			if got != tt.want {
+				t.Errorf("getCredentialsMode() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
