@@ -16,7 +16,7 @@ internal/plugin/
   ssh/                -> SSH agent forwarding, keys, and git signing
 ```
 
-Plugins are registered in `cmd/root.go` via `setupPlugins()` and dispatched by the engine during `upSingle()`.
+Plugins are registered in `cmd/root.go` via `setupPlugins()` and dispatched by the engine during both `upSingle()` (initial container creation) and `restartRecreateSingle()` (container recreation triggered by `crib restart`).
 
 ## Plugin Interface
 
@@ -200,18 +200,18 @@ The coding-agents plugin uses `FileCopy` instead of mounts for the same reason (
 ## Execution Flow
 
 ```
-upSingle()
-  buildImage()
-  buildRunOptions()                    <- base config
-  runPreContainerRunPlugins()          <- plugins inject mounts/env/runArgs
-    manager.RunPreContainerRun()
-      plugin1.PreContainerRun()
-      plugin2.PreContainerRun()
-      ...merge responses...
-    merge into RunOptions
-  driver.RunContainer()                <- container created with merged options
-  execPluginCopies()                   <- file copies injected via docker exec
-  setupAndReturn()                     <- lifecycle hooks, env probe, etc.
+upSingle()                               restartRecreateSingle()
+  buildImage()                             removeContainer()
+  buildRunOptions()      <- base config    buildRunOptions()      <- base config
+  runPreContainerRunPlugins()              runPreContainerRunPlugins()
+    manager.RunPreContainerRun()             manager.RunPreContainerRun()
+      plugin1.PreContainerRun()                plugin1.PreContainerRun()
+      plugin2.PreContainerRun()                plugin2.PreContainerRun()
+      ...merge responses...                    ...merge responses...
+    merge into RunOptions                    merge into RunOptions
+  driver.RunContainer()                    driver.RunContainer()
+  execPluginCopies()                       execPluginCopies()
+  setupAndReturn()                         setupAndReturn()
 ```
 
 ## Bundled Plugins

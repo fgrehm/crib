@@ -237,7 +237,7 @@ func composePortsToDriver(ports []compose.PortBinding) []driver.PortBinding {
 }
 
 // setupPlugins creates a plugin manager with bundled plugins and attaches it
-// to the engine. Called from commands that create containers (up, rebuild).
+// to the engine. Called from commands that create containers (up, rebuild, restart).
 func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
 	eng.SetRuntime(d.Runtime().String())
 	mgr := plugin.NewManager(logger)
