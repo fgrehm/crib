@@ -69,8 +69,9 @@ func CopyFile(src, dst string, perm os.FileMode) error {
 
 // FileCopy describes a file to copy into the container after creation.
 type FileCopy struct {
-	Source string // path on host
-	Target string // path inside container
-	Mode   string // chmod mode (e.g. "0600"), empty for default
-	User   string // chown user inside container (e.g. "vscode"), empty for default
+	Source      string // path on host
+	Target      string // path inside container
+	Mode        string // chmod mode (e.g. "0600"), empty for default
+	User        string // chown user inside container (e.g. "vscode"), empty for default
+	IfNotExists bool   // skip copy if the target file already exists in the container
 }

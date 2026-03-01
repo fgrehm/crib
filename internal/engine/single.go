@@ -308,12 +308,19 @@ func (e *Engine) execPluginCopies(ctx context.Context, workspaceID, containerID 
 		// Build a shell command that creates the parent dir and writes the file.
 		// Values are single-quoted to handle paths with spaces or special chars.
 		dir := filepath.Dir(cp.Target)
-		shellCmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", dir, cp.Target)
+		writeCmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", dir, cp.Target)
 		if cp.Mode != "" {
-			shellCmd += fmt.Sprintf(" && chmod '%s' '%s'", cp.Mode, cp.Target)
+			writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", cp.Mode, cp.Target)
 		}
 		if cp.User != "" {
-			shellCmd += fmt.Sprintf(" && chown '%s' '%s'", cp.User, cp.Target)
+			writeCmd += fmt.Sprintf(" && chown '%s' '%s'", cp.User, cp.Target)
+		}
+
+		var shellCmd string
+		if cp.IfNotExists {
+			shellCmd = fmt.Sprintf("[ -f '%s' ] || { %s; }", cp.Target, writeCmd)
+		} else {
+			shellCmd = writeCmd
 		}
 
 		err = e.driver.ExecContainer(ctx, workspaceID, containerID,

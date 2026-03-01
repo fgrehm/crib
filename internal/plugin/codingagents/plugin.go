@@ -90,9 +90,10 @@ func (p *Plugin) hostMode(req *plugin.PreContainerRunRequest) (*plugin.PreContai
 				User:   owner,
 			},
 			{
-				Source: configDst,
-				Target: filepath.Join(remoteHome, ".claude.json"),
-				User:   owner,
+				Source:      configDst,
+				Target:      filepath.Join(remoteHome, ".claude.json"),
+				User:        owner,
+				IfNotExists: true,
 			},
 		},
 	}, nil
@@ -132,9 +133,10 @@ func (p *Plugin) workspaceMode(req *plugin.PreContainerRunRequest) (*plugin.PreC
 		},
 		Copies: []plugin.FileCopy{
 			{
-				Source: configDst,
-				Target: filepath.Join(remoteHome, ".claude.json"),
-				User:   owner,
+				Source:      configDst,
+				Target:      filepath.Join(remoteHome, ".claude.json"),
+				User:        owner,
+				IfNotExists: true,
 			},
 		},
 	}, nil

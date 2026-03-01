@@ -101,6 +101,9 @@ func TestPreContainerRun_CredentialsExist(t *testing.T) {
 	if config.User != "vscode" {
 		t.Errorf("config user: expected vscode, got %s", config.User)
 	}
+	if !config.IfNotExists {
+		t.Errorf("config IfNotExists: expected true (don't overwrite user's ~/.claude.json)")
+	}
 }
 
 func TestPreContainerRun_NoCredentialsFile(t *testing.T) {
@@ -311,6 +314,9 @@ func TestPreContainerRun_WorkspaceMode(t *testing.T) {
 	}
 	if copy.User != "vscode" {
 		t.Errorf("config user: expected vscode, got %s", copy.User)
+	}
+	if !copy.IfNotExists {
+		t.Errorf("config IfNotExists: expected true (don't overwrite user's ~/.claude.json)")
 	}
 }
 

@@ -410,6 +410,42 @@ func TestExecPluginCopies_ExecFailure(t *testing.T) {
 	}
 }
 
+func TestExecPluginCopies_IfNotExists(t *testing.T) {
+	staging := t.TempDir()
+	srcFile := filepath.Join(staging, "config.json")
+	if err := os.WriteFile(srcFile, []byte(`{"key":"value"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := &mockDriver{}
+	eng := &Engine{
+		driver: mockDrv,
+		logger: slog.Default(),
+	}
+
+	copies := []plugin.FileCopy{
+		{Source: srcFile, Target: "/home/vscode/.config.json", IfNotExists: true},
+	}
+
+	eng.execPluginCopies(context.Background(), "ws-1", "c-1", copies)
+
+	if len(mockDrv.execCalls) != 1 {
+		t.Fatalf("expected 1 exec call, got %d", len(mockDrv.execCalls))
+	}
+	cmdStr := strings.Join(mockDrv.execCalls[0].cmd, " ")
+	// Command should be guarded with [ ! -f '...' ] || { ... }
+	if !strings.Contains(cmdStr, "[ -f '/home/vscode/.config.json' ]") {
+		t.Errorf("expected existence check in command, got: %s", cmdStr)
+	}
+	if !strings.Contains(cmdStr, "||") {
+		t.Errorf("expected || guard in command, got: %s", cmdStr)
+	}
+	// Should still contain the write logic inside the guard.
+	if !strings.Contains(cmdStr, "cat >") {
+		t.Errorf("expected cat > in command, got: %s", cmdStr)
+	}
+}
+
 // failingExecDriver wraps mockDriver but makes ExecContainer always return an error.
 type failingExecDriver struct {
 	*mockDriver
