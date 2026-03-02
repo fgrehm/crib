@@ -69,6 +69,12 @@ This is the right choice when:
 After switching to workspace mode, run `claude` inside the container and authenticate. From that point on, credentials persist automatically.
 :::
 
+### Credential cleanup
+
+In both modes, plugin data (including credentials) is stored on the host under `~/.crib/workspaces/{id}/plugins/coding-agents/`. Running `crib remove` deletes the workspace and all plugin data with it.
+
+If you delete the project directory without running `crib remove` first, the workspace state (including any cached credentials) remains on disk. To clean it up manually, delete the workspace directory listed by `crib list`, or remove it directly from `~/.crib/workspaces/`.
+
 ---
 
 ## SSH
