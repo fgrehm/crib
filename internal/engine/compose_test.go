@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -349,6 +351,30 @@ func TestGenerateComposeOverride_NilPluginResponse(t *testing.T) {
 	// Both should produce equivalent output (no extra environment/volumes sections).
 	if string(data1) != string(data2) {
 		t.Errorf("nil and empty plugin response should produce same output.\nnil:\n%s\nempty:\n%s", data1, data2)
+	}
+}
+
+func TestResolveComposeUser_ConfigUserTakesPrecedence(t *testing.T) {
+	eng := &Engine{
+		logger: slog.Default(),
+		driver: &mockDriver{},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.RemoteUser = "devuser"
+
+	// When config already specifies a user, resolveComposeUser returns empty
+	// (meaning: don't override, let dispatchPlugins use cfg fields).
+	user := eng.resolveComposeUser(context.Background(), cfg, t.TempDir(), nil)
+	if user != "" {
+		t.Errorf("expected empty user when config has remoteUser, got %q", user)
+	}
+
+	cfg.RemoteUser = ""
+	cfg.ContainerUser = "devuser"
+	user = eng.resolveComposeUser(context.Background(), cfg, t.TempDir(), nil)
+	if user != "" {
+		t.Errorf("expected empty user when config has containerUser, got %q", user)
 	}
 }
 

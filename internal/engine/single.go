@@ -259,12 +259,18 @@ func resolveWorkspaceFolder(cfg *config.DevContainerConfig, projectRoot string) 
 // dispatchPlugins builds a pre-container-run request and dispatches it to the
 // plugin manager. Returns the plugin response (nil if no plugins configured).
 // Used by both single-container and compose paths.
-func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, imageName, workspaceFolder string) (*plugin.PreContainerRunResponse, error) {
+//
+// remoteUser overrides the user from cfg when non-empty. Compose callers pass
+// the user resolved from the service/image so plugins get the correct home
+// directory even when devcontainer.json doesn't set remoteUser/containerUser.
+func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, imageName, workspaceFolder, remoteUser string) (*plugin.PreContainerRunResponse, error) {
 	if e.plugins == nil {
 		return nil, nil
 	}
 
-	remoteUser := cfg.RemoteUser
+	if remoteUser == "" {
+		remoteUser = cfg.RemoteUser
+	}
 	if remoteUser == "" {
 		remoteUser = cfg.ContainerUser
 	}
@@ -303,7 +309,7 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 // plugin manager and merges the response into the run options. Returns the
 // merged response so the caller can process file copies after container creation.
 func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, runOpts *driver.RunOptions, imageName, workspaceFolder string) (*plugin.PreContainerRunResponse, error) {
-	resp, err := e.dispatchPlugins(ctx, ws, cfg, imageName, workspaceFolder)
+	resp, err := e.dispatchPlugins(ctx, ws, cfg, imageName, workspaceFolder, "")
 	if err != nil {
 		return nil, err
 	}

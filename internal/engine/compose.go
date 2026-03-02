@@ -103,8 +103,12 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 		featureImage = img
 	}
 
+	// Resolve the container user from the compose service so plugins get
+	// the correct remote user for home directory paths.
+	composeUser := e.resolveComposeUser(ctx, cfg, configDir, composeFiles)
+
 	// Run pre-container-run plugins to get mounts, env, and file copies.
-	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, featureImage, workspaceFolder)
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, featureImage, workspaceFolder, composeUser)
 	if err != nil {
 		return nil, err
 	}
@@ -171,8 +175,12 @@ func (e *Engine) upComposeFromStored(ctx context.Context, ws *workspace.Workspac
 	// the previously built image instead of the base service image.
 	featureImage := storedResult.ImageName
 
+	// Resolve the container user from the compose service so plugins get
+	// the correct remote user for home directory paths.
+	composeUser := e.resolveComposeUser(ctx, cfg, configDir, composeFiles)
+
 	// Run pre-container-run plugins to get mounts, env, and file copies.
-	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, featureImage, workspaceFolder)
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, featureImage, workspaceFolder, composeUser)
 	if err != nil {
 		return nil, err
 	}
@@ -245,6 +253,35 @@ func (e *Engine) buildComposeFeatures(ctx context.Context, ws *workspace.Workspa
 	}
 
 	return result.imageName, nil
+}
+
+// resolveComposeUser determines the container user for the compose service by
+// querying the compose config and delegating to resolveComposeContainerUser.
+// This is used before plugin dispatch so plugins get the correct remote user
+// even when devcontainer.json doesn't set remoteUser/containerUser.
+func (e *Engine) resolveComposeUser(ctx context.Context, cfg *config.DevContainerConfig, configDir string, composeFiles []string) string {
+	// If devcontainer.json already specifies a user, no need to inspect.
+	if cfg.RemoteUser != "" || cfg.ContainerUser != "" {
+		return ""
+	}
+
+	serviceName := cfg.Service
+	svcInfo, err := composehelper.GetServiceInfo(ctx, composeFiles, serviceName, nil)
+	if err != nil {
+		e.logger.Debug("failed to get service info for user resolution", "error", err)
+		return ""
+	}
+
+	// Determine the base image. For build-based services without an explicit
+	// image tag, we can't resolve the image name without building first, so
+	// fall back to whatever resolveComposeContainerUser can determine.
+	baseImage := svcInfo.Image
+
+	user := e.resolveComposeContainerUser(ctx, cfg, svcInfo.User, baseImage)
+	if user == "root" {
+		return ""
+	}
+	return user
 }
 
 // generateComposeOverride creates a temporary compose override file that adds

@@ -123,7 +123,7 @@ func TestDispatchPlugins_ReturnsResponseWithoutMerging(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.RemoteUser = "vscode"
 
-	resp, err := eng.dispatchPlugins(context.Background(), ws, cfg, "ubuntu:22.04", "/workspaces/project")
+	resp, err := eng.dispatchPlugins(context.Background(), ws, cfg, "ubuntu:22.04", "/workspaces/project", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestDispatchPlugins_NilManager(t *testing.T) {
 	ws := &workspace.Workspace{ID: "ws-1"}
 	cfg := &config.DevContainerConfig{}
 
-	resp, err := eng.dispatchPlugins(context.Background(), ws, cfg, "img", "/workspaces/project")
+	resp, err := eng.dispatchPlugins(context.Background(), ws, cfg, "img", "/workspaces/project", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -505,6 +505,67 @@ func TestExecPluginCopies_IfNotExists(t *testing.T) {
 	// Should still contain the write logic inside the guard.
 	if !strings.Contains(cmdStr, "cat >") {
 		t.Errorf("expected cat > in command, got: %s", cmdStr)
+	}
+}
+
+func TestDispatchPlugins_ExplicitRemoteUserOverride(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-1", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	tp := &testPlugin{resp: &plugin.PreContainerRunResponse{}}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(tp)
+
+	eng := &Engine{
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+	}
+
+	// Config has no remoteUser/containerUser, but caller passes explicit user.
+	cfg := &config.DevContainerConfig{}
+
+	_, err := eng.dispatchPlugins(context.Background(), ws, cfg, "ubuntu:22.04", "/workspaces/project", "vscode")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tp.req.RemoteUser != "vscode" {
+		t.Errorf("expected RemoteUser=vscode from explicit override, got %s", tp.req.RemoteUser)
+	}
+}
+
+func TestDispatchPlugins_ExplicitRemoteUserOverridesConfig(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-1", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	tp := &testPlugin{resp: &plugin.PreContainerRunResponse{}}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(tp)
+
+	eng := &Engine{
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+	}
+
+	// Config has remoteUser set, but explicit override takes precedence.
+	cfg := &config.DevContainerConfig{}
+	cfg.RemoteUser = "devuser"
+
+	_, err := eng.dispatchPlugins(context.Background(), ws, cfg, "ubuntu:22.04", "/workspaces/project", "nodeuser")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tp.req.RemoteUser != "nodeuser" {
+		t.Errorf("expected RemoteUser=nodeuser from explicit override, got %s", tp.req.RemoteUser)
 	}
 }
 

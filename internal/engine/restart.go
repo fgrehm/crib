@@ -178,8 +178,14 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 		return nil, fmt.Errorf("compose is not available")
 	}
 
+	// Resolve the container user from the compose service so plugins get
+	// the correct remote user for home directory paths.
+	cd := configDir(ws)
+	composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
+	composeUser := e.resolveComposeUser(ctx, cfg, cd, composeFiles)
+
 	// Run pre-container-run plugins to get mounts, env, and file copies.
-	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder)
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, composeUser)
 	if err != nil {
 		return nil, err
 	}
