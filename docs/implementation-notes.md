@@ -25,9 +25,11 @@ Without it, podman-compose tries to remove a pod named `pod_crib-<id>` that was 
 causing a "no pod with name or ID ... found" error. `composeDown` generates a temporary
 override for this.
 
-**Files**: `internal/engine/single.go` (RunOptions), `internal/engine/compose.go`
-(generateComposeOverride, composeDown, writePodmanDownOverride),
-`internal/driver/oci/container.go` (buildRunArgs).
+**Files**:
+
+- `internal/engine/single.go` (`RunOptions`)
+- `internal/engine/compose.go` (`generateComposeOverride`, `composeDown`, `writePodmanDownOverride`)
+- `internal/driver/oci/container.go` (`buildRunArgs`)
 
 ### Version managers (mise, rbenv, nvm) not in PATH during lifecycle hooks
 
@@ -49,8 +51,10 @@ The probe shell type maps to:
 | `loginInteractiveShell`| `-l -i -c env` |
 | `none`                 | skip probing |
 
-**Files**: `internal/engine/setup.go` (probeUserEnv, detectUserShell),
-`internal/engine/env.go` (mergeEnv).
+**Files**:
+
+- `internal/engine/setup.go` (`probeUserEnv`, `detectUserShell`)
+- `internal/engine/env.go` (`mergeEnv`)
 
 ### Container user detection for compose containers
 
@@ -58,11 +62,25 @@ For single containers, `containerUser` and `remoteUser` from `devcontainer.json`
 user runs hooks. For compose containers, the Dockerfile's `USER` directive sets the running
 user, but `devcontainer.json` often doesn't set `remoteUser` or `containerUser`.
 
-If neither is set, `crib` runs `whoami` inside the container to detect the actual user. If the
-detected user is root, it falls through to the default "root" behavior. Non-root users (e.g.
-`vscode` from a `USER vscode` directive) are used as the remote user.
+There are two detection mechanisms, used at different stages:
 
-**Files**: `internal/engine/single.go` (detectContainerUser, setupAndReturn).
+**Pre-start (for plugins):** `resolveComposeUser()` runs before the container exists, so plugins
+get the correct home directory for mounts and file copies. It checks, in order:
+1. `remoteUser`/`containerUser` from devcontainer.json (if set, returns early).
+2. The `user:` directive from the compose service definition.
+3. For build-based services (`build:` instead of `image:`), parses the Dockerfile to find the
+   last `USER` instruction and the base image (`resolveComposeDockerfileInfo`).
+4. Inspects the base image metadata via `docker image inspect`.
+
+**Post-start (for hooks):** `detectContainerUser()` runs `whoami` inside the running container.
+If the detected user is root, it falls through to the default "root" behavior. Non-root users
+(e.g. `vscode` from a `USER vscode` directive) are used as the remote user.
+
+**Files**:
+
+- `internal/engine/compose.go` (`resolveComposeUser`, `resolveComposeDockerfileInfo`)
+- `internal/engine/build.go` (`resolveComposeContainerUser`)
+- `internal/engine/single.go` (`detectContainerUser`, `setupAndReturn`)
 
 ### Smart restart with change detection
 
@@ -86,8 +104,10 @@ Change detection uses JSON comparison of the stored `MergedConfig` against a fre
 and substituted config. Fields are classified as "image-affecting" or "safe" based on
 whether they require a new image build or just container runtime configuration.
 
-**Files**: `internal/engine/engine.go` (Restart, detectConfigChange, restartSimple,
-restartWithRecreate), `internal/engine/lifecycle.go` (runResumeHooks).
+**Files**:
+
+- `internal/engine/engine.go` (`Restart`, `detectConfigChange`, `restartSimple`, `restartWithRecreate`)
+- `internal/engine/lifecycle.go` (`runResumeHooks`)
 
 ### Early result persistence
 
@@ -100,8 +120,10 @@ or if they fail. A second save after setup completes updates the result with the
 This is particularly useful when iterating on a new devcontainer setup where lifecycle
 hooks often fail (missing dependencies, broken scripts, etc.).
 
-**Files**: `internal/engine/engine.go` (Up, saveResult),
-`internal/engine/single.go` (setupAndReturn).
+**Files**:
+
+- `internal/engine/engine.go` (`Up`, `saveResult`)
+- `internal/engine/single.go` (`setupAndReturn`)
 
 ### UID/GID sync conflicts with existing users
 
@@ -110,8 +132,9 @@ match the host user. On images like `ubuntu:24.04`, standard users/groups may al
 the target UID/GID (e.g. the `ubuntu` user at UID 1000). `crib` detects these conflicts and
 moves the conflicting user/group to a free UID/GID before performing the sync.
 
-**Files**: `internal/engine/setup.go` (syncRemoteUserUID, execFindUserByUID,
-execFindGroupByGID).
+**Files**:
+
+- `internal/engine/setup.go` (`syncRemoteUserUID`, `execFindUserByUID`, `execFindGroupByGID`)
 
 ### chown skipped when UIDs already match
 
@@ -119,7 +142,9 @@ After UID sync, if the container and host UIDs already match, `crib` skips `chow
 workspace directory. This avoids failures on rootless Podman where `CAP_CHOWN` doesn't work
 over bind-mounted files (the kernel denies it even for root inside the user namespace).
 
-**Files**: `internal/engine/setup.go` (setupContainer).
+**Files**:
+
+- `internal/engine/setup.go` (`setupContainer`)
 
 ### overrideCommand default differs by scenario
 
@@ -128,8 +153,10 @@ Per the spec, `overrideCommand` defaults to `true` for image/Dockerfile containe
 generation (injecting entrypoint/command only when the flag is explicitly or implicitly true).
 The single container path treats `nil` as `true`.
 
-**Files**: `internal/engine/single.go` (buildRunOptions),
-`internal/engine/compose.go` (generateComposeOverride).
+**Files**:
+
+- `internal/engine/single.go` (`buildRunOptions`)
+- `internal/engine/compose.go` (`generateComposeOverride`)
 
 ### Plugins must be wired into both single-container and compose paths
 
@@ -151,9 +178,11 @@ request and returns the response without merging it into any target:
 
 The `restart.go` file has the same split: `restartRecreateSingle` vs `restartRecreateCompose`.
 
-**Files**: `internal/engine/single.go` (dispatchPlugins, runPreContainerRunPlugins,
-execPluginCopies), `internal/engine/compose.go` (upCompose, generateComposeOverride),
-`internal/engine/restart.go` (restartRecreateSingle, restartRecreateCompose).
+**Files**:
+
+- `internal/engine/single.go` (`dispatchPlugins`, `runPreContainerRunPlugins`, `execPluginCopies`)
+- `internal/engine/compose.go` (`upCompose`, `generateComposeOverride`)
+- `internal/engine/restart.go` (`restartRecreateSingle`, `restartRecreateCompose`)
 
 ### Feature installation for compose containers
 
@@ -180,9 +209,11 @@ via `compose build`). This is spec-correct: the compose service image is managed
 extra flags for the compose service build, set them in the compose file directly
 (e.g. `build.args`, `build.network`).
 
-**Files**: `internal/engine/compose.go` (buildComposeFeatures, generateComposeOverride),
-`internal/engine/build.go` (buildComposeFeatureImage, resolveComposeContainerUser),
-`internal/compose/project.go` (GetServiceInfo).
+**Files**:
+
+- `internal/engine/compose.go` (`buildComposeFeatures`, `generateComposeOverride`)
+- `internal/engine/build.go` (`buildComposeFeatureImage`, `resolveComposeContainerUser`)
+- `internal/compose/project.go` (`GetServiceInfo`)
 
 ### Environment probe runs twice: before and after lifecycle hooks
 
@@ -202,8 +233,10 @@ Tool-manager internal state variables (`__MISE_*`, `MISE_SHELL`) are filtered fr
 probed env. These are session-specific and would confuse tool managers when injected into
 a new shell session via `crib shell`.
 
-**Files**: `internal/engine/setup.go` (setupContainer),
-`internal/engine/env.go` (mergeEnv).
+**Files**:
+
+- `internal/engine/setup.go` (`setupContainer`)
+- `internal/engine/env.go` (`mergeEnv`)
 
 ### TTY detection for exec uses isatty, not ModeCharDevice
 
@@ -216,7 +249,9 @@ This causes `crib exec` to pass `-t` when stdin is `/dev/null` (e.g. in CI, pipe
 or `exec.Command` with no stdin). Docker strictly validates the TTY and errors with
 "the input device is not a TTY." Podman silently ignores `-t` without a real TTY.
 
-**Files**: `cmd/exec.go` (stdinIsTerminal).
+**Files**:
+
+- `cmd/exec.go` (`stdinIsTerminal`)
 
 ## Spec Compliance
 

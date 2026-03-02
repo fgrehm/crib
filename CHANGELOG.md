@@ -10,9 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Plugins (coding-agents, ssh, shell-history) now run for Docker Compose
-  workspaces. Previously, plugins only ran for single-container devcontainers,
-  so `customizations.crib` settings (e.g. workspace credentials mode) had no
-  effect when `dockerComposeFile` was set.
+  workspaces with the correct container user. Previously, plugins only ran for
+  single-container devcontainers, and the initial fix defaulted to root when
+  `remoteUser`/`containerUser` weren't set in `devcontainer.json`, causing
+  permission errors (e.g. `zsh: locking failed for /root/.crib_history/.shell_history`).
+  The engine now resolves the user from the compose service and image before
+  dispatching plugins.
 
 ## [0.4.0] - 2026-03-01
 
