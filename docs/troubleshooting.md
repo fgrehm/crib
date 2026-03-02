@@ -192,6 +192,34 @@ chmod 644 ~/.ssh/*.pub ~/.ssh/allowed_signers 2>/dev/null
 
 **Prevention:** Avoid bind-mounting directories where ownership matters (like `.ssh/`). The SSH plugin copies individual files into the container via `docker exec` rather than bind mounts, which sidesteps this entirely.
 
+## Plugin copy fails with "Read-only file system"
+
+If you see warnings like:
+
+```text
+level=WARN msg="plugin copy: exec failed" target=/home/vscode/.ssh/id_ed25519-sign.pub
+error="... cannot create /home/vscode/.ssh/id_ed25519-sign.pub: Read-only file system"
+```
+
+A compose volume is already mounted at the same path the plugin is trying to write to. This
+happens when your compose file manually mounts directories like `~/.ssh` or `~/.claude` into
+the container:
+
+```yaml
+# compose.yaml — these conflict with the ssh and coding-agents plugins
+volumes:
+  - "./data/ssh:/home/vscode/.ssh"
+  - "./data/claude:/home/vscode/.claude"
+```
+
+The built-in plugins now handle SSH config/keys and Claude credentials automatically, so these
+compose mounts are redundant. Remove them from your compose file and let the plugins manage
+the files instead.
+
+If you were using the compose mount as persistent storage (e.g. authenticating Claude inside the
+container), switch to the coding-agents plugin's
+[workspace mode](/crib/guides/plugins/#workspace-mode) instead.
+
 ## Go: "permission denied" writing to module cache
 
 When using a Go base image (e.g. `golang:1.26`) with a non-root `remoteUser`, you may see:
