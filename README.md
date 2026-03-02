@@ -8,7 +8,7 @@ Devcontainers without the ceremony.
 
 Your `devcontainer.json`, minus the IDE. crib builds the container and stays out of your way.
 
-**[Documentation](https://fgrehm.github.io/crib/)**
+**[Documentation](https://fgrehm.github.io/crib/)** · **[Comparison with alternatives](https://fgrehm.github.io/crib/guides/comparison/)**
 
 > **Note:** This is the `main` branch where active development happens.
 > Docs here may describe unreleased features. For documentation matching

@@ -24,6 +24,7 @@ Key reference pages:
 - **Devcontainer Spec Reference** (`docs/devcontainers-spec.md`) - quick-lookup companion to the [official spec](https://containers.dev/implementors/spec/). Use when implementing or debugging config parsing, lifecycle hooks, Features, Docker Compose, or workspace mounts.
 - **Implementation Notes** (`docs/implementation-notes.md`) - quirks, workarounds, and spec compliance status. Use when debugging rootless Podman issues, lifecycle hooks, container user detection, or checking which spec features are implemented.
 - **Plugin Development** (`docs/plugin-development.md`) - how to write bundled plugins. Covers the plugin interface, response types, merge rules, staging directories, and the bind-mount-file-vs-directory gotcha.
+- **Remote Access RFC** (`docs/rfcs/remote-access.md`) - design for SSH-into-container support and volume workspaces. Internal design doc, not published to website.
 
 ## Architecture
 

@@ -82,6 +82,8 @@ export default defineConfig({
               label: "Custom Config Directory",
               slug: "guides/custom-config",
             },
+            { label: "macOS & Windows", slug: "guides/macos-windows" },
+            { label: "Comparison", slug: "guides/comparison" },
           ],
         },
         {

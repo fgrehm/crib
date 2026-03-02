@@ -5,8 +5,8 @@ description: What crib is, why it exists, and the philosophy behind it.
 
 `crib` is a CLI tool that reads your `.devcontainer/devcontainer.json` config, builds the container, and gets out of your way. No agents injected into your container, no SSH tunnels, no IDE integration. Just Docker (or Podman) doing what Docker does.
 
-:::note[🐧 Linux only]
-`crib` is Linux-only. macOS and Windows support may be added if there's interest.
+:::note[🐧 Linux first]
+Linux is the primary platform. [macOS and Windows work too](/crib/guides/macos-windows/), with caveats.
 :::
 
 ## Principles
@@ -25,7 +25,7 @@ The [devcontainer spec](https://containers.dev/) is a good idea. A JSON file des
 
 Then [DevPod seems to be effectively abandoned](https://github.com/loft-sh/devpod/issues/1915) when Loft Labs shifted focus to vCluster. The project stopped receiving updates in April 2025, with no official statement and no path forward for the community.
 
-`crib` takes a different approach: do less, but do it well. Read the devcontainer config, build the image, run the container, set up the user and lifecycle hooks, done. No agents, no SSH, no providers, no IDE assumptions. Just Docker (or Podman) doing what Docker does.
+`crib` takes a different approach: do less, but do it well. Read the devcontainer config, build the image, run the container, set up the user and lifecycle hooks, done. No agents, no SSH, no providers, no IDE assumptions. Just Docker (or Podman) doing what Docker does. For a detailed breakdown, see the [comparison with alternatives](/crib/guides/comparison/).
 
 ## Background
 

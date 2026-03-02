@@ -37,11 +37,15 @@ Detect when a container is unhealthy or stuck and surface it in `crib status` / 
 
 Tail container logs, especially useful for compose workspaces with multiple services.
 
+### Remote access plugin (SSH into containers)
+
+SSH server inside containers via the plugin system, enabling native filesystem performance on macOS and editor-agnostic remote development. See the [RFC](https://github.com/fgrehm/crib/blob/main/docs/rfcs/remote-access.md) for the full design.
+
 ## Not Planned
 
 These are explicitly out of scope for `crib`'s design philosophy.
 
-- **SSH / remote providers**: `crib` is local-only by design.
+- **Remote/cloud providers**: `crib` is local-only by design.
 - **IDE integration**: No VS Code extension, no JetBrains plugin. CLI only.
 - **Agent injection**: All setup happens via `docker exec` from the host.
 - **Kubernetes / cloud backends**: Local container runtimes only (Docker, Podman).
