@@ -327,7 +327,9 @@ func configDir(ws *workspace.Workspace) string {
 // given workspace. It generates a compose override, brings services up, and
 // returns the primary service container ID. featureImage is the image name to
 // override the primary service with (empty string to skip the override).
-func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder, featureImage string) (string, error) {
+// pluginResp may be nil; when non-nil, plugin mounts and env are included in
+// the compose override.
+func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder, featureImage string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
 	cd := configDir(ws)
 	composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 	projectName := compose.ProjectName(ws.ID)
@@ -339,7 +341,7 @@ func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Work
 	}
 
 	// Generate override and bring services up.
-	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, featureImage)
+	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, featureImage, pluginResp)
 	if err != nil {
 		return "", fmt.Errorf("generating compose override: %w", err)
 	}

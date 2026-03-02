@@ -131,6 +131,30 @@ The single container path treats `nil` as `true`.
 **Files**: `internal/engine/single.go` (buildRunOptions),
 `internal/engine/compose.go` (generateComposeOverride).
 
+### Plugins must be wired into both single-container and compose paths
+
+The engine has two separate code paths for container creation: `upSingle()` for image/Dockerfile
+devcontainers and `upCompose()` for Docker Compose devcontainers. They diverge because single
+containers use `docker run` with `RunOptions`, while compose delegates to `docker compose up`
+with a generated override YAML.
+
+Any feature that affects container creation (plugins, mounts, env vars, labels) must be wired
+into **both** paths. The shared entry point is `dispatchPlugins()`, which builds the plugin
+request and returns the response without merging it into any target:
+
+- **Single-container**: `runPreContainerRunPlugins()` merges the response into `RunOptions`
+  (mounts, env, runArgs), then `execPluginCopies()` runs after container creation.
+- **Compose**: the response is passed to `generateComposeOverride()` which writes plugin
+  mounts as `volumes:` entries and plugin env as `environment:` entries in the override YAML.
+  `runArgs` are ignored (compose owns the container config). `execPluginCopies()` runs after
+  `compose up` finds the container.
+
+The `restart.go` file has the same split: `restartRecreateSingle` vs `restartRecreateCompose`.
+
+**Files**: `internal/engine/single.go` (dispatchPlugins, runPreContainerRunPlugins,
+execPluginCopies), `internal/engine/compose.go` (upCompose, generateComposeOverride),
+`internal/engine/restart.go` (restartRecreateSingle, restartRecreateCompose).
+
 ### Feature installation for compose containers
 
 Devcontainer features (e.g. `ghcr.io/devcontainers/features/node:1`) need special

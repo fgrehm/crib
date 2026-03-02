@@ -11,6 +11,7 @@ import (
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/driver"
 	ocidriver "github.com/fgrehm/crib/internal/driver/oci"
+	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
@@ -49,7 +50,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			// crib labels, userns_mode, and x-podman settings are applied on
 			// restart. Without these, rootless Podman creates a pod that
 			// conflicts with --userns=keep-id.
-			overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, "" /* featureImage already baked in */)
+			overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, "" /* featureImage already baked in */, nil)
 			if err != nil {
 				return nil, fmt.Errorf("generating compose override: %w", err)
 			}
@@ -102,8 +103,14 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 		featureImage = img
 	}
 
+	// Run pre-container-run plugins to get mounts, env, and file copies.
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, featureImage, workspaceFolder)
+	if err != nil {
+		return nil, err
+	}
+
 	// Generate override compose file for crib-specific configuration.
-	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, featureImage)
+	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, featureImage, pluginResp)
 	if err != nil {
 		return nil, fmt.Errorf("generating compose override: %w", err)
 	}
@@ -141,6 +148,11 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 		return nil, err
 	}
 
+	// Copy plugin files into the container.
+	if pluginResp != nil {
+		e.execPluginCopies(ctx, ws.ID, container.ID, pluginResp.Copies)
+	}
+
 	result, setupErr := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
 	if result != nil && featureImage != "" {
 		result.ImageName = featureImage
@@ -159,7 +171,13 @@ func (e *Engine) upComposeFromStored(ctx context.Context, ws *workspace.Workspac
 	// the previously built image instead of the base service image.
 	featureImage := storedResult.ImageName
 
-	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, featureImage)
+	// Run pre-container-run plugins to get mounts, env, and file copies.
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, featureImage, workspaceFolder)
+	if err != nil {
+		return nil, err
+	}
+
+	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, featureImage, pluginResp)
 	if err != nil {
 		return nil, fmt.Errorf("generating compose override: %w", err)
 	}
@@ -176,6 +194,11 @@ func (e *Engine) upComposeFromStored(ctx context.Context, ws *workspace.Workspac
 	container, err := e.findComposeContainer(ctx, ws.ID, projectName, allFiles, dcEnv, "after up")
 	if err != nil {
 		return nil, err
+	}
+
+	// Copy plugin files into the container.
+	if pluginResp != nil {
+		e.execPluginCopies(ctx, ws.ID, container.ID, pluginResp.Copies)
 	}
 
 	result, setupErr := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
@@ -226,7 +249,8 @@ func (e *Engine) buildComposeFeatures(ctx context.Context, ws *workspace.Workspa
 
 // generateComposeOverride creates a temporary compose override file that adds
 // crib-specific labels and configuration to the target service.
-func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder, configDir string, composeFiles []string, featureImage string) (string, error) {
+// pluginResp may be nil; when non-nil, plugin mounts and env are included.
+func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder, configDir string, composeFiles []string, featureImage string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
 	serviceName := cfg.Service
 
 	// Build the override YAML.
@@ -252,18 +276,34 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		b.WriteString("      - 'echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity'\n")
 	}
 
-	// Container environment.
-	if len(cfg.ContainerEnv) > 0 {
+	// Container environment (config + plugins).
+	hasConfigEnv := len(cfg.ContainerEnv) > 0
+	hasPluginEnv := pluginResp != nil && len(pluginResp.Env) > 0
+	if hasConfigEnv || hasPluginEnv {
 		b.WriteString("    environment:\n")
 		for k, v := range cfg.ContainerEnv {
 			fmt.Fprintf(&b, "      %s: %q\n", k, v)
 		}
+		if hasPluginEnv {
+			for k, v := range pluginResp.Env {
+				fmt.Fprintf(&b, "      %s: %q\n", k, v)
+			}
+		}
 	}
 
-	// Workspace mount (volumes).
-	if cfg.WorkspaceMount == "" {
+	// Volumes: workspace mount + plugin mounts.
+	hasWorkspaceMount := cfg.WorkspaceMount == ""
+	hasPluginMounts := pluginResp != nil && len(pluginResp.Mounts) > 0
+	if hasWorkspaceMount || hasPluginMounts {
 		b.WriteString("    volumes:\n")
-		fmt.Fprintf(&b, "      - %s:%s\n", ws.Source, workspaceFolder)
+		if hasWorkspaceMount {
+			fmt.Fprintf(&b, "      - %s:%s\n", ws.Source, workspaceFolder)
+		}
+		if hasPluginMounts {
+			for _, m := range pluginResp.Mounts {
+				fmt.Fprintf(&b, "      - %s:%s\n", m.Source, m.Target)
+			}
+		}
 	}
 
 	// Auto-inject userns_mode: "keep-id" for rootless Podman to fix bind mount

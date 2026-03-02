@@ -95,6 +95,68 @@ func TestRunPreContainerRunPlugins_MergesIntoRunOpts(t *testing.T) {
 	}
 }
 
+func TestDispatchPlugins_ReturnsResponseWithoutMerging(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-1", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	tp := &testPlugin{
+		resp: &plugin.PreContainerRunResponse{
+			Mounts:  []config.Mount{{Type: "bind", Source: "/host/a", Target: "/container/a"}},
+			Env:     map[string]string{"PLUGIN_VAR": "hello"},
+			RunArgs: []string{"--network=host"},
+			Copies:  []plugin.FileCopy{{Source: "/tmp/src", Target: "/tmp/dst"}},
+		},
+	}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(tp)
+
+	eng := &Engine{
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.RemoteUser = "vscode"
+
+	resp, err := eng.dispatchPlugins(context.Background(), ws, cfg, "ubuntu:22.04", "/workspaces/project")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+
+	// Response should contain all plugin data.
+	if len(resp.Mounts) != 1 || resp.Mounts[0].Source != "/host/a" {
+		t.Errorf("expected plugin mount, got %v", resp.Mounts)
+	}
+	if resp.Env["PLUGIN_VAR"] != "hello" {
+		t.Errorf("expected plugin env, got %v", resp.Env)
+	}
+	if len(resp.Copies) != 1 {
+		t.Errorf("expected 1 copy, got %d", len(resp.Copies))
+	}
+}
+
+func TestDispatchPlugins_NilManager(t *testing.T) {
+	eng := &Engine{logger: slog.Default()}
+	ws := &workspace.Workspace{ID: "ws-1"}
+	cfg := &config.DevContainerConfig{}
+
+	resp, err := eng.dispatchPlugins(context.Background(), ws, cfg, "img", "/workspaces/project")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp != nil {
+		t.Errorf("expected nil response when plugins is nil, got %v", resp)
+	}
+}
+
 func TestRunPreContainerRunPlugins_NilManager(t *testing.T) {
 	eng := &Engine{
 		logger: slog.Default(),

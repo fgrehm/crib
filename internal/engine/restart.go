@@ -100,7 +100,7 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		projectName := compose.ProjectName(ws.ID)
 		env := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
 
-		overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, "")
+		overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, "", nil)
 		if err != nil {
 			return nil, fmt.Errorf("generating compose override: %w", err)
 		}
@@ -178,9 +178,20 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 		return nil, fmt.Errorf("compose is not available")
 	}
 
-	containerID, err := e.recreateComposeServices(ctx, ws, cfg, workspaceFolder, "")
+	// Run pre-container-run plugins to get mounts, env, and file copies.
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder)
 	if err != nil {
 		return nil, err
+	}
+
+	containerID, err := e.recreateComposeServices(ctx, ws, cfg, workspaceFolder, "", pluginResp)
+	if err != nil {
+		return nil, err
+	}
+
+	// Copy plugin files into the container.
+	if pluginResp != nil {
+		e.execPluginCopies(ctx, ws.ID, containerID, pluginResp.Copies)
 	}
 
 	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, containerID)

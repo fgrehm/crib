@@ -256,10 +256,10 @@ func resolveWorkspaceFolder(cfg *config.DevContainerConfig, projectRoot string) 
 	return "/workspaces/" + filepath.Base(projectRoot)
 }
 
-// runPreContainerRunPlugins dispatches the pre-container-run event to the
-// plugin manager and merges the response into the run options. Returns the
-// merged response so the caller can process file copies after container creation.
-func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, runOpts *driver.RunOptions, imageName, workspaceFolder string) (*plugin.PreContainerRunResponse, error) {
+// dispatchPlugins builds a pre-container-run request and dispatches it to the
+// plugin manager. Returns the plugin response (nil if no plugins configured).
+// Used by both single-container and compose paths.
+func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, imageName, workspaceFolder string) (*plugin.PreContainerRunResponse, error) {
 	if e.plugins == nil {
 		return nil, nil
 	}
@@ -294,6 +294,21 @@ func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Wo
 	resp, err := e.plugins.RunPreContainerRun(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("running pre-container-run plugins: %w", err)
+	}
+
+	return resp, nil
+}
+
+// runPreContainerRunPlugins dispatches the pre-container-run event to the
+// plugin manager and merges the response into the run options. Returns the
+// merged response so the caller can process file copies after container creation.
+func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, runOpts *driver.RunOptions, imageName, workspaceFolder string) (*plugin.PreContainerRunResponse, error) {
+	resp, err := e.dispatchPlugins(ctx, ws, cfg, imageName, workspaceFolder)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, nil
 	}
 
 	runOpts.Mounts = append(runOpts.Mounts, resp.Mounts...)

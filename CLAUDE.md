@@ -53,6 +53,19 @@ Dependency flow: `cmd/ -> engine/ -> config/, feature/, driver/, compose/, docke
 - State stored in `~/.crib/workspaces/{id}/`.
 - Runtime detection: `CRIB_RUNTIME` env var > podman > docker.
 
+## Dual Code Paths: Single-Container vs Compose
+
+The engine has two separate code paths that diverge at `Up()`:
+
+- **Single-container** (`engine/single.go`): image-based and Dockerfile-based devcontainers. Uses `driver.RunOptions` + `driver.RunContainer()`.
+- **Compose** (`engine/compose.go`): Docker Compose devcontainers. Generates a compose override YAML and delegates to `compose up`.
+
+Both paths converge at `setupAndReturn()` for lifecycle hooks and result saving.
+
+When adding a feature that affects container creation (plugins, mounts, env vars, labels), it must be wired into **both** paths. The compose path cannot use `RunOptions` directly, so inject config via `generateComposeOverride()` (for mounts, env, labels) and `execPluginCopies()` (for file copies after container start). The `restart.go` file also has separate methods for each path (`restartRecreateSingle` vs `restartRecreateCompose`).
+
+`dispatchPlugins()` builds the plugin request and returns the response without merging into any target. Both paths call it, then apply the response differently: single-container merges into `RunOptions`, compose passes it to `generateComposeOverride`.
+
 ## Development Workflow
 
 See the [Development](https://fgrehm.github.io/crib/contributing/development/) page on the docs site for branching model and build instructions.
