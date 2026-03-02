@@ -9,6 +9,7 @@ import (
 
 	composehelper "github.com/fgrehm/crib/internal/compose"
 	"github.com/fgrehm/crib/internal/config"
+	"github.com/fgrehm/crib/internal/dockerfile"
 	"github.com/fgrehm/crib/internal/driver"
 	ocidriver "github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/plugin"
@@ -273,15 +274,56 @@ func (e *Engine) resolveComposeUser(ctx context.Context, cfg *config.DevContaine
 	}
 
 	// Determine the base image. For build-based services without an explicit
-	// image tag, we can't resolve the image name without building first, so
-	// fall back to whatever resolveComposeContainerUser can determine.
+	// image tag, parse the Dockerfile to find the base image and any USER
+	// instruction.
 	baseImage := svcInfo.Image
+	var dockerfileUser string
+	if baseImage == "" && svcInfo.HasBuild {
+		baseImage, dockerfileUser = e.resolveComposeDockerfileInfo(svcInfo)
+	}
+
+	// If the Dockerfile has an explicit USER instruction, prefer that.
+	if dockerfileUser != "" {
+		if dockerfileUser == "root" {
+			return ""
+		}
+		return dockerfileUser
+	}
 
 	user := e.resolveComposeContainerUser(ctx, cfg, svcInfo.User, baseImage)
 	if user == "root" {
 		return ""
 	}
 	return user
+}
+
+// resolveComposeDockerfileInfo reads and parses the Dockerfile referenced by a
+// build-based compose service. Returns (baseImage, user) where user is the last
+// USER instruction in the Dockerfile (empty if none).
+func (e *Engine) resolveComposeDockerfileInfo(svcInfo *composehelper.ServiceInfo) (string, string) {
+	dockerfilePath := svcInfo.Dockerfile
+	if dockerfilePath == "" {
+		dockerfilePath = "Dockerfile"
+	}
+	if !filepath.IsAbs(dockerfilePath) {
+		dockerfilePath = filepath.Join(svcInfo.BuildCtx, dockerfilePath)
+	}
+
+	content, err := os.ReadFile(dockerfilePath)
+	if err != nil {
+		e.logger.Debug("failed to read Dockerfile for user resolution", "path", dockerfilePath, "error", err)
+		return "", ""
+	}
+
+	df, err := dockerfile.Parse(string(content))
+	if err != nil {
+		e.logger.Debug("failed to parse Dockerfile for user resolution", "path", dockerfilePath, "error", err)
+		return "", ""
+	}
+
+	baseImage := df.FindBaseImage(nil, "")
+	user := df.FindUserStatement(nil, nil, "")
+	return baseImage, user
 }
 
 // generateComposeOverride creates a temporary compose override file that adds
