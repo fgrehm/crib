@@ -29,6 +29,18 @@ Share host-level package caches (apt, pip, npm, Go modules, etc.) across all wor
 
 Add `--json` or `--format json` flag to commands like `status`, `list` for scripting and tooling integration. The internal data structures already support this.
 
+### `crib doctor`
+
+Diagnose common problems and stale state. Candidate checks:
+
+- **Orphaned workspaces**: workspace state in `~/.crib/workspaces/` whose source directory no longer exists (e.g. project folder was deleted without running `crib remove`). Flag leftover credentials or plugin data.
+- **Dangling containers**: containers with `crib.workspace` labels whose workspace state is missing.
+- **Runtime availability**: Docker/Podman reachable, compose available.
+- **Rootless Podman quirks**: subuid/subgid ranges, missing `newuidmap`/`newgidmap`.
+- **Stale plugin data**: plugin directories under a workspace that no longer match the active plugin set.
+
+Could offer `--fix` to clean up automatically (remove orphaned state, prune dangling containers).
+
 ### Container health checks
 
 Detect when a container is unhealthy or stuck and surface it in `crib status` / `crib ps`.
