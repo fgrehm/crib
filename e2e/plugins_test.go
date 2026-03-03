@@ -52,10 +52,19 @@ func TestE2EComposeShellHistory(t *testing.T) {
 		t.Fatal("docker compose or podman compose not available")
 	}
 
-	// Set up a compose project with a non-root user (node:22-alpine defaults
-	// to USER node). No remoteUser in devcontainer.json, so the plugin must
+	// Set up a compose project with a non-root user (node:22-alpine with
+	// USER node). No remoteUser in devcontainer.json, so the plugin must
 	// resolve the user from the Dockerfile's USER directive.
-	parent := t.TempDir()
+	//
+	// Use os.MkdirTemp instead of t.TempDir() for the project directory.
+	// chownWorkspace runs "chown -R node:" on the bind-mounted workspace,
+	// which changes ownership of all files including .devcontainer/*.
+	// On rootful Docker, this makes the files unremovable by the test user,
+	// causing t.TempDir() cleanup to fail the test.
+	parent, err := os.MkdirTemp("", "TestE2EComposeShellHistory-*")
+	if err != nil {
+		t.Fatal(err)
+	}
 	projectDir := filepath.Join(parent, "compose-plugin-e2e")
 	devDir := filepath.Join(projectDir, ".devcontainer")
 	if err := os.MkdirAll(devDir, 0o755); err != nil {
@@ -76,8 +85,8 @@ func TestE2EComposeShellHistory(t *testing.T) {
 }`
 
 	for name, content := range map[string]string{
-		"Dockerfile":       dockerfile,
-		"compose.yml":      composeYML,
+		"Dockerfile":        dockerfile,
+		"compose.yml":       composeYML,
 		"devcontainer.json": devcontainerJSON,
 	} {
 		if err := os.WriteFile(filepath.Join(devDir, name), []byte(content), 0o644); err != nil {
@@ -90,6 +99,11 @@ func TestE2EComposeShellHistory(t *testing.T) {
 	t.Cleanup(func() {
 		cmd := cribCmd(projectDir, cribHome, "remove")
 		_ = cmd.Run()
+		// Best-effort removal. On rootful Docker, chownWorkspace changes file
+		// ownership to the container user, preventing the test user from
+		// deleting the directory. CI runners are ephemeral so leftover temp
+		// dirs are harmless.
+		_ = os.RemoveAll(parent)
 	})
 
 	mustRunCrib(t, projectDir, cribHome, "up")
