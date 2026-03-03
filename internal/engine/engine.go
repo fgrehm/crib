@@ -68,11 +68,17 @@ func (e *Engine) composeStdout() io.Writer {
 // SetProgress sets a callback for user-facing progress messages.
 func (e *Engine) SetProgress(fn func(string)) {
 	e.progress = fn
+	if e.plugins != nil {
+		e.plugins.SetProgress(fn)
+	}
 }
 
 // SetPlugins attaches a plugin manager to the engine.
 func (e *Engine) SetPlugins(m *plugin.Manager) {
 	e.plugins = m
+	if e.progress != nil {
+		m.SetProgress(e.progress)
+	}
 }
 
 // SetRuntime stores the runtime name (e.g. "docker", "podman") for plugin requests.

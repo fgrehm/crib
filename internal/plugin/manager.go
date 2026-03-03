@@ -7,13 +7,19 @@ import (
 
 // Manager holds registered plugins and dispatches events to them.
 type Manager struct {
-	plugins []Plugin
-	logger  *slog.Logger
+	plugins  []Plugin
+	logger   *slog.Logger
+	progress func(string)
 }
 
 // NewManager creates a Manager with the given logger.
 func NewManager(logger *slog.Logger) *Manager {
 	return &Manager{logger: logger}
+}
+
+// SetProgress sets a callback for user-facing progress messages (e.g. "Running plugin: foo").
+func (m *Manager) SetProgress(fn func(string)) {
+	m.progress = fn
 }
 
 // Register adds a plugin to the manager.
@@ -31,6 +37,9 @@ func (m *Manager) RunPreContainerRun(ctx context.Context, req *PreContainerRunRe
 	}
 
 	for _, p := range m.plugins {
+		if m.progress != nil {
+			m.progress("  Running plugin: " + p.Name())
+		}
 		resp, err := p.PreContainerRun(ctx, req)
 		if err != nil {
 			m.logger.Warn("plugin error, skipping", "plugin", p.Name(), "error", err)
