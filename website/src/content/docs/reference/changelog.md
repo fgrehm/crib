@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   permission errors (e.g. `zsh: locking failed for /root/.crib_history/.shell_history`).
   The engine now resolves the user from the compose service and image before
   dispatching plugins.
+- Compose override files are now written to a system temp directory instead of
+  inside `.devcontainer/`. Previously, `chown -R` during container setup could
+  change ownership of the override file, making it unremovable by the host user.
 
 ## [0.4.0](https://github.com/fgrehm/crib/releases/tag/v0.4.0) - 2026-03-01
 
