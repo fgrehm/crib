@@ -186,7 +186,7 @@ The `restart.go` file has the same split: `restartRecreateSingle` vs `restartRec
 
 ### Feature installation for compose containers
 
-Devcontainer features (e.g. `ghcr.io/devcontainers/features/node:1`) need special
+DevContainer Features (e.g. `ghcr.io/devcontainers/features/node:1`) need special
 handling for compose-based containers. Unlike single containers where `crib` controls the
 entire image build, compose services define their own images or Dockerfiles.
 

@@ -5,7 +5,7 @@ description: Common issues and solutions when using crib.
 
 ## `.crib-features/` in your project directory
 
-When devcontainer features are installed, `crib` creates a `.crib-features/` directory inside your project's build context during image builds. It's cleaned up automatically after the build, but if the process is killed (e.g. SIGKILL, power loss), it may be left behind.
+When DevContainer Features are installed, `crib` creates a `.crib-features/` directory inside your project's build context during image builds. It's cleaned up automatically after the build, but if the process is killed (e.g. SIGKILL, power loss), it may be left behind.
 
 Add it to your global gitignore so it never gets committed in any project:
 

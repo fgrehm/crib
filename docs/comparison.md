@@ -89,7 +89,7 @@ The gap that `crib` plugins fill: with `devcontainers/cli`, if you want SSH forw
 
 **`read-configuration` for scripting.** Useful for tooling that needs to parse devcontainer config programmatically. `crib`'s `--json` flag is planned but not shipped yet.
 
-**Feature/template testing tools.** If you're authoring custom devcontainer features, use `devcontainers/cli`'s `features test` and `templates apply`. `crib` consumes features, it doesn't help you write them.
+**Feature/template testing tools.** You can [test Features locally with `crib`](/crib/guides/authoring-features/#testing-locally-with-crib), but for automated test suites and template scaffolding, use `devcontainers/cli`'s `features test` and `templates apply`.
 
 **Stopping without removing the container.** `crib`'s `down` (and its `stop` alias) always removes the container. This is a deliberate choice, lifecycle hook markers are cleared so the next `up` is clean. If you need to pause a container without removing it, use `docker stop` directly.
 

@@ -21,7 +21,7 @@ Canonical docs live in `docs/` and are symlinked into the website for publishing
 
 Key reference pages:
 
-- **Devcontainer Spec Reference** (`docs/devcontainers-spec.md`) - quick-lookup companion to the [official spec](https://containers.dev/implementors/spec/). Use when implementing or debugging config parsing, lifecycle hooks, Features, Docker Compose, or workspace mounts.
+- **DevContainer Spec Reference** (`docs/devcontainers-spec.md`) - quick-lookup companion to the [official spec](https://containers.dev/implementors/spec/). Use when implementing or debugging config parsing, lifecycle hooks, Features, Docker Compose, or workspace mounts.
 - **Implementation Notes** (`docs/implementation-notes.md`) - quirks, workarounds, and spec compliance status. Use when debugging rootless Podman issues, lifecycle hooks, container user detection, or checking which spec features are implemented.
 - **Plugin Development** (`docs/plugin-development.md`) - how to write bundled plugins. Covers the plugin interface, response types, merge rules, staging directories, and the bind-mount-file-vs-directory gotcha.
 - **Remote Access RFC** (`docs/rfcs/remote-access.md`) - design for SSH-into-container support and volume workspaces. Internal design doc, not published to website.
@@ -132,6 +132,16 @@ level. To echo a command in verbose mode, write it to the engine's stderr writer
 
 Don't use slog in `cmd/` for user messages, don't promote exec logging above `Debug` to fake
 verbose output, and don't hardcode `io.Discard` where the verbose flag should decide.
+
+## Naming Conventions: "devcontainer" vs "dev container"
+
+Use these consistently in docs, comments, and commit messages:
+
+- **`devcontainer`** (one word, lowercase) for files, directories, and config references: `devcontainer.json`, `.devcontainer/`, `devcontainer-feature.json`.
+- **"dev container"** (two words, lowercase) for the generic concept: "start a dev container", "your dev container environment".
+- **"DevContainer Features"** (PascalCase, proper noun) for the spec's Feature system. Same for "DevContainer Spec" when referring to the specification by name.
+- **`crib exec --`** always use `--` separator in docs examples before the command to run.
+- Never use "Dev Containers" (space, both capitalized) unless referring to the VS Code extension by its product name.
 
 ## Conventions
 

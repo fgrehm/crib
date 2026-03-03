@@ -1,6 +1,6 @@
 ---
 title: Authoring DevContainer Features
-description: How to create, test, and publish reusable devcontainer Features.
+description: How to create, test, and publish reusable DevContainer Features.
 ---
 
 [DevContainer Features](https://containers.dev/implementors/features/) are modular units that add tools, runtimes, or configuration to any dev container. Instead of maintaining complex Dockerfiles, you package installation logic into a Feature and reference it from `devcontainer.json`.
@@ -156,9 +156,9 @@ crib resolves the local Feature, generates the install layer, and builds the ima
 Use `crib exec` to check that your Feature installed correctly:
 
 ```bash
-crib exec my-tool --version
-crib exec which my-tool
-crib exec sh -c 'echo $MY_ENV_VAR'
+crib exec -- my-tool --version
+crib exec -- which my-tool
+crib exec -- sh -c 'echo $MY_ENV_VAR'
 ```
 
 ### 4. Iterate
