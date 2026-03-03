@@ -395,11 +395,21 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		b.WriteString("  in_pod: false\n")
 	}
 
-	// Write to temp file.
-	overridePath := filepath.Join(configDir, ".crib-compose-override.yml")
-	if err := os.WriteFile(overridePath, []byte(b.String()), 0o644); err != nil {
+	// Write to a temp file outside the workspace tree. The override must not
+	// live inside the workspace mount because chownWorkspace recursively
+	// changes ownership of the mounted directory, making the file unremovable
+	// by the host user.
+	f, err := os.CreateTemp("", "crib-compose-override-*.yml")
+	if err != nil {
+		return "", fmt.Errorf("creating compose override temp file: %w", err)
+	}
+	overridePath := f.Name()
+	if _, err := f.WriteString(b.String()); err != nil {
+		_ = f.Close()
+		_ = os.Remove(overridePath)
 		return "", fmt.Errorf("writing compose override: %w", err)
 	}
+	_ = f.Close()
 
 	return overridePath, nil
 }
@@ -423,11 +433,17 @@ func (e *Engine) writePodmanDownOverride(composeFiles []string) (string, bool) {
 	if !e.isRootlessPodman() || composeFilesContainUserns(composeFiles) {
 		return "", false
 	}
-	dir := filepath.Dir(composeFiles[0])
-	path := filepath.Join(dir, ".crib-podman-down-override.yml")
-	if err := os.WriteFile(path, []byte("x-podman:\n  in_pod: false\n"), 0o644); err != nil {
+	f, err := os.CreateTemp("", "crib-podman-down-override-*.yml")
+	if err != nil {
 		return "", false
 	}
+	path := f.Name()
+	if _, err := f.WriteString("x-podman:\n  in_pod: false\n"); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return "", false
+	}
+	_ = f.Close()
 	return path, true
 }
 
