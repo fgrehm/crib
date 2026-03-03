@@ -79,6 +79,10 @@ export default defineConfig({
             { label: "Smart Restart", slug: "guides/smart-restart" },
             { label: "Built-in Plugins", slug: "guides/plugins" },
             {
+              label: "Authoring Features",
+              slug: "guides/authoring-features",
+            },
+            {
               label: "Custom Config Directory",
               slug: "guides/custom-config",
             },
