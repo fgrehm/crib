@@ -173,20 +173,30 @@ func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions
 
 // saveResult persists the workspace result to disk so crib exec/shell can
 // find the container, workspace folder, user, and environment.
+// Existing snapshot metadata is preserved across saves.
 func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerConfig, result *UpResult) {
 	ws.LastUsedAt = time.Now()
 	if err := e.store.Save(ws); err != nil {
 		e.logger.Warn("failed to update workspace timestamps", "error", err)
 	}
 
+	// Preserve snapshot metadata from the existing result.
+	var snapshotImage, snapshotHookHash string
+	if existing, err := e.store.LoadResult(ws.ID); err == nil && existing != nil {
+		snapshotImage = existing.SnapshotImage
+		snapshotHookHash = existing.SnapshotHookHash
+	}
+
 	mergedJSON, _ := json.Marshal(cfg)
 	wsResult := &workspace.Result{
-		ContainerID:     result.ContainerID,
-		ImageName:       result.ImageName,
-		MergedConfig:    mergedJSON,
-		WorkspaceFolder: result.WorkspaceFolder,
-		RemoteEnv:       cfg.RemoteEnv,
-		RemoteUser:      result.RemoteUser,
+		ContainerID:      result.ContainerID,
+		ImageName:        result.ImageName,
+		MergedConfig:     mergedJSON,
+		WorkspaceFolder:  result.WorkspaceFolder,
+		RemoteEnv:        cfg.RemoteEnv,
+		RemoteUser:       result.RemoteUser,
+		SnapshotImage:    snapshotImage,
+		SnapshotHookHash: snapshotHookHash,
 	}
 	if err := e.store.SaveResult(ws.ID, wsResult); err != nil {
 		e.logger.Warn("failed to save workspace result", "error", err)
@@ -233,6 +243,9 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 // Remove stops and removes the container, then deletes all workspace state.
 func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
 	e.logger.Debug("remove", "workspace", ws.ID)
+
+	// Remove snapshot image before tearing down.
+	e.clearSnapshot(ctx, ws)
 
 	// Best-effort container removal (workspace may have no container).
 	if err := e.Down(ctx, ws); err != nil {

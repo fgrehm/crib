@@ -25,4 +25,12 @@ type Result struct {
 	// RemoteUser is the user to run commands as inside the container.
 	// Passed as -u to docker/podman exec.
 	RemoteUser string `json:"remoteUser,omitempty"`
+
+	// SnapshotImage is the name of the snapshot image created after create-time
+	// hooks completed. Used by restart to skip re-running those hooks.
+	SnapshotImage string `json:"snapshotImage,omitempty"`
+
+	// SnapshotHookHash is a hash of the create-time hook definitions at the time
+	// the snapshot was taken. If hooks change, the snapshot is stale.
+	SnapshotHookHash string `json:"snapshotHookHash,omitempty"`
 }

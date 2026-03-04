@@ -247,6 +247,10 @@ func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cf
 		return result, fmt.Errorf("setting up container: %w", err)
 	}
 
+	// After create-time hooks complete, commit a snapshot so restart can
+	// use it instead of re-running hooks.
+	e.commitSnapshot(ctx, ws, cfg, containerID)
+
 	return result, nil
 }
 

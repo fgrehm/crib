@@ -30,6 +30,9 @@ var rebuildCmd = &cobra.Command{
 		u.Dim(versionString())
 		u.Header("Rebuilding workspace")
 
+		// Discard snapshot so the rebuild starts from scratch.
+		eng.ClearSnapshot(cmd.Context(), ws)
+
 		if err := eng.Down(cmd.Context(), ws); err != nil {
 			logger.Debug("down before rebuild", "error", err)
 		} else {

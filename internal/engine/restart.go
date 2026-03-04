@@ -178,6 +178,9 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 		return nil, fmt.Errorf("compose is not available")
 	}
 
+	// Check for a valid snapshot image to use instead of the base image.
+	snapshotImage, hasSnapshot := e.validSnapshot(ctx, ws, cfg)
+
 	// Resolve the container user from the compose service so plugins get
 	// the correct remote user for home directory paths.
 	cd := configDir(ws)
@@ -185,12 +188,13 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 	composeUser := e.resolveComposeUser(ctx, cfg, cd, composeFiles)
 
 	// Run pre-container-run plugins to get mounts, env, and file copies.
-	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, composeUser)
+	featureImage := snapshotImage // pass snapshot as override image
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, featureImage, workspaceFolder, composeUser)
 	if err != nil {
 		return nil, err
 	}
 
-	containerID, err := e.recreateComposeServices(ctx, ws, cfg, workspaceFolder, "", pluginResp)
+	containerID, err := e.recreateComposeServices(ctx, ws, cfg, workspaceFolder, featureImage, pluginResp)
 	if err != nil {
 		return nil, err
 	}
@@ -201,8 +205,19 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 	}
 
 	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, containerID)
-	if err := e.runResumeHooks(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
-		e.logger.Warn("resume hooks failed", "error", err)
+
+	if hasSnapshot {
+		// Snapshot includes create-time hook effects, only run resume hooks.
+		if err := e.runResumeHooks(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
+			e.logger.Warn("resume hooks failed", "error", err)
+		}
+	} else {
+		// No snapshot: run full setup including create-time hooks.
+		e.reportProgress("No snapshot available, running full setup...")
+		if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
+			e.logger.Warn("setup failed", "error", err)
+		}
+		e.commitSnapshot(ctx, ws, cfg, containerID)
 	}
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
@@ -224,6 +239,9 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 
 // restartRecreateSingle handles the single-container path for restartWithRecreate.
 func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, storedResult *workspace.Result) (*RestartResult, error) {
+	// Check for a valid snapshot image.
+	snapshotImage, hasSnapshot := e.validSnapshot(ctx, ws, cfg)
+
 	// Delete old container.
 	container, err := e.driver.FindContainer(ctx, ws.ID)
 	if err != nil {
@@ -235,10 +253,12 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 		}
 	}
 
-	// Determine the image name. For image-based, it's in the config.
-	// For Dockerfile-based, use the stored result's image. If neither has it
-	// (e.g. early save without ImageName), rebuild the image.
-	imageName := cfg.Image
+	// Determine the image name. Use snapshot if valid, otherwise fall back
+	// to stored result or rebuild.
+	imageName := snapshotImage
+	if imageName == "" {
+		imageName = cfg.Image
+	}
 	if imageName == "" && storedResult != nil {
 		imageName = storedResult.ImageName
 	}
@@ -281,14 +301,32 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 	}
 
 	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, container.ID)
-	if err := e.runResumeHooks(ctx, ws, cfg, container.ID, workspaceFolder, remoteUser); err != nil {
-		e.logger.Warn("resume hooks failed", "error", err)
+
+	// Preserve the original image name for result storage (not the snapshot).
+	resultImageName := ""
+	if storedResult != nil {
+		resultImageName = storedResult.ImageName
+	}
+
+	if hasSnapshot {
+		// Snapshot includes create-time hook effects, only run resume hooks.
+		if err := e.runResumeHooks(ctx, ws, cfg, container.ID, workspaceFolder, remoteUser); err != nil {
+			e.logger.Warn("resume hooks failed", "error", err)
+		}
+	} else {
+		// No snapshot: run full setup including create-time hooks.
+		e.reportProgress("No snapshot available, running full setup...")
+		if err := e.setupContainer(ctx, ws, cfg, container.ID, workspaceFolder, remoteUser); err != nil {
+			e.logger.Warn("setup failed", "error", err)
+		}
+		e.commitSnapshot(ctx, ws, cfg, container.ID)
 	}
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
 
 	e.saveResult(ws, cfg, &UpResult{
 		ContainerID:     container.ID,
+		ImageName:       resultImageName,
 		WorkspaceFolder: workspaceFolder,
 		RemoteUser:      remoteUser,
 		Ports:           ports,
