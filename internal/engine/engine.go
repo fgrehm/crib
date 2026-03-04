@@ -65,6 +65,18 @@ func (e *Engine) composeStdout() io.Writer {
 	return io.Discard
 }
 
+// composeStderr returns the writer for compose stderr. In verbose mode, this
+// is the engine's stderr writer so operational warnings (SIGTERM timeouts,
+// IPAM messages, etc.) are visible for debugging. Otherwise, output is
+// discarded. On failure, compose.Run's internal buffer still captures stderr
+// and includes it in the returned error.
+func (e *Engine) composeStderr() io.Writer {
+	if e.verbose {
+		return e.stderr
+	}
+	return io.Discard
+}
+
 // SetProgress sets a callback for user-facing progress messages.
 func (e *Engine) SetProgress(fn func(string)) {
 	e.progress = fn
@@ -357,12 +369,15 @@ func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Work
 	services := ensureServiceIncluded(cfg.RunServices, cfg.Service)
 
 	e.reportProgress("Starting services...")
-	if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.stderr, env); err != nil {
+	if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.composeStderr(), env); err != nil {
 		return "", fmt.Errorf("compose up: %w", err)
 	}
 
 	container, err := e.findComposeContainer(ctx, ws.ID, projectName, allFiles, env, "after recreate")
 	if err != nil {
+		return "", err
+	}
+	if err := e.ensureContainerRunning(ctx, ws.ID, container); err != nil {
 		return "", err
 	}
 

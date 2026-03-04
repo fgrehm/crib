@@ -370,7 +370,8 @@ func (e *Engine) execPluginCopies(ctx context.Context, workspaceID, containerID 
 			[]string{"sh", "-c", shellCmd},
 			bytes.NewReader(data), io.Discard, io.Discard, nil, "root")
 		if err != nil {
-			e.logger.Warn("plugin copy: exec failed", "target", cp.Target, "error", err)
+			e.logger.Warn("plugin copy: exec failed, skipping remaining copies", "target", cp.Target, "error", err)
+			return
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -61,11 +62,14 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			services := ensureServiceIncluded(cfg.RunServices, serviceName)
 
 			e.reportProgress("Starting services...")
-			if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.stderr, dcEnv); err != nil {
+			if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.composeStderr(), dcEnv); err != nil {
 				return nil, fmt.Errorf("starting compose services: %w", err)
 			}
 			container, err = e.findComposeContainer(ctx, ws.ID, projectName, allFiles, dcEnv, "after restart")
 			if err != nil {
+				return nil, err
+			}
+			if err := e.ensureContainerRunning(ctx, ws.ID, container); err != nil {
 				return nil, err
 			}
 		} else {
@@ -143,13 +147,16 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 
 	// Bring up services. Always include the primary service regardless of runServices.
 	e.reportProgress("Starting services...")
-	if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.stderr, dcEnv); err != nil {
+	if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.composeStderr(), dcEnv); err != nil {
 		return nil, fmt.Errorf("starting compose services: %w", err)
 	}
 
 	// Find the primary service container.
 	container, err = e.findComposeContainer(ctx, ws.ID, projectName, allFiles, dcEnv, "after up")
 	if err != nil {
+		return nil, err
+	}
+	if err := e.ensureContainerRunning(ctx, ws.ID, container); err != nil {
 		return nil, err
 	}
 
@@ -196,12 +203,15 @@ func (e *Engine) upComposeFromStored(ctx context.Context, ws *workspace.Workspac
 	services := ensureServiceIncluded(cfg.RunServices, serviceName)
 
 	e.reportProgress("Starting services...")
-	if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.stderr, dcEnv); err != nil {
+	if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.composeStderr(), dcEnv); err != nil {
 		return nil, fmt.Errorf("starting compose services: %w", err)
 	}
 
 	container, err := e.findComposeContainer(ctx, ws.ID, projectName, allFiles, dcEnv, "after up")
 	if err != nil {
+		return nil, err
+	}
+	if err := e.ensureContainerRunning(ctx, ws.ID, container); err != nil {
 		return nil, err
 	}
 
@@ -423,7 +433,7 @@ func (e *Engine) composeDown(ctx context.Context, projectName string, composeFil
 		defer func() { _ = os.Remove(overridePath) }()
 		files = append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
 	}
-	return e.compose.Down(ctx, projectName, files, e.composeStdout(), e.stderr, env)
+	return e.compose.Down(ctx, projectName, files, e.composeStdout(), e.composeStderr(), env)
 }
 
 // writePodmanDownOverride creates a temporary override file for podman-compose
@@ -470,6 +480,47 @@ func composeFilesContainUserns(files []string) bool {
 		}
 	}
 	return false
+}
+
+// ensureContainerRunning verifies that the container is in a running state.
+// When the container's State is empty (fallback path from compose ps), it
+// queries the driver for full container details. Returns an error with
+// container log output if the container is not running.
+func (e *Engine) ensureContainerRunning(ctx context.Context, workspaceID string, container *driver.ContainerDetails) error {
+	state := container.State
+
+	// When State is empty (compose ps fallback returned only an ID),
+	// inspect the container to get the actual state.
+	if state.Status == "" {
+		inspected, err := e.driver.FindContainer(ctx, workspaceID)
+		if err == nil && inspected != nil {
+			state = inspected.State
+		}
+	}
+
+	if state.IsRunning() {
+		return nil
+	}
+
+	status := state.Status
+	if status == "" {
+		status = "unknown"
+	}
+
+	// Collect recent logs for a useful error message.
+	var logBuf bytes.Buffer
+	_ = e.driver.ContainerLogs(ctx, workspaceID, container.ID, &logBuf, &logBuf)
+
+	logSnippet := logBuf.String()
+	const maxLogLen = 500
+	if len(logSnippet) > maxLogLen {
+		logSnippet = logSnippet[len(logSnippet)-maxLogLen:]
+	}
+
+	if logSnippet != "" {
+		return fmt.Errorf("dev container is not running (status: %s). Last logs:\n%s", status, logSnippet)
+	}
+	return fmt.Errorf("dev container is not running (status: %s)", status)
 }
 
 // findComposeContainer finds a compose container by trying FindContainer first,

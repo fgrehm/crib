@@ -110,7 +110,7 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		services := ensureServiceIncluded(cfg.RunServices, cfg.Service)
 
 		e.reportProgress("Starting services...")
-		if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.stderr, env); err != nil {
+		if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.composeStderr(), env); err != nil {
 			return nil, fmt.Errorf("starting compose services: %w", err)
 		}
 	} else {

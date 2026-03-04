@@ -466,9 +466,9 @@ func TestExecPluginCopies_ExecFailure(t *testing.T) {
 
 	eng.execPluginCopies(context.Background(), "ws-1", "c-1", copies)
 
-	// Both copies should be attempted despite the first one failing.
-	if failDrv.execCount != 2 {
-		t.Errorf("expected 2 exec attempts, got %d", failDrv.execCount)
+	// After first exec failure, remaining copies should be skipped.
+	if failDrv.execCount != 1 {
+		t.Errorf("expected 1 exec attempt (bail out after failure), got %d", failDrv.execCount)
 	}
 }
 
@@ -578,4 +578,32 @@ type failingExecDriver struct {
 func (f *failingExecDriver) ExecContainer(ctx context.Context, workspaceID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer, env []string, user string) error {
 	f.execCount++
 	return fmt.Errorf("exec failed")
+}
+
+func TestExecPluginCopies_MissingSourceThenExecFailure(t *testing.T) {
+	staging := t.TempDir()
+	goodFile := filepath.Join(staging, "good.json")
+	if err := os.WriteFile(goodFile, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	failDrv := &failingExecDriver{mockDriver: &mockDriver{}}
+	eng := &Engine{
+		driver: failDrv,
+		logger: slog.Default(),
+	}
+
+	copies := []plugin.FileCopy{
+		{Source: "/nonexistent/missing.json", Target: "/home/vscode/missing.json"},
+		{Source: goodFile, Target: "/home/vscode/good.json"},
+		{Source: goodFile, Target: "/home/vscode/other.json"},
+	}
+
+	eng.execPluginCopies(context.Background(), "ws-1", "c-1", copies)
+
+	// Missing source is skipped (continue), good.json triggers exec which fails,
+	// other.json should NOT be attempted (bail out after first exec failure).
+	if failDrv.execCount != 1 {
+		t.Errorf("expected 1 exec attempt (skip missing, bail after first exec fail), got %d", failDrv.execCount)
+	}
 }
