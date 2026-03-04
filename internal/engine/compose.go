@@ -160,17 +160,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 		return nil, err
 	}
 
-	// Copy plugin files into the container.
-	if pluginResp != nil {
-		e.execPluginCopies(ctx, ws.ID, container.ID, pluginResp.Copies)
-	}
-
-	result, setupErr := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
-	if result != nil && featureImage != "" {
-		result.ImageName = featureImage
-		e.saveResult(ws, cfg, result)
-	}
-	return result, setupErr
+	return e.finalizeSetup(ctx, ws, cfg, container.ID, workspaceFolder, featureImage, pluginResp)
 }
 
 // upComposeFromStored handles "crib up" after "crib down" when images are
@@ -215,17 +205,7 @@ func (e *Engine) upComposeFromStored(ctx context.Context, ws *workspace.Workspac
 		return nil, err
 	}
 
-	// Copy plugin files into the container.
-	if pluginResp != nil {
-		e.execPluginCopies(ctx, ws.ID, container.ID, pluginResp.Copies)
-	}
-
-	result, setupErr := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
-	if result != nil && featureImage != "" {
-		result.ImageName = featureImage
-		e.saveResult(ws, cfg, result)
-	}
-	return result, setupErr
+	return e.finalizeSetup(ctx, ws, cfg, container.ID, workspaceFolder, featureImage, pluginResp)
 }
 
 // buildComposeFeatures resolves features, determines the base image, and builds

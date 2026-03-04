@@ -250,6 +250,31 @@ func TestPlugin_GoSetsGOMODCACHE(t *testing.T) {
 	}
 }
 
+func TestPlugin_CargoSetsCARGOHOME(t *testing.T) {
+	p := New([]string{"cargo"})
+
+	resp, err := p.PreContainerRun(context.Background(), &plugin.PreContainerRunRequest{
+		WorkspaceID: "myproject",
+		RemoteUser:  "vscode",
+	})
+	if err != nil {
+		t.Fatalf("PreContainerRun: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+	if resp.Env == nil {
+		t.Fatal("expected env to be set for cargo provider")
+	}
+	got := resp.Env["CARGO_HOME"]
+	if got != "/home/vscode/.cargo" {
+		t.Errorf("CARGO_HOME = %q, want /home/vscode/.cargo", got)
+	}
+	if resp.Mounts[0].Target != "/home/vscode/.cargo" {
+		t.Errorf("mount target = %q, want /home/vscode/.cargo", resp.Mounts[0].Target)
+	}
+}
+
 func TestPlugin_NpmNoEnvVar(t *testing.T) {
 	p := New([]string{"npm"})
 

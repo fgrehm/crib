@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -368,10 +369,7 @@ func TestResolveRemoteUser(t *testing.T) {
 		cfg.ContainerUser = tt.containerUser
 		cfg.RemoteUser = tt.remoteUser
 
-		remoteUser := cfg.RemoteUser
-		if remoteUser == "" {
-			remoteUser = cfg.ContainerUser
-		}
+		remoteUser := configRemoteUser(cfg)
 		if remoteUser == "" {
 			remoteUser = "root"
 		}
@@ -469,5 +467,85 @@ func TestDetectContainerUser_Root(t *testing.T) {
 	user := eng.detectContainerUser(context.Background(), "ws-1", "c-1")
 	if user != "" {
 		t.Errorf("detectContainerUser = %q, want empty (root should fall through)", user)
+	}
+}
+
+func TestChownPluginVolumes_OnlyVolumes(t *testing.T) {
+	mockDrv := &mockDriver{responses: map[string]string{}}
+	eng := &Engine{driver: mockDrv, logger: slog.Default()}
+
+	mounts := []config.Mount{
+		{Type: "volume", Source: "cache-vol", Target: "/home/vscode/.cargo"},
+		{Type: "bind", Source: "/host/path", Target: "/container/path"},
+		{Type: "volume", Source: "apt-vol", Target: "/var/cache/apt"},
+	}
+
+	eng.chownPluginVolumes(context.Background(), "ws-1", "c-1", "vscode", mounts)
+
+	// Should only chown volumes, not binds.
+	if len(mockDrv.execCalls) != 2 {
+		t.Fatalf("expected 2 exec calls, got %d", len(mockDrv.execCalls))
+	}
+	if mockDrv.execCalls[0].cmd[1] != "vscode:" || mockDrv.execCalls[0].cmd[2] != "/home/vscode/.cargo" {
+		t.Errorf("first chown call = %v, want chown vscode: /home/vscode/.cargo", mockDrv.execCalls[0].cmd)
+	}
+	if mockDrv.execCalls[1].cmd[2] != "/var/cache/apt" {
+		t.Errorf("second chown call target = %q, want /var/cache/apt", mockDrv.execCalls[1].cmd[2])
+	}
+}
+
+func TestChownPluginVolumes_SkipsEmpty(t *testing.T) {
+	mockDrv := &mockDriver{responses: map[string]string{}}
+	eng := &Engine{driver: mockDrv, logger: slog.Default()}
+
+	eng.chownPluginVolumes(context.Background(), "ws-1", "c-1", "vscode", nil)
+
+	if len(mockDrv.execCalls) != 0 {
+		t.Errorf("expected 0 exec calls for nil mounts, got %d", len(mockDrv.execCalls))
+	}
+}
+
+func TestChownPluginVolumes_ErrorContinues(t *testing.T) {
+	mockDrv := &mockDriver{
+		responses: map[string]string{},
+		errors: map[string]error{
+			"chown vscode: /first": fmt.Errorf("permission denied"),
+		},
+	}
+	eng := &Engine{driver: mockDrv, logger: slog.Default()}
+
+	mounts := []config.Mount{
+		{Type: "volume", Source: "vol1", Target: "/first"},
+		{Type: "volume", Source: "vol2", Target: "/second"},
+	}
+
+	eng.chownPluginVolumes(context.Background(), "ws-1", "c-1", "vscode", mounts)
+
+	// Should attempt both even if first fails.
+	if len(mockDrv.execCalls) != 2 {
+		t.Fatalf("expected 2 exec calls (continues after error), got %d", len(mockDrv.execCalls))
+	}
+}
+
+func TestConfigRemoteUser(t *testing.T) {
+	tests := []struct {
+		remoteUser    string
+		containerUser string
+		want          string
+	}{
+		{"vscode", "", "vscode"},
+		{"", "dev", "dev"},
+		{"vscode", "dev", "vscode"},
+		{"", "", ""},
+	}
+	for _, tt := range tests {
+		cfg := &config.DevContainerConfig{}
+		cfg.RemoteUser = tt.remoteUser
+		cfg.ContainerUser = tt.containerUser
+		got := configRemoteUser(cfg)
+		if got != tt.want {
+			t.Errorf("configRemoteUser(remote=%q, container=%q) = %q, want %q",
+				tt.remoteUser, tt.containerUser, got, tt.want)
+		}
 	}
 }

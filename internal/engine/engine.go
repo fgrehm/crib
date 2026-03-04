@@ -172,32 +172,30 @@ func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions
 }
 
 // saveResult persists the workspace result to disk so crib exec/shell can
-// find the container, workspace folder, user, and environment.
-// Existing snapshot metadata is preserved across saves.
+// find the container, workspace folder, user, and environment. Loads any
+// existing result first and merges in the new values, preserving fields
+// managed elsewhere (e.g. snapshot metadata from commitSnapshot).
 func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerConfig, result *UpResult) {
 	ws.LastUsedAt = time.Now()
 	if err := e.store.Save(ws); err != nil {
 		e.logger.Warn("failed to update workspace timestamps", "error", err)
 	}
 
-	// Preserve snapshot metadata from the existing result.
-	var snapshotImage, snapshotHookHash string
-	if existing, err := e.store.LoadResult(ws.ID); err == nil && existing != nil {
-		snapshotImage = existing.SnapshotImage
-		snapshotHookHash = existing.SnapshotHookHash
+	// Load existing result as the base for a merge. Fields managed by other
+	// code paths (SnapshotImage, SnapshotHookHash) are preserved automatically.
+	wsResult, _ := e.store.LoadResult(ws.ID)
+	if wsResult == nil {
+		wsResult = &workspace.Result{}
 	}
 
 	mergedJSON, _ := json.Marshal(cfg)
-	wsResult := &workspace.Result{
-		ContainerID:      result.ContainerID,
-		ImageName:        result.ImageName,
-		MergedConfig:     mergedJSON,
-		WorkspaceFolder:  result.WorkspaceFolder,
-		RemoteEnv:        cfg.RemoteEnv,
-		RemoteUser:       result.RemoteUser,
-		SnapshotImage:    snapshotImage,
-		SnapshotHookHash: snapshotHookHash,
-	}
+	wsResult.ContainerID = result.ContainerID
+	wsResult.ImageName = result.ImageName
+	wsResult.MergedConfig = mergedJSON
+	wsResult.WorkspaceFolder = result.WorkspaceFolder
+	wsResult.RemoteEnv = cfg.RemoteEnv
+	wsResult.RemoteUser = result.RemoteUser
+
 	if err := e.store.SaveResult(ws.ID, wsResult); err != nil {
 		e.logger.Warn("failed to save workspace result", "error", err)
 	}
@@ -332,14 +330,20 @@ func (e *Engine) parseAndSubstitute(ws *workspace.Workspace) (*config.DevContain
 	return cfg, workspaceFolder, nil
 }
 
+// configRemoteUser returns remoteUser from config, falling back to
+// containerUser. Returns empty string if neither is set.
+func configRemoteUser(cfg *config.DevContainerConfig) string {
+	if cfg.RemoteUser != "" {
+		return cfg.RemoteUser
+	}
+	return cfg.ContainerUser
+}
+
 // resolveRemoteUser determines the remote user for a container, using the
 // config's remoteUser/containerUser with fallback to detecting the container's
 // default user via whoami.
 func (e *Engine) resolveRemoteUser(ctx context.Context, workspaceID string, cfg *config.DevContainerConfig, containerID string) string {
-	remoteUser := cfg.RemoteUser
-	if remoteUser == "" {
-		remoteUser = cfg.ContainerUser
-	}
+	remoteUser := configRemoteUser(cfg)
 	if remoteUser == "" {
 		remoteUser = e.detectContainerUser(ctx, workspaceID, containerID)
 	}

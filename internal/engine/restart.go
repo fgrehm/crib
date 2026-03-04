@@ -206,19 +206,7 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 
 	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, containerID)
 
-	if hasSnapshot {
-		// Snapshot includes create-time hook effects, only run resume hooks.
-		if err := e.runResumeHooks(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
-			e.logger.Warn("resume hooks failed", "error", err)
-		}
-	} else {
-		// No snapshot: run full setup including create-time hooks.
-		e.reportProgress("No snapshot available, running full setup...")
-		if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
-			e.logger.Warn("setup failed", "error", err)
-		}
-		e.commitSnapshot(ctx, ws, cfg, containerID)
-	}
+	e.runRecreateLifecycle(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, hasSnapshot)
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
 
@@ -308,19 +296,7 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 		resultImageName = storedResult.ImageName
 	}
 
-	if hasSnapshot {
-		// Snapshot includes create-time hook effects, only run resume hooks.
-		if err := e.runResumeHooks(ctx, ws, cfg, container.ID, workspaceFolder, remoteUser); err != nil {
-			e.logger.Warn("resume hooks failed", "error", err)
-		}
-	} else {
-		// No snapshot: run full setup including create-time hooks.
-		e.reportProgress("No snapshot available, running full setup...")
-		if err := e.setupContainer(ctx, ws, cfg, container.ID, workspaceFolder, remoteUser); err != nil {
-			e.logger.Warn("setup failed", "error", err)
-		}
-		e.commitSnapshot(ctx, ws, cfg, container.ID)
-	}
+	e.runRecreateLifecycle(ctx, ws, cfg, container.ID, workspaceFolder, remoteUser, hasSnapshot)
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
 
@@ -338,6 +314,23 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 		RemoteUser:      remoteUser,
 		Ports:           ports,
 	}, nil
+}
+
+// runRecreateLifecycle decides which hooks to run after a container recreate.
+// When a valid snapshot exists, only resume hooks run (create-time effects are
+// already baked in). Otherwise, full setup runs and a new snapshot is committed.
+func (e *Engine) runRecreateLifecycle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, remoteUser string, hasSnapshot bool) {
+	if hasSnapshot {
+		if err := e.runResumeHooks(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
+			e.logger.Warn("resume hooks failed", "error", err)
+		}
+	} else {
+		e.reportProgress("No snapshot available, running full setup...")
+		if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
+			e.logger.Warn("setup failed", "error", err)
+		}
+		e.commitSnapshot(ctx, ws, cfg, containerID)
+	}
 }
 
 // runResumeHooks executes only the resume-flow lifecycle hooks

@@ -87,17 +87,7 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 		return nil, fmt.Errorf("container not found after creation")
 	}
 
-	// Copy plugin files into the container.
-	if pluginResp != nil {
-		e.execPluginCopies(ctx, ws.ID, container.ID, pluginResp.Copies)
-	}
-
-	result, setupErr := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
-	if result != nil {
-		result.ImageName = buildRes.imageName
-		e.saveResult(ws, cfg, result)
-	}
-	return result, setupErr
+	return e.finalizeSetup(ctx, ws, cfg, container.ID, workspaceFolder, buildRes.imageName, pluginResp)
 }
 
 // buildRunOptions constructs RunOptions from the devcontainer config.
@@ -178,10 +168,7 @@ func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg
 		// Chown volume mounts to the remote user. Docker volumes are
 		// created with root ownership, so non-root users can't write
 		// to them until we fix permissions.
-		remoteUser := cfg.RemoteUser
-		if remoteUser == "" {
-			remoteUser = cfg.ContainerUser
-		}
+		remoteUser := configRemoteUser(cfg)
 		if remoteUser != "" && remoteUser != "root" {
 			e.chownPluginVolumes(ctx, ws.ID, containerID, remoteUser, pluginResp.Mounts)
 		}
@@ -336,10 +323,7 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 	}
 
 	if remoteUser == "" {
-		remoteUser = cfg.RemoteUser
-	}
-	if remoteUser == "" {
-		remoteUser = cfg.ContainerUser
+		remoteUser = configRemoteUser(cfg)
 	}
 
 	// Extract customizations.crib from devcontainer.json for plugins.
@@ -398,7 +382,7 @@ func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Wo
 // NOTE: Values are embedded in single-quoted shell arguments. This is safe for
 // all current callers (bundled plugins with hardcoded paths like
 // ~/.claude/.credentials.json). If we add external/user-defined plugins, the
-// values must be shell-escaped first (e.g. replace ' with '\'' ) to prevent
+// values must be shell-escaped first (e.g. replace ' with '\” ) to prevent
 // breakage or injection from paths containing single quotes.
 func (e *Engine) execPluginCopies(ctx context.Context, workspaceID, containerID string, copies []plugin.FileCopy) {
 	for _, cp := range copies {
