@@ -497,3 +497,205 @@ func TestIntegrationUpWithPlugins(t *testing.T) {
 		t.Errorf("HISTFILE = %q, want to contain '.crib_history/.shell_history'", got)
 	}
 }
+
+func TestIntegrationLogs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d := newTestEngine(t)
+	e.SetOutput(os.Stdout, os.Stderr)
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	configContent := `{
+		"image": "alpine:3.20",
+		"overrideCommand": true,
+		"postCreateCommand": "echo CRIB_LOG_TEST_MARKER"
+	}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-logs"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	})
+
+	if _, err := e.Up(ctx, ws, UpOptions{}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	// Capture logs.
+	var logBuf bytes.Buffer
+	e.SetOutput(&logBuf, os.Stderr)
+	if err := e.Logs(ctx, ws, LogsOptions{}); err != nil {
+		t.Fatalf("Logs: %v", err)
+	}
+
+	// Verify that the log output is not empty.
+	if logBuf.Len() == 0 {
+		t.Error("Logs returned empty output")
+	}
+
+	// Test --tail option.
+	logBuf.Reset()
+	if err := e.Logs(ctx, ws, LogsOptions{Tail: "5"}); err != nil {
+		t.Fatalf("Logs with tail: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(logBuf.String()), "\n")
+	if len(lines) > 5 {
+		t.Errorf("Logs --tail 5 returned %d lines, want <= 5", len(lines))
+	}
+}
+
+func TestIntegrationSnapshot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d := newTestEngine(t)
+	e.SetOutput(os.Stdout, os.Stderr)
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	configContent := `{
+		"image": "alpine:3.20",
+		"overrideCommand": true,
+		"onCreateCommand": "touch /tmp/snapshot-marker"
+	}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-snapshot"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	snapshotName := snapshotImageName(wsID)
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	_ = d.RemoveImage(ctx, snapshotName)
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		_ = d.RemoveImage(ctx, snapshotName)
+	})
+
+	// Up should create the container and commit a snapshot.
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	// Verify onCreate hook ran.
+	var stdout bytes.Buffer
+	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-f", "/tmp/snapshot-marker"}, nil, &stdout, nil, nil, ""); err != nil {
+		t.Errorf("onCreate hook did not run: %v", err)
+	}
+
+	// Verify snapshot was committed.
+	storedResult, err := e.store.LoadResult(wsID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+	if storedResult.SnapshotImage == "" {
+		t.Error("SnapshotImage should be set after Up with create-time hooks")
+	}
+	if storedResult.SnapshotHookHash == "" {
+		t.Error("SnapshotHookHash should be set")
+	}
+
+	// Verify snapshot image actually exists.
+	if _, err := d.InspectImage(ctx, snapshotName); err != nil {
+		t.Errorf("snapshot image %s not found: %v", snapshotName, err)
+	}
+
+	// ClearSnapshot should remove the image and metadata.
+	e.ClearSnapshot(ctx, ws)
+	if _, err := d.InspectImage(ctx, snapshotName); err == nil {
+		t.Error("snapshot image should have been removed after ClearSnapshot")
+	}
+
+	storedResult, _ = e.store.LoadResult(wsID)
+	if storedResult.SnapshotImage != "" {
+		t.Errorf("SnapshotImage = %q, want empty after ClearSnapshot", storedResult.SnapshotImage)
+	}
+}
+
+func TestIntegrationDoctor(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d := newTestEngine(t)
+	e.SetOutput(os.Stdout, os.Stderr)
+
+	// Clean state: doctor should find no issues.
+	result, err := e.Doctor(ctx, false)
+	if err != nil {
+		t.Fatalf("Doctor: %v", err)
+	}
+	if !result.RuntimeOK {
+		t.Error("RuntimeOK should be true")
+	}
+
+	// Create an orphaned workspace (source directory doesn't exist).
+	orphanWS := &workspace.Workspace{
+		ID:     "test-doctor-orphan",
+		Source: "/tmp/nonexistent-dir-for-doctor-test",
+	}
+	if err := e.store.Save(orphanWS); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err = e.Doctor(ctx, false)
+	if err != nil {
+		t.Fatalf("Doctor: %v", err)
+	}
+
+	found := false
+	for _, issue := range result.Issues {
+		if issue.Check == "orphaned-workspace" && issue.WorkspaceID == "test-doctor-orphan" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected orphaned-workspace issue")
+	}
+
+	// Fix the orphan.
+	_, err = e.Doctor(ctx, true)
+	if err != nil {
+		t.Fatalf("Doctor --fix: %v", err)
+	}
+
+	// Verify it's gone.
+	if e.store.Exists("test-doctor-orphan") {
+		t.Error("orphaned workspace should have been removed by --fix")
+	}
+	_ = d // keep linter happy
+}
