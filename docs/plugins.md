@@ -3,7 +3,7 @@ title: Built-in Plugins
 description: What crib's built-in plugins do and how to configure them.
 ---
 
-`crib` ships three plugins that run automatically before each container is created. They inject credentials, SSH config, and shell history persistence into every workspace without any devcontainer.json boilerplate.
+`crib` ships four plugins that run automatically before each container is created. They inject credentials, SSH config, shell history persistence, and shared package caches into every workspace without any devcontainer.json boilerplate.
 
 Plugins run during `crib up` and `crib rebuild`. They are fail-open: if a plugin can't find something it needs (no SSH agent running, no Claude credentials on disk), it skips silently and doesn't block container creation.
 
@@ -22,6 +22,42 @@ Persists your bash/zsh history across container recreations. Without this, every
 Both bash and zsh read `HISTFILE`, so this works regardless of which shell you use inside the container. The history file is mounted as a directory (not a file directly) so the shell can do atomic renames when saving, which avoids `EBUSY` errors on Docker and Podman.
 
 **No configuration needed.** It always runs.
+
+---
+
+## Package cache
+
+Shares package manager caches across all your workspaces via named Docker volumes. Without this, every rebuild re-downloads all dependencies from scratch.
+
+**Configure in `.cribrc`** (in your project root):
+
+```
+cache = npm, pip, go
+```
+
+Comma-separated list of providers. Each one creates a `crib-cache-{workspace}-{provider}` named volume mounted at the standard cache directory inside the container. Volumes are per-workspace, so different projects don't share cached data.
+
+### Supported providers
+
+| Provider | Mount target | Notes |
+|----------|-------------|-------|
+| `npm` | `~/.npm` | |
+| `yarn` | `~/.cache/yarn` | |
+| `pip` | `~/.cache/pip` | |
+| `go` | `~/go/pkg/mod` | Also sets `GOMODCACHE` so it works with any `GOPATH` |
+| `cargo` | `~/.cargo` | Also sets `CARGO_HOME` so it works with devcontainer images that use `/usr/local/cargo` |
+| `maven` | `~/.m2/repository` | |
+| `gradle` | `~/.gradle/caches` | |
+| `bundler` | `~/.bundle/cache` | |
+| `apt` | `/var/cache/apt` | System path; disables `docker-clean` so cached `.deb` files persist |
+
+Unknown provider names produce a warning at startup and are skipped.
+
+Use `crib cache list` to see which cache volumes exist and how much space they use, and `crib cache clean` to remove them. See [Commands](/crib/reference/commands/#crib-cache) for details.
+
+:::note[First run]
+The first `crib up` after adding a cache provider still downloads everything (the volume is empty). Subsequent rebuilds reuse the cached data.
+:::
 
 ---
 

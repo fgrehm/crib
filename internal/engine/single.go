@@ -168,6 +168,62 @@ func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, proj
 	return opts, nil
 }
 
+// finalizeSetup copies plugin files, runs container setup, and persists the
+// result. Both the single-container and compose paths converge here after the
+// container has been created/started.
+func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, imageName string, pluginResp *plugin.PreContainerRunResponse) (*UpResult, error) {
+	if pluginResp != nil {
+		e.execPluginCopies(ctx, ws.ID, containerID, pluginResp.Copies)
+
+		// Chown volume mounts to the remote user. Docker volumes are
+		// created with root ownership, so non-root users can't write
+		// to them until we fix permissions.
+		remoteUser := cfg.RemoteUser
+		if remoteUser == "" {
+			remoteUser = cfg.ContainerUser
+		}
+		if remoteUser != "" && remoteUser != "root" {
+			e.chownPluginVolumes(ctx, ws.ID, containerID, remoteUser, pluginResp.Mounts)
+		}
+
+		// Merge plugin env vars into RemoteEnv so they take precedence
+		// over values from the user's shell profile (userEnvProbe).
+		// Without this, image-baked profile scripts (e.g. /etc/bash.bashrc
+		// setting CARGO_HOME) would override plugin-set env vars.
+		for k, v := range pluginResp.Env {
+			if cfg.RemoteEnv == nil {
+				cfg.RemoteEnv = make(map[string]string)
+			}
+			if _, exists := cfg.RemoteEnv[k]; !exists {
+				cfg.RemoteEnv[k] = v
+			}
+		}
+	}
+
+	result, setupErr := e.setupAndReturn(ctx, ws, cfg, containerID, workspaceFolder)
+	if result != nil {
+		result.ImageName = imageName
+		e.saveResult(ws, cfg, result)
+	}
+	return result, setupErr
+}
+
+// chownPluginVolumes changes ownership of plugin volume mounts to the
+// remote user. Docker/Podman create volumes with root ownership, so
+// non-root users get permission errors when writing to them.
+func (e *Engine) chownPluginVolumes(ctx context.Context, workspaceID, containerID, remoteUser string, mounts []config.Mount) {
+	for _, m := range mounts {
+		if m.Type != "volume" {
+			continue
+		}
+		cmd := []string{"chown", remoteUser + ":", m.Target}
+		if err := e.driver.ExecContainer(ctx, workspaceID, containerID, cmd, nil, io.Discard, io.Discard, nil, "root"); err != nil {
+			e.logger.Debug("chown plugin volume failed", "target", m.Target, "error", err)
+		}
+	}
+}
+
+
 // setupAndReturn runs container setup and returns the result.
 // On lifecycle hook failure, both the result and error are returned so
 // callers can persist the result (container is still usable).

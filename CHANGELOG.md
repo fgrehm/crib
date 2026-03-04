@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `crib cache list` and `crib cache clean` commands for inspecting and removing
+  package cache volumes. `--all` flag operates across all workspaces.
+- Package cache volumes are now per-workspace (`crib-cache-{workspace}-{provider}`)
+  instead of shared globally. This prevents cross-contamination between projects.
+- `crib logs` command with `--follow`/`-f` and `--tail` flags. Shows container
+  logs for single-container workspaces; shows all service logs for compose
+  workspaces.
+- `crib doctor` command to detect and fix workspace health issues. Checks
+  runtime availability, compose availability, orphaned workspaces (source
+  directory deleted), dangling containers (crib label but no workspace state),
+  and stale plugin data. Use `--fix` to auto-clean.
+- **Package cache sharing plugin**: shares host package caches (npm, pip, go,
+  cargo, maven, gradle, bundler, apt) via named Docker volumes. Configure in
+  `.cribrc`: `cache = npm, pip, go`.
+- **Auto-snapshot**: after `crib up` completes create-time hooks, the container
+  is committed to a local snapshot image. On subsequent `crib restart`
+  recreations, the snapshot is used so hook effects are already baked in. If
+  hook definitions change, the snapshot is considered stale and full setup runs
+  instead. `crib rebuild` always starts fresh.
 - Each plugin now emits a progress line ("Running plugin: \<name\>") during
   `crib up` and `crib rebuild`, visible without any flags.
 

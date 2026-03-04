@@ -58,4 +58,10 @@ type Driver interface {
 
 	// RemoveImage removes a container image.
 	RemoveImage(ctx context.Context, imageName string) error
+
+	// ListVolumes returns volumes whose names match the given filter prefix.
+	ListVolumes(ctx context.Context, nameFilter string) ([]VolumeInfo, error)
+
+	// RemoveVolume removes a named volume.
+	RemoveVolume(ctx context.Context, name string) error
 }

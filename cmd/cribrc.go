@@ -9,7 +9,8 @@ import (
 
 // cribRC holds values loaded from a .cribrc file.
 type cribRC struct {
-	Config string // devcontainer config directory (same as --config / -C)
+	Config string   // devcontainer config directory (same as --config / -C)
+	Cache  []string // package cache providers (e.g. "npm", "pip", "go")
 }
 
 // loadCribRC reads a .cribrc file from cwd. Returns nil, nil if not found.
@@ -43,6 +44,13 @@ func loadCribRC() (*cribRC, error) {
 		switch strings.TrimSpace(key) {
 		case "config":
 			rc.Config = strings.TrimSpace(val)
+		case "cache":
+			for _, p := range strings.Split(val, ",") {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					rc.Cache = append(rc.Cache, p)
+				}
+			}
 		}
 	}
 	return rc, scanner.Err()

@@ -405,6 +405,25 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		b.WriteString("  in_pod: false\n")
 	}
 
+	// Top-level volumes: declarations for named volumes (e.g. package cache).
+	// Without this, compose rejects unknown volume references in the service.
+	if hasPluginMounts {
+		seen := make(map[string]bool)
+		var volumeNames []string
+		for _, m := range pluginResp.Mounts {
+			if m.Type == "volume" && !seen[m.Source] {
+				seen[m.Source] = true
+				volumeNames = append(volumeNames, m.Source)
+			}
+		}
+		if len(volumeNames) > 0 {
+			b.WriteString("volumes:\n")
+			for _, name := range volumeNames {
+				fmt.Fprintf(&b, "  %s:\n", name)
+			}
+		}
+	}
+
 	// Write to a temp file outside the workspace tree. The override must not
 	// live inside the workspace mount because chownWorkspace recursively
 	// changes ownership of the mounted directory, making the file unremovable

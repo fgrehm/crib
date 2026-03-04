@@ -121,6 +121,14 @@ func (m *mockDriver) TargetArchitecture(ctx context.Context) (string, error) {
 	return "amd64", nil
 }
 
+func (m *mockDriver) ListVolumes(ctx context.Context, nameFilter string) ([]driver.VolumeInfo, error) {
+	return nil, nil
+}
+
+func (m *mockDriver) RemoveVolume(ctx context.Context, name string) error {
+	return nil
+}
+
 func TestParseEnvLines(t *testing.T) {
 	tests := []struct {
 		name  string

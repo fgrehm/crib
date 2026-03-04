@@ -80,6 +80,12 @@ type RunOptions struct {
 	ExtraArgs      []string // Raw CLI args passed through from runArgs
 }
 
+// VolumeInfo describes a named Docker/Podman volume.
+type VolumeInfo struct {
+	Name string
+	Size string // human-readable, best-effort (may be empty)
+}
+
 // BuildOptions holds parameters for building a container image.
 type BuildOptions struct {
 	PrebuildHash string

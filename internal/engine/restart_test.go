@@ -226,6 +226,10 @@ func (m *restartMockDriver) ListContainers(_ context.Context) ([]driver.Containe
 }
 func (m *restartMockDriver) CommitContainer(_ context.Context, _, _, _ string) error { return nil }
 func (m *restartMockDriver) RemoveImage(_ context.Context, _ string) error           { return nil }
+func (m *restartMockDriver) ListVolumes(_ context.Context, _ string) ([]driver.VolumeInfo, error) {
+	return nil, nil
+}
+func (m *restartMockDriver) RemoveVolume(_ context.Context, _ string) error { return nil }
 
 func TestRestartRecreateSingle_RunsPlugins(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())

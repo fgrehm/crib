@@ -17,6 +17,7 @@ import (
 	"github.com/fgrehm/crib/internal/engine"
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/plugin/codingagents"
+	"github.com/fgrehm/crib/internal/plugin/packagecache"
 	"github.com/fgrehm/crib/internal/plugin/shellhistory"
 	pluginssh "github.com/fgrehm/crib/internal/plugin/ssh"
 	"github.com/fgrehm/crib/internal/ui"
@@ -25,11 +26,12 @@ import (
 )
 
 var (
-	debugFlag     bool
-	verboseFlag   bool
-	configDirFlag string
-	dirFlag       string
-	logger        *slog.Logger
+	debugFlag      bool
+	verboseFlag    bool
+	configDirFlag  string
+	dirFlag        string
+	logger         *slog.Logger
+	cacheProviders []string // loaded from .cribrc cache key
 )
 
 // Version variables injected at build time.
@@ -61,12 +63,18 @@ var rootCmd = &cobra.Command{
 		}))
 
 		// Apply .cribrc defaults for flags not explicitly set by the user.
-		if !cmd.Root().PersistentFlags().Changed("config") {
-			if rc, err := loadCribRC(); err != nil {
-				logger.Debug("could not load .cribrc", "error", err)
-			} else if rc != nil && rc.Config != "" {
+		rc, rcErr := loadCribRC()
+		if rcErr != nil {
+			logger.Debug("could not load .cribrc", "error", rcErr)
+		}
+		if rc != nil {
+			if !cmd.Root().PersistentFlags().Changed("config") && rc.Config != "" {
 				configDirFlag = rc.Config
 				logger.Debug("loaded config dir from .cribrc", "dir", rc.Config)
+			}
+			if len(rc.Cache) > 0 {
+				cacheProviders = rc.Cache
+				logger.Debug("loaded cache providers from .cribrc", "providers", rc.Cache)
 			}
 		}
 
@@ -94,6 +102,7 @@ func init() {
 	rootCmd.AddCommand(restartCmd)
 	rootCmd.AddCommand(logsCmd)
 	rootCmd.AddCommand(doctorCmd)
+	rootCmd.AddCommand(cacheCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 
@@ -246,6 +255,12 @@ func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
 	mgr.Register(codingagents.New())
 	mgr.Register(shellhistory.New())
 	mgr.Register(pluginssh.New())
+	if len(cacheProviders) > 0 {
+		if unknown := packagecache.ValidateProviders(cacheProviders); len(unknown) > 0 {
+			logger.Warn("unknown cache providers in .cribrc", "unknown", unknown, "supported", packagecache.SupportedProviders())
+		}
+		mgr.Register(packagecache.New(cacheProviders))
+	}
 	eng.SetPlugins(mgr)
 }
 
