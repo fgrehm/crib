@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each plugin now emits a progress line ("Running plugin: \<name\>") during
   `crib up` and `crib rebuild`, visible without any flags.
 
+### Fixed
+
+- `.env` files with quoted values (`KEY="value with spaces"`, `KEY='value'`) and
+  inline comments (`KEY=value # comment`) now parse correctly. Previously only
+  bare `KEY=value` syntax was supported.
+- `workspaceMount` strings with a missing `target` field now produce an explicit
+  error instead of silently creating an unusable mount.
+
 ## [0.4.1] - 2026-03-02
 
 ### Fixed

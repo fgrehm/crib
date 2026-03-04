@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/compose-spec/compose-go/v2/dotenv"
 	"github.com/compose-spec/compose-go/v2/loader"
 	"github.com/compose-spec/compose-go/v2/types"
 )
@@ -92,7 +93,7 @@ func LoadProject(ctx context.Context, paths []string, envFiles []string) (*types
 	// Build environment from env files and current process env.
 	env := currentEnv()
 	for _, ef := range envFiles {
-		parsed, err := parseEnvFile(ef)
+		parsed, err := dotenv.Read(ef)
 		if err != nil {
 			return nil, fmt.Errorf("reading env file %s: %w", ef, err)
 		}
@@ -124,89 +125,10 @@ func LoadProject(ctx context.Context, paths []string, envFiles []string) (*types
 func currentEnv() types.Mapping {
 	env := make(types.Mapping)
 	for _, e := range os.Environ() {
-		k, v, ok := cutString(e, "=")
+		k, v, ok := strings.Cut(e, "=")
 		if ok {
 			env[k] = v
 		}
 	}
 	return env
-}
-
-// cutString is a helper that splits a string on the first occurrence of sep.
-func cutString(s, sep string) (string, string, bool) {
-	for i := 0; i < len(s); i++ {
-		if s[i:i+len(sep)] == sep {
-			return s[:i], s[i+len(sep):], true
-		}
-	}
-	return s, "", false
-}
-
-// parseEnvFile reads a simple .env file (KEY=VALUE lines, # comments).
-// Handles double-quoted and single-quoted values, and inline comments
-// on unquoted values. Does not handle multiline values or escape sequences.
-func parseEnvFile(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	env := make(map[string]string)
-	for _, line := range splitLines(string(data)) {
-		line = trimSpace(line)
-		if line == "" || line[0] == '#' {
-			continue
-		}
-		k, v, ok := cutString(line, "=")
-		if ok {
-			v = trimSpace(v)
-			v = stripEnvQuotes(v)
-			env[trimSpace(k)] = v
-		}
-	}
-	return env, nil
-}
-
-// stripEnvQuotes removes surrounding quotes from a .env value.
-// For unquoted values, it also strips inline comments (` # ...`).
-func stripEnvQuotes(v string) string {
-	if len(v) >= 2 {
-		if (v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'') {
-			return v[1 : len(v)-1]
-		}
-	}
-	// Unquoted: strip inline comment.
-	if idx := strings.Index(v, " #"); idx >= 0 {
-		v = trimSpace(v[:idx])
-	}
-	return v
-}
-
-// splitLines splits a string into lines.
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
-}
-
-// trimSpace trims whitespace from both ends of a string.
-func trimSpace(s string) string {
-	start := 0
-	for start < len(s) && (s[start] == ' ' || s[start] == '\t' || s[start] == '\r') {
-		start++
-	}
-	end := len(s)
-	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\r') {
-		end--
-	}
-	return s[start:end]
 }
