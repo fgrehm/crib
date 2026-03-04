@@ -9,6 +9,8 @@ import (
 
 // FeatureCache is a disk cache for resolved features stored under
 // ~/.crib/feature-cache/ (or $CRIB_HOME/feature-cache/).
+//
+// Not safe for concurrent use. crib resolves features sequentially.
 type FeatureCache struct {
 	baseDir string
 }

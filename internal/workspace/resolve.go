@@ -114,7 +114,7 @@ func Slugify(name string) string {
 
 	const maxLen = 48
 	if len(slug) > maxLen {
-		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(name)))
+		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(slug)))
 		slug = slug[:40] + "-" + hash[:7]
 	}
 

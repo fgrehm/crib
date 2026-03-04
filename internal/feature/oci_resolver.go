@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -106,6 +107,7 @@ func extractTar(r io.Reader, dir string) error {
 
 		// Guard against path traversal.
 		if !strings.HasPrefix(target, filepath.Clean(dir)+string(os.PathSeparator)) {
+			slog.Warn("skipping tar entry with path traversal", "entry", hdr.Name)
 			continue
 		}
 

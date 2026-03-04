@@ -371,11 +371,11 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	}
 
 	// Volumes: workspace mount + plugin mounts.
-	hasWorkspaceMount := cfg.WorkspaceMount == ""
+	useDefaultWorkspaceMount := cfg.WorkspaceMount == ""
 	hasPluginMounts := pluginResp != nil && len(pluginResp.Mounts) > 0
-	if hasWorkspaceMount || hasPluginMounts {
+	if useDefaultWorkspaceMount || hasPluginMounts {
 		b.WriteString("    volumes:\n")
-		if hasWorkspaceMount {
+		if useDefaultWorkspaceMount {
 			fmt.Fprintf(&b, "      - %s:%s\n", ws.Source, workspaceFolder)
 		}
 		if hasPluginMounts {

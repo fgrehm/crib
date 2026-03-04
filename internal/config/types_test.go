@@ -273,26 +273,36 @@ func TestMount_UnmarshalJSON(t *testing.T) {
 
 func TestParseMount(t *testing.T) {
 	tests := []struct {
-		input string
-		want  Mount
+		input   string
+		want    Mount
+		wantErr bool
 	}{
 		{
-			"type=bind,src=/tmp,dst=/tmp",
-			Mount{Type: "bind", Source: "/tmp", Target: "/tmp"},
+			input: "type=bind,src=/tmp,dst=/tmp",
+			want:  Mount{Type: "bind", Source: "/tmp", Target: "/tmp"},
 		},
 		{
-			"type=volume,source=data,target=/data",
-			Mount{Type: "volume", Source: "data", Target: "/data"},
+			input: "type=volume,source=data,target=/data",
+			want:  Mount{Type: "volume", Source: "data", Target: "/data"},
 		},
 		{
-			"type=bind",
-			Mount{Type: "bind"},
+			input:   "type=bind",
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := ParseMount(tt.input)
+			got, err := ParseMount(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if got != tt.want {
 				t.Errorf("got %+v, want %+v", got, tt.want)
 			}

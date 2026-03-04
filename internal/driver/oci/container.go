@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"sort"
 	"strconv"
@@ -229,7 +230,10 @@ func (ic *inspectContainer) toContainerDetails() driver.ContainerDetails {
 	for containerPort, bindings := range ic.NetworkSettings.Ports {
 		port, proto := parseContainerPort(containerPort)
 		for _, b := range bindings {
-			hostPort, _ := strconv.Atoi(b.HostPort)
+			hostPort, err := strconv.Atoi(b.HostPort)
+			if err != nil {
+				slog.Debug("invalid host port in container inspect", "value", b.HostPort, "error", err)
+			}
 			d.Ports = append(d.Ports, driver.PortBinding{
 				ContainerPort: port,
 				HostPort:      hostPort,
@@ -249,7 +253,10 @@ func parseContainerPort(s string) (int, string) {
 		portStr = s[:i]
 		proto = s[i+1:]
 	}
-	port, _ := strconv.Atoi(portStr)
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		slog.Debug("invalid container port in inspect output", "value", portStr, "error", err)
+	}
 	return port, proto
 }
 

@@ -63,7 +63,7 @@ func GetServiceInfo(ctx context.Context, paths []string, serviceName string, env
 // Docker Compose v2 uses "-", podman-compose uses "_".
 func (h *Helper) BuiltImageName(projectName, serviceName string) string {
 	sep := "-"
-	if strings.Contains(h.baseCommand, "podman") {
+	if strings.Contains(filepath.Base(h.baseCommand), "podman") {
 		sep = "_"
 	}
 	return projectName + sep + serviceName
@@ -143,6 +143,8 @@ func cutString(s, sep string) (string, string, bool) {
 }
 
 // parseEnvFile reads a simple .env file (KEY=VALUE lines, # comments).
+// Handles double-quoted and single-quoted values, and inline comments
+// on unquoted values. Does not handle multiline values or escape sequences.
 func parseEnvFile(path string) (map[string]string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -157,10 +159,27 @@ func parseEnvFile(path string) (map[string]string, error) {
 		}
 		k, v, ok := cutString(line, "=")
 		if ok {
-			env[trimSpace(k)] = trimSpace(v)
+			v = trimSpace(v)
+			v = stripEnvQuotes(v)
+			env[trimSpace(k)] = v
 		}
 	}
 	return env, nil
+}
+
+// stripEnvQuotes removes surrounding quotes from a .env value.
+// For unquoted values, it also strips inline comments (` # ...`).
+func stripEnvQuotes(v string) string {
+	if len(v) >= 2 {
+		if (v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'') {
+			return v[1 : len(v)-1]
+		}
+	}
+	// Unquoted: strip inline comment.
+	if idx := strings.Index(v, " #"); idx >= 0 {
+		v = trimSpace(v[:idx])
+	}
+	return v
 }
 
 // splitLines splits a string into lines.

@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var variableRegexp = regexp.MustCompile(`\$\{(.*?)\}`)
+var variableRegexp = regexp.MustCompile(`\$\{([^}]+)\}`)
 
 // SubstitutionContext holds the values available for variable substitution.
 type SubstitutionContext struct {
@@ -47,7 +47,12 @@ func SubstituteContainerEnv(containerEnv map[string]string, config *DevContainer
 type replaceFunc func(match, variable string, args []string) string
 
 func substituteConfig(config *DevContainerConfig, replacer replaceFunc) (*DevContainerConfig, error) {
-	// Marshal to generic map for recursive substitution.
+	// Round-trip through map[string]any to walk all nested string values.
+	// This requires two marshal/unmarshal cycles (struct->map, map->struct)
+	// but is correct for arbitrary nesting. Raw string substitution on JSON
+	// bytes would risk corrupting structure if replacement values contain
+	// quotes or special characters. The config is small (<10KB) so the
+	// performance cost is negligible.
 	data, err := json.Marshal(config)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling config: %w", err)

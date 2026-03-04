@@ -43,7 +43,7 @@ func ParseImageMetadata(label string) ([]*ImageMetadata, error) {
 		// Try single object (not array).
 		var single ImageMetadata
 		if err2 := json.Unmarshal([]byte(label), &single); err2 != nil {
-			return nil, fmt.Errorf("parsing image metadata: %w", err)
+			return nil, fmt.Errorf("parsing image metadata: as array: %v, as object: %w", err, err2)
 		}
 		entries = []*ImageMetadata{&single}
 	}

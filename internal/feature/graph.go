@@ -83,6 +83,9 @@ func (g *Graph[T]) Sort() ([]T, error) {
 		inDegree[k] = v
 	}
 
+	// Kahn's algorithm with sorted queue for deterministic output.
+	// The queue uses slice reslicing (O(1) pop) and sorted merge (O(n) insert).
+	// This is O(V*E) worst case but V is typically <10 for DevContainer Features.
 	// Collect initial zero-degree nodes, sorted for determinism.
 	var queue []string
 	for key := range g.nodes {

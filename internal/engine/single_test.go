@@ -14,7 +14,10 @@ func TestBuildRunOptions_Minimal(t *testing.T) {
 	e := &Engine{}
 	cfg := &config.DevContainerConfig{}
 
-	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if opts.Image != "alpine:3.20" {
 		t.Errorf("Image = %q, want %q", opts.Image, "alpine:3.20")
@@ -40,7 +43,10 @@ func TestBuildRunOptions_OverrideCommandFalse(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.OverrideCommand = &oc
 
-	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if opts.Entrypoint != "" {
 		t.Errorf("Entrypoint should be empty when overrideCommand=false, got %q", opts.Entrypoint)
@@ -55,7 +61,10 @@ func TestBuildRunOptions_WithContainerUser(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.ContainerUser = "vscode"
 
-	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if opts.User != "vscode" {
 		t.Errorf("User = %q, want %q", opts.User, "vscode")
@@ -72,7 +81,10 @@ func TestBuildRunOptions_WithSecurityOpts(t *testing.T) {
 	cfg.CapAdd = []string{"SYS_PTRACE"}
 	cfg.SecurityOpt = []string{"seccomp=unconfined"}
 
-	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if !opts.Init {
 		t.Error("Init should be true")
@@ -93,7 +105,10 @@ func TestBuildRunOptions_CustomWorkspaceMount(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.WorkspaceMount = "type=bind,src=/custom/src,dst=/custom/dst"
 
-	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if opts.WorkspaceMount.Source != "/custom/src" {
 		t.Errorf("WorkspaceMount.Source = %q, want %q", opts.WorkspaceMount.Source, "/custom/src")
@@ -108,7 +123,10 @@ func TestBuildRunOptions_ContainerEnv(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.ContainerEnv = map[string]string{"FOO": "bar"}
 
-	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(opts.Env) != 1 || opts.Env[0] != "FOO=bar" {
 		t.Errorf("Env = %v, want [FOO=bar]", opts.Env)
@@ -120,7 +138,10 @@ func TestBuildRunOptions_RunArgsPassthrough(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.RunArgs = []string{"--network=host", "--gpus", "all"}
 
-	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(opts.ExtraArgs) != 3 {
 		t.Fatalf("ExtraArgs length = %d, want 3", len(opts.ExtraArgs))
@@ -140,7 +161,10 @@ func TestBuildRunOptions_NoRunArgs(t *testing.T) {
 	e := &Engine{}
 	cfg := &config.DevContainerConfig{}
 
-	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(opts.ExtraArgs) != 0 {
 		t.Errorf("ExtraArgs should be empty, got %v", opts.ExtraArgs)
@@ -152,7 +176,10 @@ func TestBuildRunOptions_ForwardPorts(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.ForwardPorts = config.StrIntArray{"8080", "9090:3000"}
 
-	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(opts.Ports) != 2 {
 		t.Fatalf("Ports length = %d, want 2", len(opts.Ports))
@@ -170,7 +197,10 @@ func TestBuildRunOptions_AppPort(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.AppPort = config.StrIntArray{"3000", "5000:5000"}
 
-	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(opts.Ports) != 2 {
 		t.Fatalf("Ports length = %d, want 2", len(opts.Ports))
@@ -189,7 +219,10 @@ func TestBuildRunOptions_PortsDedup(t *testing.T) {
 	cfg.ForwardPorts = config.StrIntArray{"8080", "3000"}
 	cfg.AppPort = config.StrIntArray{"8080", "5000"}
 
-	opts := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if len(opts.Ports) != 3 {
 		t.Fatalf("Ports length = %d, want 3", len(opts.Ports))

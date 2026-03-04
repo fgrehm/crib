@@ -54,10 +54,8 @@ func CalculatePrebuildHash(params PrebuildHashParams) (string, error) {
 	h.Write([]byte(params.DockerfileContent))
 	h.Write([]byte(contextHash))
 
-	hash := fmt.Sprintf("%x", h.Sum(nil))
-	if len(hash) > 32 {
-		hash = hash[:32]
-	}
+	// Truncate SHA256 hex (64 chars) to 32 chars for shorter image tags.
+	hash := fmt.Sprintf("%x", h.Sum(nil))[:32]
 
 	return "crib-" + hash, nil
 }

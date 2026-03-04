@@ -251,7 +251,10 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 		imageName = buildRes.imageName
 	}
 
-	runOpts := e.buildRunOptions(cfg, imageName, ws.Source, workspaceFolder)
+	runOpts, err := e.buildRunOptions(cfg, imageName, ws.Source, workspaceFolder)
+	if err != nil {
+		return nil, err
+	}
 
 	// Run pre-container-run plugins to inject mounts, env, and extra args.
 	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, imageName, workspaceFolder)

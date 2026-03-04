@@ -62,7 +62,10 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 	}
 
 	// Build run options.
-	runOpts := e.buildRunOptions(cfg, buildRes.imageName, ws.Source, workspaceFolder)
+	runOpts, err := e.buildRunOptions(cfg, buildRes.imageName, ws.Source, workspaceFolder)
+	if err != nil {
+		return nil, err
+	}
 
 	// Run pre-container-run plugins to inject mounts, env, and extra args.
 	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, buildRes.imageName, workspaceFolder)
@@ -98,7 +101,7 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 }
 
 // buildRunOptions constructs RunOptions from the devcontainer config.
-func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, projectRoot, workspaceFolder string) *driver.RunOptions {
+func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, projectRoot, workspaceFolder string) (*driver.RunOptions, error) {
 	opts := &driver.RunOptions{
 		Image:  imageName,
 		Labels: make(map[string]string),
@@ -139,7 +142,11 @@ func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, proj
 
 	// Workspace mount.
 	if cfg.WorkspaceMount != "" {
-		opts.WorkspaceMount = config.ParseMount(cfg.WorkspaceMount)
+		mount, err := config.ParseMount(cfg.WorkspaceMount)
+		if err != nil {
+			return nil, fmt.Errorf("parsing workspace mount: %w", err)
+		}
+		opts.WorkspaceMount = mount
 	} else {
 		// Default workspace mount: bind the project root to the workspace folder.
 		opts.WorkspaceMount = config.Mount{
@@ -158,7 +165,7 @@ func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, proj
 	// Passthrough CLI args from runArgs.
 	opts.ExtraArgs = cfg.RunArgs
 
-	return opts
+	return opts, nil
 }
 
 // setupAndReturn runs container setup and returns the result.

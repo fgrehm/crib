@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"encoding/json"
+	"reflect"
 
 	"github.com/fgrehm/crib/internal/config"
 )
@@ -179,11 +179,5 @@ func buildOptsEqual(a, b *config.ConfigBuildOptions) bool {
 }
 
 func featuresEqual(a, b map[string]any) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	// Compare via JSON serialization for deep equality of arbitrary types.
-	aJSON, _ := json.Marshal(a)
-	bJSON, _ := json.Marshal(b)
-	return string(aJSON) == string(bJSON)
+	return reflect.DeepEqual(a, b)
 }

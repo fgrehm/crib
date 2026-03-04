@@ -154,7 +154,8 @@ type Mount struct {
 
 // ParseMount parses a mount string in Docker mount format.
 // Example: "type=bind,src=/tmp,dst=/tmp" or "type=volume,source=mydata,target=/data".
-func ParseMount(s string) Mount {
+// Returns an error if the target is empty (required for a valid mount).
+func ParseMount(s string) (Mount, error) {
 	m := Mount{}
 	for _, part := range strings.Split(s, ",") {
 		k, v, ok := strings.Cut(part, "=")
@@ -170,7 +171,10 @@ func ParseMount(s string) Mount {
 			m.Target = v
 		}
 	}
-	return m
+	if m.Target == "" {
+		return m, fmt.Errorf("mount %q missing required target", s)
+	}
+	return m, nil
 }
 
 // String returns the mount in Docker mount string format.
@@ -193,7 +197,11 @@ func (m *Mount) UnmarshalJSON(data []byte) error {
 	// Try string format first.
 	var s string
 	if err := json.Unmarshal(data, &s); err == nil {
-		*m = ParseMount(s)
+		parsed, parseErr := ParseMount(s)
+		if parseErr != nil {
+			return parseErr
+		}
+		*m = parsed
 		return nil
 	}
 

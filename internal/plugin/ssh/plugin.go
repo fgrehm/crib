@@ -3,6 +3,7 @@ package ssh
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -143,6 +144,7 @@ func (p *Plugin) sshConfig(home, pluginDir, remoteHome, owner string) *plugin.Fi
 	}
 
 	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		slog.Warn("ssh plugin: failed to create config staging dir", "path", pluginDir, "error", err)
 		return nil
 	}
 
@@ -170,6 +172,7 @@ func (p *Plugin) sshPublicKeys(home, pluginDir, remoteHome, owner string) []plug
 
 	keysDir := filepath.Join(pluginDir, "keys")
 	if err := os.MkdirAll(keysDir, 0o755); err != nil {
+		slog.Warn("ssh plugin: failed to create keys staging dir", "path", keysDir, "error", err)
 		return nil
 	}
 
@@ -211,6 +214,7 @@ func (p *Plugin) gitSigningConfig(home, pluginDir, remoteHome, owner string) *pl
 	}
 
 	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		slog.Warn("ssh plugin: failed to create git signing staging dir", "path", pluginDir, "error", err)
 		return nil
 	}
 
