@@ -187,8 +187,55 @@ func (d *OCIDriver) ExecContainer(ctx context.Context, _, containerID string, cm
 }
 
 // ContainerLogs returns the logs from a container.
-func (d *OCIDriver) ContainerLogs(ctx context.Context, _, containerID string, stdout, stderr io.Writer) error {
-	return d.helper.Run(ctx, []string{"logs", containerID}, nil, stdout, stderr)
+// opts may be nil for default behavior (all logs, no follow).
+func (d *OCIDriver) ContainerLogs(ctx context.Context, _, containerID string, stdout, stderr io.Writer, opts *driver.LogsOptions) error {
+	args := []string{"logs"}
+	if opts != nil {
+		if opts.Follow {
+			args = append(args, "--follow")
+		}
+		if opts.Tail != "" {
+			args = append(args, "--tail", opts.Tail)
+		}
+	}
+	args = append(args, containerID)
+	return d.helper.Run(ctx, args, nil, stdout, stderr)
+}
+
+// ListContainers returns all containers with the crib.workspace label.
+func (d *OCIDriver) ListContainers(ctx context.Context) ([]driver.ContainerDetails, error) {
+	out, err := d.helper.Output(ctx,
+		"ps", "-a", "-q",
+		"--filter", "label="+LabelWorkspace,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing crib containers: %w", err)
+	}
+
+	ids := parseLines(string(out))
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	var raw []inspectContainer
+	if err := d.helper.Inspect(ctx, ids, "container", &raw); err != nil {
+		return nil, fmt.Errorf("inspecting containers: %w", err)
+	}
+
+	details := make([]driver.ContainerDetails, 0, len(raw))
+	for i := range raw {
+		details = append(details, raw[i].toContainerDetails())
+	}
+	return details, nil
+}
+
+// CommitContainer creates an image from a container's changes.
+func (d *OCIDriver) CommitContainer(ctx context.Context, _, containerID, imageName string) error {
+	_, err := d.helper.Output(ctx, "commit", containerID, imageName)
+	if err != nil {
+		return fmt.Errorf("committing container %s as %s: %w", containerID, imageName, err)
+	}
+	return nil
 }
 
 // inspectContainer is an intermediate struct for unmarshaling docker/podman

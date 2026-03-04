@@ -209,7 +209,7 @@ func (m *restartMockDriver) ExecContainer(_ context.Context, _, _ string, cmd []
 	return nil
 }
 
-func (m *restartMockDriver) ContainerLogs(_ context.Context, _, _ string, _, _ io.Writer) error {
+func (m *restartMockDriver) ContainerLogs(_ context.Context, _, _ string, _, _ io.Writer, _ *driver.LogsOptions) error {
 	return nil
 }
 func (m *restartMockDriver) BuildImage(_ context.Context, _ string, _ *driver.BuildOptions) error {
@@ -221,6 +221,11 @@ func (m *restartMockDriver) InspectImage(_ context.Context, _ string) (*driver.I
 func (m *restartMockDriver) TargetArchitecture(_ context.Context) (string, error) {
 	return "amd64", nil
 }
+func (m *restartMockDriver) ListContainers(_ context.Context) ([]driver.ContainerDetails, error) {
+	return nil, nil
+}
+func (m *restartMockDriver) CommitContainer(_ context.Context, _, _, _ string) error { return nil }
+func (m *restartMockDriver) RemoveImage(_ context.Context, _ string) error           { return nil }
 
 func TestRestartRecreateSingle_RunsPlugins(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())

@@ -509,7 +509,7 @@ func (e *Engine) ensureContainerRunning(ctx context.Context, workspaceID string,
 
 	// Collect recent logs for a useful error message.
 	var logBuf bytes.Buffer
-	_ = e.driver.ContainerLogs(ctx, workspaceID, container.ID, &logBuf, &logBuf)
+	_ = e.driver.ContainerLogs(ctx, workspaceID, container.ID, &logBuf, &logBuf, nil)
 
 	logSnippet := logBuf.String()
 	const maxLogLen = 500

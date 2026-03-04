@@ -243,7 +243,7 @@ func TestIntegrationContainerLogs(t *testing.T) {
 	}
 
 	var stdout bytes.Buffer
-	err = d.ContainerLogs(ctx, wsID, container.ID, &stdout, nil)
+	err = d.ContainerLogs(ctx, wsID, container.ID, &stdout, nil, nil)
 	if err != nil {
 		t.Fatalf("ContainerLogs: %v", err)
 	}

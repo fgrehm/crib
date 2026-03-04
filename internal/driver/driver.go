@@ -5,6 +5,12 @@ import (
 	"io"
 )
 
+// LogsOptions controls container log output.
+type LogsOptions struct {
+	Follow bool   // stream logs as they are produced
+	Tail   string // number of lines from the end ("all" or a number)
+}
+
 // Driver abstracts the container runtime (Docker or Podman).
 type Driver interface {
 	// FindContainer locates a container by workspace ID.
@@ -32,7 +38,8 @@ type Driver interface {
 	ExecContainer(ctx context.Context, workspaceID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer, env []string, user string) error
 
 	// ContainerLogs returns the logs from a container.
-	ContainerLogs(ctx context.Context, workspaceID, containerID string, stdout, stderr io.Writer) error
+	// opts may be nil for default behavior (all logs, no follow).
+	ContainerLogs(ctx context.Context, workspaceID, containerID string, stdout, stderr io.Writer, opts *LogsOptions) error
 
 	// BuildImage builds a container image.
 	BuildImage(ctx context.Context, workspaceID string, options *BuildOptions) error
@@ -42,4 +49,13 @@ type Driver interface {
 
 	// TargetArchitecture returns the architecture of the container runtime (e.g. "amd64", "arm64").
 	TargetArchitecture(ctx context.Context) (string, error)
+
+	// ListContainers returns all containers with the crib.workspace label.
+	ListContainers(ctx context.Context) ([]ContainerDetails, error)
+
+	// CommitContainer creates an image from a container's changes.
+	CommitContainer(ctx context.Context, workspaceID, containerID, imageName string) error
+
+	// RemoveImage removes a container image.
+	RemoveImage(ctx context.Context, imageName string) error
 }

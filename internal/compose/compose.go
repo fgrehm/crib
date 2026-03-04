@@ -135,6 +135,20 @@ func (h *Helper) Restart(ctx context.Context, projectName string, files []string
 	return h.Run(ctx, args, nil, stdout, stderr, extraEnv)
 }
 
+// Logs runs `compose logs` for the given project.
+// extraEnv is appended to the subprocess environment for variable substitution.
+func (h *Helper) Logs(ctx context.Context, projectName string, files []string, follow bool, tail string, stdout, stderr io.Writer, extraEnv []string) error {
+	args := projectArgs(projectName, files)
+	args = append(args, "logs")
+	if follow {
+		args = append(args, "--follow")
+	}
+	if tail != "" {
+		args = append(args, "--tail", tail)
+	}
+	return h.Run(ctx, args, nil, stdout, stderr, extraEnv)
+}
+
 // Down runs `compose down` for the given project.
 // extraEnv is appended to the subprocess environment for variable substitution.
 func (h *Helper) Down(ctx context.Context, projectName string, files []string, stdout, stderr io.Writer, extraEnv []string) error {

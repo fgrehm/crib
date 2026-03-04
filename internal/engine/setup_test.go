@@ -93,7 +93,19 @@ func (m *mockDriver) ExecContainer(ctx context.Context, workspaceID, containerID
 	return nil
 }
 
-func (m *mockDriver) ContainerLogs(ctx context.Context, workspaceID, containerID string, stdout, stderr io.Writer) error {
+func (m *mockDriver) ContainerLogs(ctx context.Context, workspaceID, containerID string, stdout, stderr io.Writer, opts *driver.LogsOptions) error {
+	return nil
+}
+
+func (m *mockDriver) ListContainers(ctx context.Context) ([]driver.ContainerDetails, error) {
+	return nil, nil
+}
+
+func (m *mockDriver) CommitContainer(ctx context.Context, workspaceID, containerID, imageName string) error {
+	return nil
+}
+
+func (m *mockDriver) RemoveImage(ctx context.Context, imageName string) error {
 	return nil
 }
 

@@ -92,6 +92,8 @@ func init() {
 	rootCmd.AddCommand(upCmd)
 	rootCmd.AddCommand(rebuildCmd)
 	rootCmd.AddCommand(restartCmd)
+	rootCmd.AddCommand(logsCmd)
+	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 

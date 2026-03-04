@@ -18,3 +18,12 @@ func (d *OCIDriver) InspectImage(ctx context.Context, imageName string) (*driver
 	}
 	return &images[0], nil
 }
+
+// RemoveImage removes a container image.
+func (d *OCIDriver) RemoveImage(ctx context.Context, imageName string) error {
+	_, err := d.helper.Output(ctx, "rmi", imageName)
+	if err != nil {
+		return fmt.Errorf("removing image %s: %w", imageName, err)
+	}
+	return nil
+}
