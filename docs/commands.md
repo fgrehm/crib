@@ -108,7 +108,7 @@ crib cache clean --all       # remove all crib cache volumes
 
 ### `crib rebuild`
 
-Full rebuild: runs `down` followed by `up`. Use this when the image needs to be rebuilt (changed Dockerfile, base image, or features).
+Full rebuild: runs `down` followed by `up`. Use this when the image needs to be rebuilt (changed Dockerfile, base image, or features). Clears any snapshot image so the build starts from scratch.
 
 ### `crib list`
 
