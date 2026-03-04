@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bare `KEY=value` syntax was supported.
 - `workspaceMount` strings with a missing `target` field now produce an explicit
   error instead of silently creating an unusable mount.
+- Compose workspaces: stderr noise from `compose up` and `compose down` (e.g.
+  "No container found", SIGTERM warnings) is now suppressed in normal mode. Use
+  `-V` / `--verbose` to see full compose output.
+- Compose workspaces: `crib up` and `crib rebuild` now detect when the primary
+  container exits immediately after `compose up` (e.g. port conflicts) and
+  report a clear error with container logs, instead of cascading into confusing
+  plugin copy and lifecycle hook failures.
+- Plugin file copies now bail out on the first exec failure instead of logging
+  identical errors for every remaining copy.
 
 ## [0.4.1] - 2026-03-02
 
