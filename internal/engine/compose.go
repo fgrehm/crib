@@ -48,11 +48,15 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 
 	if container != nil && !opts.Recreate {
 		if !container.State.IsRunning() {
-			// Generate the same override file used during initial up so that
-			// crib labels, userns_mode, and x-podman settings are applied on
-			// restart. Without these, rootless Podman creates a pod that
-			// conflicts with --userns=keep-id.
-			overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, "" /* featureImage already baked in */, nil)
+			// Dispatch plugins so the override includes plugin env vars and
+			// mounts. The override is regenerated on every compose up.
+			composeUser := e.resolveComposeUser(ctx, cfg, configDir, composeFiles)
+			pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, "" /* featureImage already baked in */, workspaceFolder, composeUser)
+			if err != nil {
+				return nil, err
+			}
+
+			overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, "", pluginResp)
 			if err != nil {
 				return nil, fmt.Errorf("generating compose override: %w", err)
 			}
@@ -71,6 +75,11 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			}
 			if err := e.ensureContainerRunning(ctx, ws.ID, container); err != nil {
 				return nil, err
+			}
+
+			// Re-inject plugin files (SSH keys, credentials).
+			if pluginResp != nil {
+				e.execPluginCopies(ctx, ws.ID, container.ID, pluginResp.Copies)
 			}
 		} else {
 			e.reportProgress("Services already running")
