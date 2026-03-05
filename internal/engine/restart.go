@@ -91,6 +91,7 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 	// compose restart only restarts already-running containers and fails when
 	// dependency services are stopped. compose up handles starting all
 	// services (including dependencies) in the correct order.
+	var containerID string
 	if len(cfg.DockerComposeFile) > 0 {
 		if e.compose == nil {
 			return nil, fmt.Errorf("compose is not available")
@@ -100,7 +101,15 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		projectName := compose.ProjectName(ws.ID)
 		env := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
 
-		overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, "", nil)
+		// Dispatch plugins so the compose override includes plugin env vars
+		// and mounts (SSH agent, package cache, shell history, etc.).
+		composeUser := e.resolveComposeUser(ctx, cfg, cd, composeFiles)
+		pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, composeUser)
+		if err != nil {
+			return nil, err
+		}
+
+		overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, "", pluginResp)
 		if err != nil {
 			return nil, fmt.Errorf("generating compose override: %w", err)
 		}
@@ -112,6 +121,20 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		e.reportProgress("Starting services...")
 		if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.composeStderr(), env); err != nil {
 			return nil, fmt.Errorf("starting compose services: %w", err)
+		}
+
+		// Look up the actual container ID after compose up, since the
+		// override may have changed and caused compose to recreate it.
+		container, err := e.findComposeContainer(ctx, ws.ID, projectName, allFiles, env, "after restart")
+		if err != nil {
+			return nil, err
+		}
+		containerID = container.ID
+
+		// Re-inject plugin files (SSH keys, credentials) which may have
+		// changed on the host since the last up/restart.
+		if pluginResp != nil {
+			e.execPluginCopies(ctx, ws.ID, containerID, pluginResp.Copies)
 		}
 	} else {
 		// Non-compose: restart the individual container.
@@ -125,10 +148,10 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		if err := e.driver.RestartContainer(ctx, ws.ID, container.ID); err != nil {
 			return nil, fmt.Errorf("restarting container: %w", err)
 		}
+		containerID = container.ID
 	}
 
 	// Run resume-flow hooks.
-	containerID := storedResult.ContainerID
 	remoteUser := storedResult.RemoteUser
 	if err := e.runResumeHooks(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
 		e.logger.Warn("resume hooks failed", "error", err)
