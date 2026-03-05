@@ -76,12 +76,13 @@ Restart the workspace, detecting what changed since the last `crib up`. See [Sma
 
 ### `crib logs`
 
-Show container logs. Supports `--follow`/`-f` for live streaming and `--tail N` for limiting output. For compose workspaces, shows logs from all services.
+Show container logs. Defaults to the last 50 lines. For compose workspaces, shows logs from all services.
 
 ```bash
-crib logs                # show all logs
-crib logs -f             # follow (stream) logs
-crib logs --tail 50      # last 50 lines
+crib logs                # last 50 lines
+crib logs -f             # follow (stream) all logs
+crib logs --tail 100     # last 100 lines
+crib logs -a             # show all logs (no tail limit)
 ```
 
 ### `crib doctor`

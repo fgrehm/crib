@@ -140,6 +140,9 @@ func (h *Helper) Restart(ctx context.Context, projectName string, files []string
 func (h *Helper) Logs(ctx context.Context, projectName string, files []string, follow bool, tail string, stdout, stderr io.Writer, extraEnv []string) error {
 	args := projectArgs(projectName, files)
 	args = append(args, "logs")
+	// Use container names as prefixes instead of container IDs.
+	// podman-compose defaults to IDs which are unreadable.
+	args = append(args, "--names")
 	if follow {
 		args = append(args, "--follow")
 	}

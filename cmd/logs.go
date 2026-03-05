@@ -8,6 +8,7 @@ import (
 var (
 	logsFollowFlag bool
 	logsTailFlag   string
+	logsAllFlag    bool
 )
 
 var logsCmd = &cobra.Command{
@@ -24,14 +25,20 @@ var logsCmd = &cobra.Command{
 			return err
 		}
 
+		tail := logsTailFlag
+		if tail == "" && !logsFollowFlag && !logsAllFlag {
+			tail = "50"
+		}
+
 		return eng.Logs(cmd.Context(), ws, engine.LogsOptions{
 			Follow: logsFollowFlag,
-			Tail:   logsTailFlag,
+			Tail:   tail,
 		})
 	},
 }
 
 func init() {
 	logsCmd.Flags().BoolVarP(&logsFollowFlag, "follow", "f", false, "follow log output")
-	logsCmd.Flags().StringVar(&logsTailFlag, "tail", "", "number of lines to show from the end of the logs")
+	logsCmd.Flags().StringVar(&logsTailFlag, "tail", "", "number of lines to show from the end (default 50)")
+	logsCmd.Flags().BoolVarP(&logsAllFlag, "all", "a", false, "show all logs (no tail limit)")
 }
