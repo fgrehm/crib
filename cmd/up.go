@@ -38,7 +38,7 @@ var upCmd = &cobra.Command{
 		}
 
 		u.Success("Workspace ready")
-		u.Keyval("container", shortID(result.ContainerID))
+		u.Keyval("container", "crib-"+ws.ID)
 		u.Keyval("workspace", result.WorkspaceFolder)
 		if result.RemoteUser != "" {
 			u.Keyval("user", result.RemoteUser)

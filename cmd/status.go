@@ -40,7 +40,7 @@ var statusCmd = &cobra.Command{
 			return nil
 		}
 
-		fmt.Printf("%-12s%s\n", "container", shortID(result.Container.ID))
+		fmt.Printf("%-12s%s\n", "container", "crib-"+ws.ID)
 		fmt.Printf("%-12s%s\n", "status", u.StatusColor(result.Container.State.Status))
 
 		if ports := formatPorts(result.Container.Ports); ports != "" {

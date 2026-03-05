@@ -226,14 +226,6 @@ func versionString() string {
 	return v
 }
 
-// shortID returns the first 12 characters of a container ID.
-func shortID(id string) string {
-	if len(id) <= 12 {
-		return id
-	}
-	return id[:12]
-}
-
 // composePortsToDriver converts compose.PortBinding values to driver.PortBinding
 // so the same formatPorts function can be used for both.
 func composePortsToDriver(ports []compose.PortBinding) []driver.PortBinding {
