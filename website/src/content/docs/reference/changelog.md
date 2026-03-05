@@ -8,6 +8,74 @@ All notable changes to this project will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/fgrehm/crib/releases/tag/v0.5.0) - 2026-03-05
+
+### Added
+
+- `crib run` command: runs commands through a login shell so tools installed by
+  version managers (mise, asdf, nvm, rbenv) are available on PATH. Use instead
+  of `crib exec` when the command depends on shell init files.
+- `crib cache list` and `crib cache clean` commands for inspecting and removing
+  package cache volumes. `--all` flag operates across all workspaces.
+- Package cache volumes are now per-workspace (`crib-cache-{workspace}-{provider}`)
+  instead of shared globally. This prevents cross-contamination between projects.
+- `crib logs` command with `--follow`/`-f` and `--tail` flags. Shows container
+  logs for single-container workspaces; shows all service logs for compose
+  workspaces.
+- `crib doctor` command to detect and fix workspace health issues. Checks
+  runtime availability, compose availability, orphaned workspaces (source
+  directory deleted), dangling containers (crib label but no workspace state),
+  and stale plugin data. Use `--fix` to auto-clean.
+- **Package cache sharing plugin**: shares host package caches (npm, pip, go,
+  cargo, maven, gradle, bundler, apt, downloads) via named Docker volumes.
+  Configure in `.cribrc`: `cache = npm, pip, go`. The `downloads` provider is a
+  general-purpose cache directory at `~/.cache/crib` (exposed via `CRIB_CACHE`
+  env var) for ad hoc file caching. The `bundler` provider sets `BUNDLE_BIN` and
+  adds `~/.bundle/bin` to PATH via `/etc/profile.d/`, so gem executables like
+  `rspec` work directly in `crib shell` and `crib run`.
+- **Build-time cache mounts**: when package cache providers are configured, crib
+  attaches BuildKit `--mount=type=cache` directives to DevContainer Feature
+  install steps. This speeds up feature installation across rebuilds by reusing
+  cached packages (especially apt).
+- **Auto-snapshot**: after `crib up` completes create-time hooks, the container
+  is committed to a local snapshot image. On subsequent `crib restart`
+  recreations, the snapshot is used so hook effects are already baked in. If
+  hook definitions change, the snapshot is considered stale and full setup runs
+  instead. `crib rebuild` always starts fresh.
+- Each plugin now emits a progress line ("Running plugin: \<name\>") during
+  `crib up` and `crib rebuild`, visible without any flags.
+
+### Fixed
+
+- `bundler` cache provider: mount volume at `~/.bundle` instead of `~/.bundle/cache`
+  to avoid permission errors creating `~/.bundle/bin` (Docker created the parent
+  directory as root).
+- `crib cache list`: compose workspaces showed the full volume name (including
+  compose project prefix) in the PROVIDER column. Also fixed compose override to
+  declare volumes with explicit `name:` so new volumes use the expected name.
+- Installation `curl` command now works in zsh (URL was missing quotes, causing
+  a parse error with the embedded `sed` expression). Archive filenames no longer
+  include the version, so `releases/latest/download/crib_linux_amd64.tar.gz` is
+  a stable URL that always points to the latest release.
+- `.env` files with quoted values (`KEY="value with spaces"`, `KEY='value'`) and
+  inline comments (`KEY=value # comment`) now parse correctly. Previously only
+  bare `KEY=value` syntax was supported.
+- `workspaceMount` strings with a missing `target` field now produce an explicit
+  error instead of silently creating an unusable mount.
+- Compose workspaces: stderr noise from `compose up` and `compose down` (e.g.
+  "No container found", SIGTERM warnings) is now suppressed in normal mode. Use
+  `-V` / `--verbose` to see full compose output.
+- Compose workspaces: `crib up` and `crib rebuild` now detect when the primary
+  container exits immediately after `compose up` (e.g. port conflicts) and
+  report a clear error with container logs, instead of cascading into confusing
+  plugin copy and lifecycle hook failures.
+- Plugin file copies now bail out on the first exec failure instead of logging
+  identical errors for every remaining copy.
+- Compose workspaces: `crib restart` now includes plugin-injected env vars and
+  mounts (package cache, SSH agent, shell history, etc.) in the compose override.
+  Previously the simple restart path skipped plugin dispatch, so these were
+  missing until a full `crib down && crib up`.
+
 ## [0.4.1](https://github.com/fgrehm/crib/releases/tag/v0.4.1) - 2026-03-02
 
 ### Fixed
