@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Installation `curl` command now works in zsh (URL was missing quotes, causing
+  a parse error with the embedded `sed` expression). Archive filenames no longer
+  include the version, so `releases/latest/download/crib_linux_amd64.tar.gz` is
+  a stable URL that always points to the latest release.
 - `.env` files with quoted values (`KEY="value with spaces"`, `KEY='value'`) and
   inline comments (`KEY=value # comment`) now parse correctly. Previously only
   bare `KEY=value` syntax was supported.
