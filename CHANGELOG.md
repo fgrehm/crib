@@ -44,6 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `bundler` cache provider: mount volume at `~/.bundle` instead of `~/.bundle/cache`
+  to avoid permission errors creating `~/.bundle/bin` (Docker created the parent
+  directory as root).
+- `crib cache list`: compose workspaces showed the full volume name (including
+  compose project prefix) in the PROVIDER column. Also fixed compose override to
+  declare volumes with explicit `name:` so new volumes use the expected name.
 - Installation `curl` command now works in zsh (URL was missing quotes, causing
   a parse error with the embedded `sed` expression). Archive filenames no longer
   include the version, so `releases/latest/download/crib_linux_amd64.tar.gz` is

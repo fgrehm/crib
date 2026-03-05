@@ -258,8 +258,8 @@ func TestGenerateComposeOverride_PluginEnv(t *testing.T) {
 
 	pluginResp := &plugin.PreContainerRunResponse{
 		Env: map[string]string{
-			"HISTFILE":       "/home/vscode/.crib_history/.shell_history",
-			"SSH_AUTH_SOCK":  "/tmp/ssh-agent.sock",
+			"HISTFILE":      "/home/vscode/.crib_history/.shell_history",
+			"SSH_AUTH_SOCK": "/tmp/ssh-agent.sock",
 		},
 	}
 
@@ -351,6 +351,47 @@ func TestGenerateComposeOverride_NilPluginResponse(t *testing.T) {
 	// Both should produce equivalent output (no extra environment/volumes sections).
 	if string(data1) != string(data2) {
 		t.Errorf("nil and empty plugin response should produce same output.\nnil:\n%s\nempty:\n%s", data1, data2)
+	}
+}
+
+func TestGenerateComposeOverride_PluginVolumeMountsGetNameDeclaration(t *testing.T) {
+	e := &Engine{
+		compose: compose.NewHelperFromRuntime("docker"),
+	}
+
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	pluginResp := &plugin.PreContainerRunResponse{
+		Mounts: []config.Mount{
+			{Type: "volume", Source: "crib-cache-test-ws-npm", Target: "/home/vscode/.npm"},
+			{Type: "bind", Source: "/host/history", Target: "/home/vscode/.crib_history"},
+		},
+	}
+
+	dir := t.TempDir()
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", pluginResp)
+	if err != nil {
+		t.Fatalf("generateComposeOverride failed: %v", err)
+	}
+	t.Cleanup(func() { os.Remove(path) })
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+	content := string(data)
+
+	// Top-level volume declaration must include name: to prevent compose from
+	// prefixing with the project name.
+	if !strings.Contains(content, "  crib-cache-test-ws-npm:\n    name: crib-cache-test-ws-npm\n") {
+		t.Errorf("expected top-level volume with name: declaration, got:\n%s", content)
+	}
+
+	// Bind mounts should not appear in top-level volumes.
+	if strings.Contains(content, "/host/history") && strings.Contains(content, "name: /host/history") {
+		t.Errorf("bind mount should not get a top-level volume declaration")
 	}
 }
 

@@ -273,7 +273,7 @@ absolute paths) or when you need raw `docker exec` behavior.
 
 ## Package cache: `bundler` provider and version managers (mise/rbenv)
 
-The `bundler` cache provider sets `BUNDLE_PATH=~/.bundle/cache` so that `bundle install` writes
+The `bundler` cache provider sets `BUNDLE_PATH=~/.bundle` so that `bundle install` writes
 gems into the cached volume. This overrides the default gem location, which means gems end up in
 the volume instead of the version manager's directory (e.g.
 `~/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/`).
