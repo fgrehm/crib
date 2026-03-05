@@ -98,6 +98,7 @@ func init() {
 	rootCmd.AddCommand(execCmd)
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(shellCmd)
+	rootCmd.AddCommand(sshCmd)
 	rootCmd.AddCommand(upCmd)
 	rootCmd.AddCommand(rebuildCmd)
 	rootCmd.AddCommand(restartCmd)

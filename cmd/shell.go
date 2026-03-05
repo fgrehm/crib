@@ -84,3 +84,12 @@ Working directory is set to the workspace folder if available.`,
 		return syscall.Exec(runtimeBin, execArgs, os.Environ())
 	},
 }
+
+var sshCmd = &cobra.Command{
+	Use:    "ssh",
+	Short:  "Not actual SSH",
+	Hidden: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return fmt.Errorf("crib doesn't use SSH. Use 'crib shell' to open a shell in the container (it's a glorified docker exec)")
+	},
+}
