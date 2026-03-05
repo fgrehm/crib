@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/plugin"
@@ -276,11 +277,13 @@ func TestPlugin_CargoSetsCARGOHOME(t *testing.T) {
 }
 
 func TestPlugin_BundlerSetsBUNDLEPATH(t *testing.T) {
+	tmpDir := t.TempDir()
 	p := New([]string{"bundler"})
 
 	resp, err := p.PreContainerRun(context.Background(), &plugin.PreContainerRunRequest{
-		WorkspaceID: "myproject",
-		RemoteUser:  "vscode",
+		WorkspaceID:  "myproject",
+		WorkspaceDir: tmpDir,
+		RemoteUser:   "vscode",
 	})
 	if err != nil {
 		t.Fatalf("PreContainerRun: %v", err)
@@ -290,6 +293,27 @@ func TestPlugin_BundlerSetsBUNDLEPATH(t *testing.T) {
 	}
 	if resp.Env["BUNDLE_PATH"] != "/home/vscode/.bundle/cache" {
 		t.Errorf("BUNDLE_PATH = %q, want /home/vscode/.bundle/cache", resp.Env["BUNDLE_PATH"])
+	}
+	if resp.Env["BUNDLE_BIN"] != "/home/vscode/.bundle/bin" {
+		t.Errorf("BUNDLE_BIN = %q, want /home/vscode/.bundle/bin", resp.Env["BUNDLE_BIN"])
+	}
+
+	// Should have a profile.d script for PATH.
+	var foundProfile bool
+	for _, cp := range resp.Copies {
+		if cp.Target == "/etc/profile.d/crib-bundler-path.sh" {
+			foundProfile = true
+			data, err := os.ReadFile(cp.Source)
+			if err != nil {
+				t.Fatalf("reading profile script: %v", err)
+			}
+			if !strings.Contains(string(data), ".bundle/bin") {
+				t.Errorf("profile script missing .bundle/bin: %q", string(data))
+			}
+		}
+	}
+	if !foundProfile {
+		t.Error("expected profile.d copy for bundler PATH")
 	}
 }
 

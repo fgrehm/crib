@@ -48,7 +48,7 @@ Comma-separated list of providers. Each one creates a `crib-cache-{workspace}-{p
 | `cargo` | `~/.cargo` | Also sets `CARGO_HOME` so it works with devcontainer images that use `/usr/local/cargo` |
 | `maven` | `~/.m2/repository` | |
 | `gradle` | `~/.gradle/caches` | |
-| `bundler` | `~/.bundle/cache` | Sets `BUNDLE_PATH` so `bundle install` writes to the cached volume |
+| `bundler` | `~/.bundle/cache` | Sets `BUNDLE_PATH` and `BUNDLE_BIN`; adds `~/.bundle/bin` to PATH via `/etc/profile.d/` |
 | `apt` | `/var/cache/apt` | System path; disables `docker-clean` so cached `.deb` files persist |
 | `downloads` | `~/.cache/crib` | General-purpose cache; sets `CRIB_CACHE` env var for easy access |
 

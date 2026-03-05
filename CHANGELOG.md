@@ -27,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cargo, maven, gradle, bundler, apt, downloads) via named Docker volumes.
   Configure in `.cribrc`: `cache = npm, pip, go`. The `downloads` provider is a
   general-purpose cache directory at `~/.cache/crib` (exposed via `CRIB_CACHE`
-  env var) for ad hoc file caching.
+  env var) for ad hoc file caching. The `bundler` provider sets `BUNDLE_BIN` and
+  adds `~/.bundle/bin` to PATH via `/etc/profile.d/`, so gem executables like
+  `rspec` work directly in `crib shell` and `crib run`.
 - **Build-time cache mounts**: when package cache providers are configured, crib
   attaches BuildKit `--mount=type=cache` directives to DevContainer Feature
   install steps. This speeds up feature installation across rebuilds by reusing
@@ -56,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plugin copy and lifecycle hook failures.
 - Plugin file copies now bail out on the first exec failure instead of logging
   identical errors for every remaining copy.
+- Compose workspaces: `crib restart` now includes plugin-injected env vars and
+  mounts (package cache, SSH agent, shell history, etc.) in the compose override.
+  Previously the simple restart path skipped plugin dispatch, so these were
+  missing until a full `crib down && crib up`.
 
 ## [0.4.1] - 2026-03-02
 

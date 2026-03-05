@@ -278,8 +278,10 @@ gems into the cached volume. This overrides the default gem location, which mean
 the volume instead of the version manager's directory (e.g.
 `~/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/`).
 
-This is generally fine for bundler-managed projects. Just make sure to use `bundle exec` (or
-binstubs) to run gem commands so bundler resolves the correct gem paths.
+This is generally fine for bundler-managed projects. The plugin also sets `BUNDLE_BIN=~/.bundle/bin`
+and installs a `/etc/profile.d/` script that adds it to PATH, so gem executables like `rspec` and
+`rubocop` are available in `crib shell` and `crib run` after `bundle install`. `crib exec` doesn't
+source profile scripts, so use `crib run` for commands that depend on bundler binstubs.
 
 ## Go: "permission denied" writing to module cache
 

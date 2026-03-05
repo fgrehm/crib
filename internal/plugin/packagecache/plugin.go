@@ -5,26 +5,34 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/plugin"
 )
 
 type cacheSpec struct {
-	containerDir string // relative to home, or absolute if isSystem is true
-	isSystem     bool   // mount at a fixed system path instead of ~/containerDir
-	envVar       string // if set, inject this env var pointing to the mount target
+	containerDir string            // relative to home, or absolute if isSystem is true
+	isSystem     bool              // mount at a fixed system path instead of ~/containerDir
+	envVar       string            // if set, inject this env var pointing to the mount target
+	extraEnv     map[string]string // additional env vars (values with {home} are expanded)
+	profileD     string            // if set, install /etc/profile.d/<name>.sh with this content ({home} expanded)
 }
 
 var cacheMap = map[string]cacheSpec{
-	"npm":       {containerDir: ".npm"},
-	"yarn":      {containerDir: ".cache/yarn"},
-	"pip":       {containerDir: ".cache/pip"},
-	"go":        {containerDir: "go/pkg/mod", envVar: "GOMODCACHE"},
-	"cargo":     {containerDir: ".cargo", envVar: "CARGO_HOME"},
-	"maven":     {containerDir: ".m2/repository"},
-	"gradle":    {containerDir: ".gradle/caches"},
-	"bundler":   {containerDir: ".bundle/cache", envVar: "BUNDLE_PATH"},
+	"npm":    {containerDir: ".npm"},
+	"yarn":   {containerDir: ".cache/yarn"},
+	"pip":    {containerDir: ".cache/pip"},
+	"go":     {containerDir: "go/pkg/mod", envVar: "GOMODCACHE"},
+	"cargo":  {containerDir: ".cargo", envVar: "CARGO_HOME"},
+	"maven":  {containerDir: ".m2/repository"},
+	"gradle": {containerDir: ".gradle/caches"},
+	"bundler": {
+		containerDir: ".bundle/cache",
+		envVar:       "BUNDLE_PATH",
+		extraEnv:     map[string]string{"BUNDLE_BIN": "{home}/.bundle/bin"},
+		profileD:     "export PATH=\"$HOME/.bundle/bin:$PATH\"\n",
+	},
 	"apt":       {containerDir: "/var/cache/apt", isSystem: true},
 	"downloads": {containerDir: ".cache/crib", envVar: "CRIB_CACHE"},
 }
@@ -79,6 +87,7 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 	var mounts []config.Mount
 	var env map[string]string
 	var hasApt bool
+	var profileScripts []profileScript
 	for _, provider := range p.providers {
 		spec, ok := cacheMap[provider]
 		if !ok {
@@ -108,6 +117,20 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 			}
 			env[spec.envVar] = target
 		}
+
+		for k, v := range spec.extraEnv {
+			if env == nil {
+				env = make(map[string]string)
+			}
+			env[k] = strings.ReplaceAll(v, "{home}", remoteHome)
+		}
+
+		if spec.profileD != "" {
+			profileScripts = append(profileScripts, profileScript{
+				name:    "crib-" + provider + "-path.sh",
+				content: spec.profileD,
+			})
+		}
 	}
 
 	if len(mounts) == 0 {
@@ -126,10 +149,45 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 		copies = append(copies, copy)
 	}
 
+	// Stage /etc/profile.d/ scripts so login shells pick up PATH additions.
+	for _, ps := range profileScripts {
+		copy, err := stageProfileScript(req.WorkspaceDir, ps.name, ps.content)
+		if err != nil {
+			return nil, fmt.Errorf("staging profile script %s: %w", ps.name, err)
+		}
+		copies = append(copies, copy)
+	}
+
 	return &plugin.PreContainerRunResponse{
 		Mounts: mounts,
 		Env:    env,
 		Copies: copies,
+	}, nil
+}
+
+type profileScript struct {
+	name    string // filename under /etc/profile.d/
+	content string // script content
+}
+
+// stageProfileScript writes a shell script to the workspace state dir and
+// returns a FileCopy that places it in /etc/profile.d/ inside the container.
+// Login shells source these scripts, making PATH additions available in
+// crib shell and crib run.
+func stageProfileScript(workspaceDir, name, content string) (plugin.FileCopy, error) {
+	pluginDir := filepath.Join(workspaceDir, "plugins", "package-cache")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		return plugin.FileCopy{}, fmt.Errorf("creating plugin dir: %w", err)
+	}
+
+	src := filepath.Join(pluginDir, name)
+	if err := os.WriteFile(src, []byte(content), 0o644); err != nil {
+		return plugin.FileCopy{}, fmt.Errorf("writing profile script: %w", err)
+	}
+
+	return plugin.FileCopy{
+		Source: src,
+		Target: "/etc/profile.d/" + name,
 	}, nil
 }
 
