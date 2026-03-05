@@ -29,6 +29,10 @@ Currently plugin mounts land at ad-hoc paths (`~/.crib_history/`, `/tmp/ssh-agen
 
 Add `--json` or `--format json` flag to commands like `status`, `list` for scripting and tooling integration. The internal data structures already support this.
 
+### Colored log output
+
+Color-code `crib logs` lines by service name when the terminal supports it, similar to `docker compose logs`. Useful for compose workspaces with multiple services where logs are interleaved.
+
 ### Container health checks
 
 Detect when a container is unhealthy or stuck and surface it in `crib status` / `crib ps`.
