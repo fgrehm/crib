@@ -90,6 +90,6 @@ var sshCmd = &cobra.Command{
 	Short:  "Not actual SSH",
 	Hidden: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return fmt.Errorf("crib doesn't use SSH. Use 'crib shell' to open a shell in the container (it's a glorified docker exec)")
+		return fmt.Errorf("crib doesn't use SSH. Use 'crib shell' to open a shell in the container")
 	},
 }
