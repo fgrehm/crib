@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `crib run` command: runs commands through a login shell so tools installed by
+  version managers (mise, asdf, nvm, rbenv) are available on PATH. Use instead
+  of `crib exec` when the command depends on shell init files.
 - `crib cache list` and `crib cache clean` commands for inspecting and removing
   package cache volumes. `--all` flag operates across all workspaces.
 - Package cache volumes are now per-workspace (`crib-cache-{workspace}-{provider}`)

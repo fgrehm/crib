@@ -96,6 +96,7 @@ func init() {
 	rootCmd.AddCommand(downCmd)
 	rootCmd.AddCommand(removeCmd)
 	rootCmd.AddCommand(execCmd)
+	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(shellCmd)
 	rootCmd.AddCommand(upCmd)
 	rootCmd.AddCommand(rebuildCmd)

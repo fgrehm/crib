@@ -24,7 +24,7 @@ var cacheMap = map[string]cacheSpec{
 	"cargo":     {containerDir: ".cargo", envVar: "CARGO_HOME"},
 	"maven":     {containerDir: ".m2/repository"},
 	"gradle":    {containerDir: ".gradle/caches"},
-	"bundler":   {containerDir: ".bundle/cache"},
+	"bundler":   {containerDir: ".bundle/cache", envVar: "BUNDLE_PATH"},
 	"apt":       {containerDir: "/var/cache/apt", isSystem: true},
 	"downloads": {containerDir: ".cache/crib", envVar: "CRIB_CACHE"},
 }

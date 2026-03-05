@@ -11,7 +11,8 @@ description: All available crib CLI commands and global flags.
 | `down` | `stop` | Stop and remove the workspace container |
 | `remove` | `rm`, `delete` | Remove the workspace container and state |
 | `shell` | `sh` | Open an interactive shell (detects zsh/bash/sh) |
-| `exec` | | Execute a command in the workspace container |
+| `run` | | Run a command through a login shell (picks up mise/nvm/rbenv) |
+| `exec` | | Execute a command directly in the workspace container |
 | `restart` | | Restart the workspace container (picks up safe config changes) |
 | `rebuild` | | Rebuild the workspace (down + up) |
 | `logs` | | Show container logs |
@@ -48,16 +49,26 @@ Remove the workspace container and all stored state from `~/.crib/workspaces/`. 
 
 Open an interactive shell inside the container. crib detects the user's shell (zsh, bash, or sh) and uses the environment captured during `crib up` (including tools installed by version managers like mise, nvm, rbenv).
 
-### `crib exec`
+### `crib run`
 
-Run a command inside the container:
+Run a command inside the container through a login shell. This sources shell init files (`.zshrc`, `.bashrc`, `.profile`) before running your command, making tools installed by version managers (mise, asdf, nvm, rbenv) available on PATH.
 
 ```bash
-crib exec -- npm test
+crib run -- ruby -v
+crib run -- bundle install
+crib run -- npm test
+```
+
+### `crib exec`
+
+Run a command directly inside the container (raw `docker exec`). Does not source shell init files, so tools installed by version managers may not be on PATH. Use `crib run` instead if the command depends on shell init.
+
+```bash
+crib exec -- /usr/bin/env
 crib exec -- bash -c "echo hello"
 ```
 
-Like `shell`, inherits the probed environment from `crib up`.
+Both `run` and `exec` inherit the probed environment (`remoteEnv`) from `crib up`.
 
 ### `crib restart`
 

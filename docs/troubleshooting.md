@@ -250,6 +250,37 @@ Alternatively, use the spec-standard `${containerEnv:PATH}` syntax, which works 
 }
 ```
 
+## `crib exec` can't find tools installed by mise/asdf/nvm/rbenv
+
+If `crib exec -- ruby -v` fails with "not found" but `crib shell` followed by `ruby -v` works,
+the tool is installed via a version manager that modifies PATH through shell init files.
+
+`crib exec` runs commands directly via `docker exec` without sourcing shell init files, so
+PATH additions from mise, asdf, nvm, rbenv, etc. aren't available.
+
+**Fix:** Use `crib run` instead, which wraps commands in a login shell:
+
+```bash
+crib run -- ruby -v
+crib run -- bundle install
+```
+
+`crib run` detects the container's shell (zsh, bash, or sh) and runs your command through
+`$SHELL -lc '...'`, which sources login profiles and sets up PATH correctly.
+
+Use `crib exec` for commands that don't depend on shell init (system binaries, scripts with
+absolute paths) or when you need raw `docker exec` behavior.
+
+## Package cache: `bundler` provider and version managers (mise/rbenv)
+
+The `bundler` cache provider sets `BUNDLE_PATH=~/.bundle/cache` so that `bundle install` writes
+gems into the cached volume. This overrides the default gem location, which means gems end up in
+the volume instead of the version manager's directory (e.g.
+`~/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/`).
+
+This is generally fine for bundler-managed projects. Just make sure to use `bundle exec` (or
+binstubs) to run gem commands so bundler resolves the correct gem paths.
+
 ## Go: "permission denied" writing to module cache
 
 When using a Go base image (e.g. `golang:1.26`) with a non-root `remoteUser`, you may see:

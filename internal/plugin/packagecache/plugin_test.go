@@ -275,6 +275,24 @@ func TestPlugin_CargoSetsCARGOHOME(t *testing.T) {
 	}
 }
 
+func TestPlugin_BundlerSetsBUNDLEPATH(t *testing.T) {
+	p := New([]string{"bundler"})
+
+	resp, err := p.PreContainerRun(context.Background(), &plugin.PreContainerRunRequest{
+		WorkspaceID: "myproject",
+		RemoteUser:  "vscode",
+	})
+	if err != nil {
+		t.Fatalf("PreContainerRun: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+	if resp.Env["BUNDLE_PATH"] != "/home/vscode/.bundle/cache" {
+		t.Errorf("BUNDLE_PATH = %q, want /home/vscode/.bundle/cache", resp.Env["BUNDLE_PATH"])
+	}
+}
+
 func TestPlugin_NpmNoEnvVar(t *testing.T) {
 	p := New([]string{"npm"})
 
