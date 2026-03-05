@@ -16,7 +16,7 @@ type cacheSpec struct {
 	isSystem     bool              // mount at a fixed system path instead of ~/containerDir
 	envVar       string            // if set, inject this env var pointing to the mount target
 	extraEnv     map[string]string // additional env vars (values with {home} are expanded)
-	profileD     string            // if set, install /etc/profile.d/<name>.sh with this content ({home} expanded)
+	profileD     string            // if set, install /etc/profile.d/<name>.sh with this content (used as-is, use $HOME for home dir)
 }
 
 var cacheMap = map[string]cacheSpec{
@@ -191,7 +191,7 @@ func stageProfileScript(workspaceDir, name, content string) (plugin.FileCopy, er
 	}, nil
 }
 
-// stageDockerCleanOverride writes an empty file to the workspace state dir
+// stageDockerCleanOverride writes a comment-only file to the workspace state dir
 // and returns a FileCopy that overwrites /etc/apt/apt.conf.d/docker-clean
 // inside the container. This prevents apt from deleting cached .deb files.
 func stageDockerCleanOverride(workspaceDir string) (plugin.FileCopy, error) {
