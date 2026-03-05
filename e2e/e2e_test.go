@@ -249,19 +249,20 @@ func TestE2EUpRecreate(t *testing.T) {
 	projectDir := setupProject(t)
 	cribHome := t.TempDir()
 
-	// First up.
+	// First up — capture the container ID while it still exists.
 	out1 := mustRunCrib(t, projectDir, cribHome, "up")
-
-	// Second up with --recreate.
-	out2 := mustRunCrib(t, projectDir, cribHome, "up", "--recreate")
-
-	// Container IDs should differ (same name, different underlying container).
 	name1 := extractContainerName(out1)
-	name2 := extractContainerName(out2)
-	if name1 == "" || name2 == "" {
-		t.Fatalf("could not extract container names: first=%q second=%q", out1, out2)
+	if name1 == "" {
+		t.Fatalf("could not extract container name from first up: %q", out1)
 	}
 	id1 := containerRealID(t, name1)
+
+	// Second up with --recreate — capture ID after the new container is running.
+	out2 := mustRunCrib(t, projectDir, cribHome, "up", "--recreate")
+	name2 := extractContainerName(out2)
+	if name2 == "" {
+		t.Fatalf("could not extract container name from second up: %q", out2)
+	}
 	id2 := containerRealID(t, name2)
 	if id1 == id2 {
 		t.Errorf("up --recreate: want new container ID, got same %q", id1)
