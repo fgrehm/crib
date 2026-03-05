@@ -382,7 +382,7 @@ func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Wo
 // all current callers (bundled plugins with hardcoded paths like
 // ~/.claude/.credentials.json). If we add external/user-defined plugins, the
 // values must be shell-escaped first to prevent breakage or injection from
-// paths containing single quotes (use the '\”  idiom to escape a literal ').
+// paths containing single quotes.
 func (e *Engine) execPluginCopies(ctx context.Context, workspaceID, containerID string, copies []plugin.FileCopy) {
 	for _, cp := range copies {
 		data, err := os.ReadFile(cp.Source)
