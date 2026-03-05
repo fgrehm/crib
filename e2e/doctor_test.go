@@ -27,10 +27,15 @@ func TestE2EDoctor(t *testing.T) {
 
 	mustRunCrib(t, projectDir, cribHome, "up")
 
-	// Doctor after up should still find no issues.
+	// Doctor after up should find no issues for our workspace.
+	// Filter out "dangling-container" warnings since those come from
+	// pre-existing containers on the machine (not managed by our temp cribHome).
 	out = mustRunCrib(t, projectDir, cribHome, "doctor")
-	if strings.Contains(strings.ToLower(out), "warning") {
-		t.Errorf("doctor after up: unexpected warning: %s", out)
+	for _, line := range strings.Split(out, "\n") {
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "warning") && !strings.Contains(lower, "dangling-container") {
+			t.Errorf("doctor after up: unexpected warning: %s", line)
+		}
 	}
 }
 

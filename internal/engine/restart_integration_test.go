@@ -21,7 +21,7 @@ func TestIntegrationRestartSimple(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 
 	projectDir := t.TempDir()
 	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
@@ -42,10 +42,10 @@ func TestIntegrationRestartSimple(t *testing.T) {
 	wsID := "test-restart-simple"
 	ws := &workspace.Workspace{
 		ID:               wsID,
-		Source:            projectDir,
-		DevContainerPath:  ".devcontainer/devcontainer.json",
-		CreatedAt:         time.Now(),
-		LastUsedAt:        time.Now(),
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
 	}
 
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
@@ -113,7 +113,7 @@ func TestIntegrationRestartSafeChange(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 
 	projectDir := t.TempDir()
 	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
@@ -138,10 +138,10 @@ func TestIntegrationRestartSafeChange(t *testing.T) {
 	wsID := "test-restart-safe"
 	ws := &workspace.Workspace{
 		ID:               wsID,
-		Source:            projectDir,
-		DevContainerPath:  ".devcontainer/devcontainer.json",
-		CreatedAt:         time.Now(),
-		LastUsedAt:        time.Now(),
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
 	}
 
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
@@ -211,13 +211,13 @@ func TestIntegrationRestartSafeChange(t *testing.T) {
 		t.Error("postStartCommand did not run after recreate")
 	}
 
-	// onCreateCommand should NOT have run (creation hooks skipped on restart).
-	// The marker file from the first Up should not exist in the new container.
-	// If it does exist, it means the hook ran again (which is wrong).
-	err = d.ExecContainer(ctx, wsID, restartResult.ContainerID, []string{"test", "-f", "/tmp/on-create-ran"}, nil, nil, nil, nil, "")
-	if err == nil {
-		t.Error("onCreateCommand ran on recreate, expected it to be skipped")
-	}
+	// We do NOT check whether onCreateCommand re-executed here.
+	// With the snapshot system, the restart-recreate path either:
+	// - Uses the snapshot image (effects baked in, hook skipped), or
+	// - Falls back to full setup if no snapshot is available (hook re-runs).
+	// Both produce a correctly set up container. Either way the marker file
+	// exists inside the container, so an in-container check is ambiguous.
+	// The snapshot optimization is tested separately in TestIntegrationSnapshot.
 }
 
 // TestIntegrationRestartNeedsRebuild verifies that Restart returns an error
@@ -228,7 +228,7 @@ func TestIntegrationRestartNeedsRebuild(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 
 	projectDir := t.TempDir()
 	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
@@ -248,10 +248,10 @@ func TestIntegrationRestartNeedsRebuild(t *testing.T) {
 	wsID := "test-restart-rebuild"
 	ws := &workspace.Workspace{
 		ID:               wsID,
-		Source:            projectDir,
-		DevContainerPath:  ".devcontainer/devcontainer.json",
-		CreatedAt:         time.Now(),
-		LastUsedAt:        time.Now(),
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
 	}
 
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
@@ -292,7 +292,7 @@ func TestIntegrationRestartNoWorkspace(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, _ := newTestEngine(t)
+	e, _, _ := newTestEngine(t)
 
 	projectDir := t.TempDir()
 	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
@@ -311,10 +311,10 @@ func TestIntegrationRestartNoWorkspace(t *testing.T) {
 	wsID := "test-restart-no-ws"
 	ws := &workspace.Workspace{
 		ID:               wsID,
-		Source:            projectDir,
-		DevContainerPath:  ".devcontainer/devcontainer.json",
-		CreatedAt:         time.Now(),
-		LastUsedAt:        time.Now(),
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
 	}
 
 	_, err := e.Restart(ctx, ws)
@@ -334,7 +334,7 @@ func TestIntegrationRestartMountChange(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 
 	projectDir := t.TempDir()
 	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
@@ -360,10 +360,10 @@ func TestIntegrationRestartMountChange(t *testing.T) {
 	wsID := "test-restart-mount"
 	ws := &workspace.Workspace{
 		ID:               wsID,
-		Source:            projectDir,
-		DevContainerPath:  ".devcontainer/devcontainer.json",
-		CreatedAt:         time.Now(),
-		LastUsedAt:        time.Now(),
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
 	}
 
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))

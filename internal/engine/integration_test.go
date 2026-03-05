@@ -18,7 +18,7 @@ import (
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
-func newTestEngine(t *testing.T) (*Engine, *oci.OCIDriver) {
+func newTestEngine(t *testing.T) (*Engine, *oci.OCIDriver, *workspace.Store) {
 	t.Helper()
 	d, err := oci.NewOCIDriver(slog.Default())
 	if err != nil {
@@ -28,7 +28,7 @@ func newTestEngine(t *testing.T) (*Engine, *oci.OCIDriver) {
 	store := workspace.NewStoreAt(t.TempDir())
 
 	// compose helper is optional for these tests.
-	return New(d, nil, store, slog.Default()), d
+	return New(d, nil, store, slog.Default()), d, store
 }
 
 func TestIntegrationUpImageBased(t *testing.T) {
@@ -37,7 +37,7 @@ func TestIntegrationUpImageBased(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 
 	// Create a temp project directory with a devcontainer.json.
 	projectDir := t.TempDir()
@@ -150,7 +150,7 @@ func TestIntegrationUpWithLifecycleHooks(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 
 	projectDir := t.TempDir()
 	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
@@ -208,7 +208,7 @@ func TestIntegrationUpWithInitializeCommand(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 
 	projectDir := t.TempDir()
 	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
@@ -258,7 +258,7 @@ func TestIntegrationUpWithRecreate(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 
 	projectDir := t.TempDir()
 	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
@@ -327,7 +327,7 @@ func TestIntegrationUpWithRemoteUserUID(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 
 	hostUID := os.Getuid()
 	hostGID := os.Getgid()
@@ -442,7 +442,7 @@ func TestIntegrationUpWithPlugins(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 
 	// Wire in shell-history plugin.
 	mgr := plugin.NewManager(slog.Default())
@@ -504,7 +504,7 @@ func TestIntegrationLogs(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 	e.SetOutput(os.Stdout, os.Stderr)
 
 	projectDir := t.TempDir()
@@ -569,7 +569,7 @@ func TestIntegrationSnapshot(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 	e.SetOutput(os.Stdout, os.Stderr)
 
 	projectDir := t.TempDir()
@@ -651,7 +651,7 @@ func TestIntegrationDoctor(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, d := newTestEngine(t)
+	e, d, _ := newTestEngine(t)
 	e.SetOutput(os.Stdout, os.Stderr)
 
 	// Clean state: doctor should find no issues.
