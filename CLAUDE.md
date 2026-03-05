@@ -67,6 +67,16 @@ When adding a feature that affects container creation (plugins, mounts, env vars
 
 `dispatchPlugins()` builds the plugin request and returns the response without merging into any target. Both paths call it, then apply the response differently: single-container merges into `RunOptions`, compose passes it to `generateComposeOverride`.
 
+### Compose override is ephemeral, not baked in
+
+For single-container workspaces, env vars and mounts are baked into the container config at creation time and survive `docker restart`. For compose workspaces, the override YAML is a temp file regenerated on every `compose up`. This means **every code path that calls `generateComposeOverride()` must dispatch plugins and pass the response**, otherwise plugin env vars and mounts silently disappear. This includes:
+
+- `upCompose` (fresh up, stopped container restart, stored result)
+- `restartSimple` compose path
+- `restartRecreateCompose`
+
+Similarly, **never use a stored container ID for compose operations after `compose up`**. The override may have changed, causing compose to recreate the container with a new ID. Always call `findComposeContainer()` after `compose up` returns.
+
 ## Development Workflow
 
 See the [Development](https://fgrehm.github.io/crib/contributing/development/) page on the docs site for branching model and build instructions.
