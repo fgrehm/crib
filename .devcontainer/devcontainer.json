@@ -1,0 +1,24 @@
+{
+	"name": "crib",
+	"image": "golang:1.26",
+	"features": {
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {
+			"moby": false
+		}
+	},
+	"overrideCommand": true,
+	"postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} && make build && make setup-hooks",
+	"remoteEnv": {
+		"PATH": "/usr/local/go/bin:${containerEnv:PATH}"
+	},
+	"containerEnv": {
+		"CRIB_RUNTIME": "docker"
+	},
+	"customizations": {
+		"crib": {
+			"coding-agents": {
+				"credentials": "workspace"
+			}
+		}
+	}
+}

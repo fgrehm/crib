@@ -210,7 +210,6 @@ func (e *Engine) chownPluginVolumes(ctx context.Context, workspaceID, containerI
 	}
 }
 
-
 // setupAndReturn runs container setup and returns the result.
 // On lifecycle hook failure, both the result and error are returned so
 // callers can persist the result (container is still usable).
