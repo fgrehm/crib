@@ -35,7 +35,7 @@ Or download the latest binary from [GitHub releases](https://github.com/fgrehm/c
 
 ```bash
 # Replace OS and ARCH as needed (linux/darwin, amd64/arm64)
-curl -Lo crib.tar.gz https://github.com/fgrehm/crib/releases/latest/download/crib_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz
+curl -Lo crib.tar.gz "https://github.com/fgrehm/crib/releases/latest/download/crib_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz"
 tar xzf crib.tar.gz crib
 install -m 755 crib ~/.local/bin/crib
 rm crib.tar.gz
