@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -106,6 +107,31 @@ func (e *Engine) resolveRemoteEnv(ctx context.Context, workspaceID, containerID 
 		return
 	}
 	cfg.RemoteEnv = resolved.RemoteEnv
+
+	// Resolve bare ${VAR} references (e.g. ${PATH}) as container env lookups.
+	// Many devcontainer.json files use ${PATH} instead of ${containerEnv:PATH}
+	// in remoteEnv. Since exec -e doesn't do shell expansion, we must resolve
+	// these ourselves.
+	resolveBareVarRefs(cfg.RemoteEnv, containerEnv)
+}
+
+// bareVarRe matches ${VARNAME} where VARNAME contains no colons (i.e. not
+// a namespaced reference like ${containerEnv:PATH} or ${localEnv:HOME}).
+var bareVarRe = regexp.MustCompile(`\$\{([^:}]+)\}`)
+
+// resolveBareVarRefs replaces bare ${VAR} references in env values with the
+// corresponding value from containerEnv. This handles the common pattern of
+// writing ${PATH} in remoteEnv instead of ${containerEnv:PATH}.
+func resolveBareVarRefs(env map[string]string, containerEnv map[string]string) {
+	for k, v := range env {
+		env[k] = bareVarRe.ReplaceAllStringFunc(v, func(match string) string {
+			name := match[2 : len(match)-1]
+			if val, ok := containerEnv[name]; ok {
+				return val
+			}
+			return match
+		})
+	}
 }
 
 // syncRemoteUserUID synchronizes the container user's UID/GID with the host user.

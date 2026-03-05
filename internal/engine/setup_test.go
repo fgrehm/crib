@@ -553,6 +553,55 @@ func TestMergeEnv_RemoteEnvCanOverrideMiseFilter(t *testing.T) {
 	}
 }
 
+func TestResolveBareVarRefs(t *testing.T) {
+	containerEnv := map[string]string{
+		"PATH": "/usr/local/bin:/usr/bin:/bin",
+		"HOME": "/home/vscode",
+	}
+
+	tests := []struct {
+		name string
+		env  map[string]string
+		want map[string]string
+	}{
+		{
+			name: "resolves bare PATH reference",
+			env:  map[string]string{"PATH": "/home/vscode/.local/bin:${PATH}"},
+			want: map[string]string{"PATH": "/home/vscode/.local/bin:/usr/local/bin:/usr/bin:/bin"},
+		},
+		{
+			name: "leaves containerEnv references alone",
+			env:  map[string]string{"MY_VAR": "${containerEnv:PATH}"},
+			want: map[string]string{"MY_VAR": "${containerEnv:PATH}"},
+		},
+		{
+			name: "resolves multiple bare refs in one value",
+			env:  map[string]string{"COMBINED": "${HOME}:${PATH}"},
+			want: map[string]string{"COMBINED": "/home/vscode:/usr/local/bin:/usr/bin:/bin"},
+		},
+		{
+			name: "leaves unknown bare refs as-is",
+			env:  map[string]string{"X": "${UNKNOWN_VAR}"},
+			want: map[string]string{"X": "${UNKNOWN_VAR}"},
+		},
+		{
+			name: "no-op for values without variable refs",
+			env:  map[string]string{"PLAIN": "hello"},
+			want: map[string]string{"PLAIN": "hello"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := copyStringMap(tt.env)
+			resolveBareVarRefs(env, containerEnv)
+			if !reflect.DeepEqual(env, tt.want) {
+				t.Errorf("resolveBareVarRefs() = %v, want %v", env, tt.want)
+			}
+		})
+	}
+}
+
 func TestMergeEnv_BothNil(t *testing.T) {
 	result := mergeEnv(nil, nil)
 	if result != nil {

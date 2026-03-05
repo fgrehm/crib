@@ -220,6 +220,36 @@ If you were using the compose mount as persistent storage (e.g. authenticating C
 container), switch to the coding-agents plugin's
 [workspace mode](/crib/guides/plugins/#workspace-mode) instead.
 
+## `remoteEnv`: `sh` not found after setting PATH with `${PATH}`
+
+If you set `PATH` in `remoteEnv` using a bare `${PATH}` reference:
+
+```jsonc
+{
+  "remoteEnv": {
+    "PATH": "/home/vscode/.local/bin:${PATH}"
+  }
+}
+```
+
+Older versions of crib passed the literal string `${PATH}` to `docker exec -e`, which overwrote the container's real PATH and made basic commands like `sh` unfindable:
+
+```text
+crun: executable file `sh` not found in $PATH: No such file or directory
+```
+
+**Fix:** Update to crib v0.5.0+, which resolves bare `${VAR}` references in `remoteEnv` against the container's environment.
+
+Alternatively, use the spec-standard `${containerEnv:PATH}` syntax, which works in all versions:
+
+```jsonc
+{
+  "remoteEnv": {
+    "PATH": "/home/vscode/.local/bin:${containerEnv:PATH}"
+  }
+}
+```
+
 ## Go: "permission denied" writing to module cache
 
 When using a Go base image (e.g. `golang:1.26`) with a non-root `remoteUser`, you may see:
