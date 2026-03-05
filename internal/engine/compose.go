@@ -408,7 +408,7 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		if len(volumeNames) > 0 {
 			b.WriteString("volumes:\n")
 			for _, name := range volumeNames {
-				fmt.Fprintf(&b, "  %s:\n", name)
+				fmt.Fprintf(&b, "  %s:\n    name: %s\n", name, name)
 			}
 		}
 	}
