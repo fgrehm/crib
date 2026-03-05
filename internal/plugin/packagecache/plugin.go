@@ -17,15 +17,16 @@ type cacheSpec struct {
 }
 
 var cacheMap = map[string]cacheSpec{
-	"npm":     {containerDir: ".npm"},
-	"yarn":    {containerDir: ".cache/yarn"},
-	"pip":     {containerDir: ".cache/pip"},
-	"go":      {containerDir: "go/pkg/mod", envVar: "GOMODCACHE"},
-	"cargo":   {containerDir: ".cargo", envVar: "CARGO_HOME"},
-	"maven":   {containerDir: ".m2/repository"},
-	"gradle":  {containerDir: ".gradle/caches"},
-	"bundler": {containerDir: ".bundle/cache"},
-	"apt":     {containerDir: "/var/cache/apt", isSystem: true},
+	"npm":       {containerDir: ".npm"},
+	"yarn":      {containerDir: ".cache/yarn"},
+	"pip":       {containerDir: ".cache/pip"},
+	"go":        {containerDir: "go/pkg/mod", envVar: "GOMODCACHE"},
+	"cargo":     {containerDir: ".cargo", envVar: "CARGO_HOME"},
+	"maven":     {containerDir: ".m2/repository"},
+	"gradle":    {containerDir: ".gradle/caches"},
+	"bundler":   {containerDir: ".bundle/cache"},
+	"apt":       {containerDir: "/var/cache/apt", isSystem: true},
+	"downloads": {containerDir: ".cache/crib", envVar: "CRIB_CACHE"},
 }
 
 // VolumeName returns the Docker volume name for a workspace's cache provider.
@@ -151,6 +152,28 @@ func stageDockerCleanOverride(workspaceDir string) (plugin.FileCopy, error) {
 		Source: src,
 		Target: "/etc/apt/apt.conf.d/docker-clean",
 	}, nil
+}
+
+// BuildCacheMounts returns cache mount target paths for use during image builds.
+// Feature install scripts run as root, so home-relative paths use /root.
+// For apt, both /var/cache/apt and /var/lib/apt/lists are included.
+func BuildCacheMounts(providers []string) []string {
+	var targets []string
+	for _, provider := range providers {
+		spec, ok := cacheMap[provider]
+		if !ok {
+			continue
+		}
+		if spec.isSystem {
+			targets = append(targets, spec.containerDir)
+		} else {
+			targets = append(targets, "/root/"+spec.containerDir)
+		}
+		if provider == "apt" {
+			targets = append(targets, "/var/lib/apt/lists")
+		}
+	}
+	return targets
 }
 
 // SupportedProviders returns the list of known cache provider names.

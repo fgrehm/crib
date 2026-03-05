@@ -260,6 +260,7 @@ func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
 			logger.Warn("unknown cache providers in .cribrc", "unknown", unknown, "supported", packagecache.SupportedProviders())
 		}
 		mgr.Register(packagecache.New(cacheProviders))
+		eng.SetBuildCacheMounts(packagecache.BuildCacheMounts(cacheProviders))
 	}
 	eng.SetPlugins(mgr)
 }

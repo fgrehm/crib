@@ -20,7 +20,10 @@ const (
 // content is the main Dockerfile body (FROM, COPY, RUN layers).
 // prefix is the syntax directive and base image ARG that must appear at the
 // top of the final Dockerfile.
-func GenerateDockerfile(features []*FeatureSet, containerUser, remoteUser string) (content, prefix string) {
+//
+// cacheMounts are BuildKit cache mount targets (e.g. "/var/cache/apt") to
+// attach to each feature install RUN instruction. Pass nil to disable.
+func GenerateDockerfile(features []*FeatureSet, containerUser, remoteUser string, cacheMounts []string) (content, prefix string) {
 	prefix = dockerfileSyntax + "\n" + baseImageArg + "\n"
 
 	var b strings.Builder
@@ -46,6 +49,13 @@ func GenerateDockerfile(features []*FeatureSet, containerUser, remoteUser string
 	fmt.Fprintf(&b, "RUN cat /tmp/build-features/%s >> /etc/environment 2>/dev/null || true\n", builtinEnvFile)
 	b.WriteString("\n")
 
+	// When apt caching is enabled, disable the docker-clean hook that wipes
+	// /var/cache/apt/archives after every install. Without this, the BuildKit
+	// cache mount is emptied by apt itself during each RUN.
+	if hasAptCache(cacheMounts) {
+		b.WriteString("RUN rm -f /etc/apt/apt.conf.d/docker-clean 2>/dev/null || true\n\n")
+	}
+
 	// Per-feature ENV and RUN layers.
 	for i, f := range features {
 		// ContainerEnv as ENV instructions.
@@ -57,6 +67,9 @@ func GenerateDockerfile(features []*FeatureSet, containerUser, remoteUser string
 		// Mount from baseStageName (not the current stage) to avoid a
 		// self-referential dependency that Podman and older BuildKit reject.
 		fmt.Fprintf(&b, "RUN --mount=type=bind,from=%s,source=/,target=/build-context ", baseStageName)
+		for _, target := range cacheMounts {
+			fmt.Fprintf(&b, "--mount=type=cache,target=%s ", target)
+		}
 		fmt.Fprintf(&b, "chmod +x /tmp/build-features/%d/devcontainer-features-install.sh ", i)
 		fmt.Fprintf(&b, "&& /tmp/build-features/%d/devcontainer-features-install.sh\n", i)
 		b.WriteString("\n")
@@ -73,4 +86,14 @@ func GenerateDockerfile(features []*FeatureSet, containerUser, remoteUser string
 
 	content = b.String()
 	return content, prefix
+}
+
+// hasAptCache reports whether /var/cache/apt is among the cache mount targets.
+func hasAptCache(mounts []string) bool {
+	for _, m := range mounts {
+		if m == "/var/cache/apt" {
+			return true
+		}
+	}
+	return false
 }

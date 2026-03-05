@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/fgrehm/crib/internal/driver"
 )
@@ -36,8 +37,12 @@ func (d *OCIDriver) ListVolumes(ctx context.Context, nameFilter string) ([]drive
 		volumes[i] = driver.VolumeInfo{Name: e.Name}
 	}
 
-	// Best-effort size enrichment.
-	sizes := d.volumeSizes(ctx)
+	// Best-effort size enrichment with a short timeout. `docker system df -v`
+	// can block for a long time when the daemon is busy (e.g. during builds),
+	// so we cap it to keep `cache list` responsive.
+	sizeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	sizes := d.volumeSizes(sizeCtx)
 	for i := range volumes {
 		if s, ok := sizes[volumes[i].Name]; ok {
 			volumes[i].Size = s

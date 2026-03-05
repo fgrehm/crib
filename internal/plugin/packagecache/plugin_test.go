@@ -290,6 +290,95 @@ func TestPlugin_NpmNoEnvVar(t *testing.T) {
 	}
 }
 
+func TestBuildCacheMounts(t *testing.T) {
+	t.Run("home-relative providers use /root", func(t *testing.T) {
+		mounts := BuildCacheMounts([]string{"npm", "pip"})
+		expected := map[string]bool{
+			"/root/.npm":       true,
+			"/root/.cache/pip": true,
+		}
+		if len(mounts) != len(expected) {
+			t.Fatalf("expected %d mounts, got %d: %v", len(expected), len(mounts), mounts)
+		}
+		for _, m := range mounts {
+			if !expected[m] {
+				t.Errorf("unexpected mount %q", m)
+			}
+		}
+	})
+
+	t.Run("apt includes both cache and lists", func(t *testing.T) {
+		mounts := BuildCacheMounts([]string{"apt"})
+		expected := map[string]bool{
+			"/var/cache/apt":     true,
+			"/var/lib/apt/lists": true,
+		}
+		if len(mounts) != len(expected) {
+			t.Fatalf("expected %d mounts, got %d: %v", len(expected), len(mounts), mounts)
+		}
+		for _, m := range mounts {
+			if !expected[m] {
+				t.Errorf("unexpected mount %q", m)
+			}
+		}
+	})
+
+	t.Run("unknown providers skipped", func(t *testing.T) {
+		mounts := BuildCacheMounts([]string{"bogus"})
+		if len(mounts) != 0 {
+			t.Errorf("expected no mounts, got %v", mounts)
+		}
+	})
+
+	t.Run("nil providers", func(t *testing.T) {
+		mounts := BuildCacheMounts(nil)
+		if len(mounts) != 0 {
+			t.Errorf("expected no mounts, got %v", mounts)
+		}
+	})
+
+	t.Run("go uses /root with GOMODCACHE path", func(t *testing.T) {
+		mounts := BuildCacheMounts([]string{"go"})
+		if len(mounts) != 1 || mounts[0] != "/root/go/pkg/mod" {
+			t.Errorf("go mounts = %v, want [/root/go/pkg/mod]", mounts)
+		}
+	})
+}
+
+func TestPlugin_DownloadsSetsCRIBCACHE(t *testing.T) {
+	p := New([]string{"downloads"})
+
+	resp, err := p.PreContainerRun(context.Background(), &plugin.PreContainerRunRequest{
+		WorkspaceID: "myproject",
+		RemoteUser:  "vscode",
+	})
+	if err != nil {
+		t.Fatalf("PreContainerRun: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+	if len(resp.Mounts) != 1 {
+		t.Fatalf("expected 1 mount, got %d", len(resp.Mounts))
+	}
+	if resp.Mounts[0].Target != "/home/vscode/.cache/crib" {
+		t.Errorf("mount target = %q, want /home/vscode/.cache/crib", resp.Mounts[0].Target)
+	}
+	if resp.Mounts[0].Source != "crib-cache-myproject-downloads" {
+		t.Errorf("mount source = %q, want crib-cache-myproject-downloads", resp.Mounts[0].Source)
+	}
+	if resp.Env["CRIB_CACHE"] != "/home/vscode/.cache/crib" {
+		t.Errorf("CRIB_CACHE = %q, want /home/vscode/.cache/crib", resp.Env["CRIB_CACHE"])
+	}
+}
+
+func TestBuildCacheMounts_Downloads(t *testing.T) {
+	mounts := BuildCacheMounts([]string{"downloads"})
+	if len(mounts) != 1 || mounts[0] != "/root/.cache/crib" {
+		t.Errorf("downloads build mounts = %v, want [/root/.cache/crib]", mounts)
+	}
+}
+
 func TestVolumeName(t *testing.T) {
 	if got := VolumeName("myws", "npm"); got != "crib-cache-myws-npm" {
 		t.Errorf("VolumeName(myws, npm) = %q, want crib-cache-myws-npm", got)

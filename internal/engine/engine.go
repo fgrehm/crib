@@ -20,16 +20,17 @@ import (
 
 // Engine orchestrates devcontainer lifecycle operations.
 type Engine struct {
-	driver      driver.Driver
-	compose     *compose.Helper
-	store       *workspace.Store
-	plugins     *plugin.Manager
-	runtimeName string
-	logger      *slog.Logger
-	stdout      io.Writer
-	stderr      io.Writer
-	verbose     bool
-	progress    func(string)
+	driver           driver.Driver
+	compose          *compose.Helper
+	store            *workspace.Store
+	plugins          *plugin.Manager
+	runtimeName      string
+	buildCacheMounts []string // BuildKit cache mount targets for feature builds
+	logger           *slog.Logger
+	stdout           io.Writer
+	stderr           io.Writer
+	verbose          bool
+	progress         func(string)
 }
 
 // New creates an Engine with the given dependencies.
@@ -96,6 +97,12 @@ func (e *Engine) SetPlugins(m *plugin.Manager) {
 // SetRuntime stores the runtime name (e.g. "docker", "podman") for plugin requests.
 func (e *Engine) SetRuntime(name string) {
 	e.runtimeName = name
+}
+
+// SetBuildCacheMounts configures BuildKit cache mount targets for feature
+// install RUN instructions (e.g. "/var/cache/apt", "/root/.npm").
+func (e *Engine) SetBuildCacheMounts(mounts []string) {
+	e.buildCacheMounts = mounts
 }
 
 // reportProgress sends a message to the progress callback (if set)

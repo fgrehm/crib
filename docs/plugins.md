@@ -50,10 +50,26 @@ Comma-separated list of providers. Each one creates a `crib-cache-{workspace}-{p
 | `gradle` | `~/.gradle/caches` | |
 | `bundler` | `~/.bundle/cache` | |
 | `apt` | `/var/cache/apt` | System path; disables `docker-clean` so cached `.deb` files persist |
+| `downloads` | `~/.cache/crib` | General-purpose cache; sets `CRIB_CACHE` env var for easy access |
 
 Unknown provider names produce a warning at startup and are skipped.
 
+The `downloads` provider is a general-purpose persistent directory for anything that doesn't have its own provider. Use it for large downloads, compiled tools, or any files you want to survive rebuilds:
+
+```bash
+curl -L -o "$CRIB_CACHE/some-tool.tar.gz" https://example.com/some-tool.tar.gz
+tar -xzf "$CRIB_CACHE/some-tool.tar.gz" -C /usr/local/bin
+```
+
 Use `crib cache list` to see which cache volumes exist and how much space they use, and `crib cache clean` to remove them. See [Commands](/crib/reference/commands/#crib-cache) for details.
+
+### Build-time caching
+
+When cache providers are configured, crib also attaches [BuildKit cache mounts](https://docs.docker.com/build/cache/optimize/#use-cache-mounts) to the `RUN` instructions that install DevContainer Features. This speeds up feature installation across rebuilds by reusing cached packages (especially `apt` packages, which most features install).
+
+Build-time caching applies to the feature-generated Dockerfile only, not to user Dockerfiles or compose service builds. The build cache is managed by BuildKit and is separate from the runtime named volumes.
+
+For `apt`, crib also disables the `docker-clean` hook in the generated Dockerfile so that cached `.deb` files are preserved across builds.
 
 :::note[First run]
 The first `crib up` after adding a cache provider still downloads everything (the volume is empty). Subsequent rebuilds reuse the cached data.

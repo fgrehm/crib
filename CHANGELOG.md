@@ -21,8 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   directory deleted), dangling containers (crib label but no workspace state),
   and stale plugin data. Use `--fix` to auto-clean.
 - **Package cache sharing plugin**: shares host package caches (npm, pip, go,
-  cargo, maven, gradle, bundler, apt) via named Docker volumes. Configure in
-  `.cribrc`: `cache = npm, pip, go`.
+  cargo, maven, gradle, bundler, apt, downloads) via named Docker volumes.
+  Configure in `.cribrc`: `cache = npm, pip, go`. The `downloads` provider is a
+  general-purpose cache directory at `~/.cache/crib` (exposed via `CRIB_CACHE`
+  env var) for ad hoc file caching.
+- **Build-time cache mounts**: when package cache providers are configured, crib
+  attaches BuildKit `--mount=type=cache` directives to DevContainer Feature
+  install steps. This speeds up feature installation across rebuilds by reusing
+  cached packages (especially apt).
 - **Auto-snapshot**: after `crib up` completes create-time hooks, the container
   is committed to a local snapshot image. On subsequent `crib restart`
   recreations, the snapshot is used so hook effects are already baked in. If
