@@ -28,7 +28,7 @@ var cacheMap = map[string]cacheSpec{
 	"maven":  {containerDir: ".m2/repository"},
 	"gradle": {containerDir: ".gradle/caches"},
 	"bundler": {
-		containerDir: ".bundle/cache",
+		containerDir: ".bundle",
 		envVar:       "BUNDLE_PATH",
 		extraEnv:     map[string]string{"BUNDLE_BIN": "{home}/.bundle/bin"},
 		profileD:     "export PATH=\"$HOME/.bundle/bin:$PATH\"\n",

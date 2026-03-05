@@ -291,8 +291,8 @@ func TestPlugin_BundlerSetsBUNDLEPATH(t *testing.T) {
 	if resp == nil {
 		t.Fatal("expected non-nil response")
 	}
-	if resp.Env["BUNDLE_PATH"] != "/home/vscode/.bundle/cache" {
-		t.Errorf("BUNDLE_PATH = %q, want /home/vscode/.bundle/cache", resp.Env["BUNDLE_PATH"])
+	if resp.Env["BUNDLE_PATH"] != "/home/vscode/.bundle" {
+		t.Errorf("BUNDLE_PATH = %q, want /home/vscode/.bundle", resp.Env["BUNDLE_PATH"])
 	}
 	if resp.Env["BUNDLE_BIN"] != "/home/vscode/.bundle/bin" {
 		t.Errorf("BUNDLE_BIN = %q, want /home/vscode/.bundle/bin", resp.Env["BUNDLE_BIN"])
