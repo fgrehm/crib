@@ -255,12 +255,14 @@ func TestE2EUpRecreate(t *testing.T) {
 	// Second up with --recreate.
 	out2 := mustRunCrib(t, projectDir, cribHome, "up", "--recreate")
 
-	// Container IDs should differ.
-	id1 := extractContainerID(out1)
-	id2 := extractContainerID(out2)
-	if id1 == "" || id2 == "" {
-		t.Fatalf("could not extract container IDs: first=%q second=%q", out1, out2)
+	// Container IDs should differ (same name, different underlying container).
+	name1 := extractContainerName(out1)
+	name2 := extractContainerName(out2)
+	if name1 == "" || name2 == "" {
+		t.Fatalf("could not extract container names: first=%q second=%q", out1, out2)
 	}
+	id1 := containerRealID(t, name1)
+	id2 := containerRealID(t, name2)
 	if id1 == id2 {
 		t.Errorf("up --recreate: want new container ID, got same %q", id1)
 	}
@@ -324,9 +326,9 @@ func TestE2ERebuildNoContainer(t *testing.T) {
 	}
 }
 
-// extractContainerID pulls the short container ID from `crib up` output.
-// Output line looks like: "  container   abc123def456"
-func extractContainerID(out string) string {
+// extractContainerName pulls the container name from `crib up` output.
+// Output line looks like: "  container   crib-abc123"
+func extractContainerName(out string) string {
 	for _, line := range strings.Split(out, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "container") {
@@ -336,5 +338,19 @@ func extractContainerID(out string) string {
 			}
 		}
 	}
+	return ""
+}
+
+// containerRealID returns the actual runtime container ID for a named container
+// by querying docker or podman inspect.
+func containerRealID(t *testing.T, containerName string) string {
+	t.Helper()
+	for _, rt := range []string{"docker", "podman"} {
+		out, err := exec.Command(rt, "inspect", "--format", "{{.Id}}", containerName).Output()
+		if err == nil {
+			return strings.TrimSpace(string(out))
+		}
+	}
+	t.Fatalf("could not inspect container %q", containerName)
 	return ""
 }

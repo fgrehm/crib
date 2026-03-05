@@ -24,10 +24,11 @@ func TestE2EDownUpCycle(t *testing.T) {
 
 	// First up.
 	out1 := mustRunCrib(t, projectDir, cribHome, "up")
-	id1 := extractContainerID(out1)
-	if id1 == "" {
-		t.Fatalf("could not extract container ID from first up: %q", out1)
+	name1 := extractContainerName(out1)
+	if name1 == "" {
+		t.Fatalf("could not extract container name from first up: %q", out1)
 	}
+	id1 := containerRealID(t, name1)
 
 	// Verify postCreateCommand ran.
 	mustRunCrib(t, projectDir, cribHome, "exec", "--", "test", "-f", "/tmp/post-create-ran")
@@ -43,12 +44,13 @@ func TestE2EDownUpCycle(t *testing.T) {
 
 	// Up again.
 	out2 := mustRunCrib(t, projectDir, cribHome, "up")
-	id2 := extractContainerID(out2)
-	if id2 == "" {
-		t.Fatalf("could not extract container ID from second up: %q", out2)
+	name2 := extractContainerName(out2)
+	if name2 == "" {
+		t.Fatalf("could not extract container name from second up: %q", out2)
 	}
+	id2 := containerRealID(t, name2)
 
-	// Container ID should differ (down removed the old one).
+	// Container ID should differ (down removed the old one, up created a new one).
 	if id1 == id2 {
 		t.Error("expected different container ID after down + up")
 	}
