@@ -45,6 +45,46 @@ Color-code `crib logs` lines by service name when the terminal supports it, simi
 
 Detect when a container is unhealthy or stuck and surface it in `crib status` / `crib ps`.
 
+### Build progress indicator
+
+Show a spinner or progress bar during `docker commit` and other long-running operations when a TTY is detected. Investigate if `podman`/`docker commit` has machine-readable output we can use.
+
+### Workspace-scoped `crib status` and `crib delete`
+
+Accept an explicit workspace name argument so these commands work outside the project directory. Also useful for managing multiple workspaces from a central location.
+
+### `crib nuke` / `crib prune`
+
+Clean all crib state, containers, volumes, and images in one shot. Useful for full reset or uninstall.
+
+### Enhanced `crib list`
+
+Accept arguments to filter/show state details (container status, services, ports, etc.).
+
+### `crib build` command
+
+Build the image / container without starting it. Useful for CI or pre-warming caches.
+
+### Debug mode env var
+
+Pass `CRIB_DEBUG=1` (or `DEVCONTAINER_BUILD_DEBUG`) into containers during builds and hook execution for easier troubleshooting.
+
+### Build log capture
+
+Write all build output to `~/.crib/workspaces/{id}/logs/{timestamp}-build.txt` for post-mortem debugging.
+
+### Version tracking in workspace state
+
+Record the crib version (semver, commit SHA, build timestamp) in workspace state so we can detect version mismatches and provide upgrade guidance.
+
+### Log output scrubbing
+
+Redact sensitive values (tokens, keys, phone numbers) from debug logs and verbose output. Currently env vars like `GITHUB_TOKEN` appear in plaintext in `--debug` output.
+
+### Env var filtering for exec/run
+
+Skip injecting noisy env vars (e.g. `LS_COLORS`, `LSCOLORS`) that don't serve a purpose inside the container. Could be a configurable allowlist/denylist.
+
 ### Remote access plugin (SSH into containers)
 
 SSH server inside containers via the plugin system, enabling native filesystem performance on macOS and editor-agnostic remote development. See the [RFC](https://github.com/fgrehm/crib/blob/main/docs/rfcs/remote-access.md) for the full design.
