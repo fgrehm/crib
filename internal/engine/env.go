@@ -105,6 +105,38 @@ func preserveContainerPATH(env map[string]string, containerPATH string) {
 	env["PATH"] = strings.Join(dirs, ":")
 }
 
+// prependToPath prepends the given directories to the PATH in env, skipping
+// any that are already present. This is used to inject plugin-requested PATH
+// additions (e.g. ~/.bundle/bin for bundler) that work regardless of shell type.
+func prependToPath(env map[string]string, dirs []string) {
+	if env == nil || len(dirs) == 0 {
+		return
+	}
+	current := env["PATH"]
+	existing := make(map[string]bool)
+	if current != "" {
+		for _, d := range strings.Split(current, ":") {
+			existing[d] = true
+		}
+	}
+
+	var prepend []string
+	for _, d := range dirs {
+		if d != "" && !existing[d] {
+			prepend = append(prepend, d)
+			existing[d] = true
+		}
+	}
+	if len(prepend) == 0 {
+		return
+	}
+	if current != "" {
+		env["PATH"] = strings.Join(prepend, ":") + ":" + current
+	} else {
+		env["PATH"] = strings.Join(prepend, ":")
+	}
+}
+
 // envSlice converts a map of env vars to KEY=VALUE strings for ExecContainer.
 func envSlice(env map[string]string) []string {
 	if len(env) == 0 {

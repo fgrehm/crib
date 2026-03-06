@@ -16,7 +16,7 @@ type cacheSpec struct {
 	isSystem     bool              // mount at a fixed system path instead of ~/containerDir
 	envVar       string            // if set, inject this env var pointing to the mount target
 	extraEnv     map[string]string // additional env vars (values with {home} are expanded)
-	profileD     string            // if set, install /etc/profile.d/<name>.sh with this content (used as-is, use $HOME for home dir)
+	pathPrepend  string            // if set, prepend ~/pathPrepend to PATH via remoteEnv (resolved with home dir)
 }
 
 var cacheMap = map[string]cacheSpec{
@@ -31,7 +31,7 @@ var cacheMap = map[string]cacheSpec{
 		containerDir: ".bundle",
 		envVar:       "BUNDLE_PATH",
 		extraEnv:     map[string]string{"BUNDLE_BIN": "{home}/.bundle/bin"},
-		profileD:     "export PATH=\"$HOME/.bundle/bin:$PATH\"\n",
+		pathPrepend:  ".bundle/bin",
 	},
 	"apt":       {containerDir: "/var/cache/apt", isSystem: true},
 	"downloads": {containerDir: ".cache/crib", envVar: "CRIB_CACHE"},
@@ -86,8 +86,8 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 
 	var mounts []config.Mount
 	var env map[string]string
+	var pathPrepend []string
 	var hasApt bool
-	var profileScripts []profileScript
 	for _, provider := range p.providers {
 		spec, ok := cacheMap[provider]
 		if !ok {
@@ -125,11 +125,8 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 			env[k] = strings.ReplaceAll(v, "{home}", remoteHome)
 		}
 
-		if spec.profileD != "" {
-			profileScripts = append(profileScripts, profileScript{
-				name:    "crib-" + provider + "-path.sh",
-				content: spec.profileD,
-			})
+		if spec.pathPrepend != "" {
+			pathPrepend = append(pathPrepend, remoteHome+"/"+spec.pathPrepend)
 		}
 	}
 
@@ -149,45 +146,11 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 		copies = append(copies, copy)
 	}
 
-	// Stage /etc/profile.d/ scripts so login shells pick up PATH additions.
-	for _, ps := range profileScripts {
-		copy, err := stageProfileScript(req.WorkspaceDir, ps.name, ps.content)
-		if err != nil {
-			return nil, fmt.Errorf("staging profile script %s: %w", ps.name, err)
-		}
-		copies = append(copies, copy)
-	}
-
 	return &plugin.PreContainerRunResponse{
-		Mounts: mounts,
-		Env:    env,
-		Copies: copies,
-	}, nil
-}
-
-type profileScript struct {
-	name    string // filename under /etc/profile.d/
-	content string // script content
-}
-
-// stageProfileScript writes a shell script to the workspace state dir and
-// returns a FileCopy that places it in /etc/profile.d/ inside the container.
-// Login shells source these scripts, making PATH additions available in
-// crib shell and crib run.
-func stageProfileScript(workspaceDir, name, content string) (plugin.FileCopy, error) {
-	pluginDir := filepath.Join(workspaceDir, "plugins", "package-cache")
-	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
-		return plugin.FileCopy{}, fmt.Errorf("creating plugin dir: %w", err)
-	}
-
-	src := filepath.Join(pluginDir, name)
-	if err := os.WriteFile(src, []byte(content), 0o644); err != nil {
-		return plugin.FileCopy{}, fmt.Errorf("writing profile script: %w", err)
-	}
-
-	return plugin.FileCopy{
-		Source: src,
-		Target: "/etc/profile.d/" + name,
+		Mounts:      mounts,
+		Env:         env,
+		Copies:      copies,
+		PathPrepend: pathPrepend,
 	}, nil
 }
 

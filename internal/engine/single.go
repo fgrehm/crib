@@ -352,6 +352,10 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 		return nil, fmt.Errorf("running pre-container-run plugins: %w", err)
 	}
 
+	if resp != nil && len(resp.PathPrepend) > 0 {
+		e.pathPrepend = resp.PathPrepend
+	}
+
 	return resp, nil
 }
 

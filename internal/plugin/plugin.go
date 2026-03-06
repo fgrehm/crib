@@ -31,10 +31,11 @@ type PreContainerRunRequest struct {
 // PreContainerRunResponse carries additions that the plugin wants injected
 // into the container run command. Nil means no-op.
 type PreContainerRunResponse struct {
-	Mounts  []config.Mount
-	Env     map[string]string
-	RunArgs []string
-	Copies  []FileCopy
+	Mounts      []config.Mount
+	Env         map[string]string
+	RunArgs     []string
+	Copies      []FileCopy
+	PathPrepend []string // absolute paths to prepend to PATH in remoteEnv
 }
 
 // InferRemoteHome returns the home directory path for the given user inside

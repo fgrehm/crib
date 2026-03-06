@@ -72,6 +72,7 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 		cfg.RemoteEnv = hookEnv
 	}
 	preserveContainerPATH(cfg.RemoteEnv, containerPATH)
+	prependToPath(cfg.RemoteEnv, e.pathPrepend)
 
 	// Run lifecycle hooks.
 	runner := &lifecycleRunner{
@@ -98,6 +99,7 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 		cfg.RemoteEnv = finalEnv
 	}
 	preserveContainerPATH(cfg.RemoteEnv, containerPATH)
+	prependToPath(cfg.RemoteEnv, e.pathPrepend)
 
 	return hookErr
 }
