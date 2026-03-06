@@ -16,6 +16,7 @@ jobs:
     name: GoReleaser
     needs: tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,10 +27,17 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          # Extract everything between ## [VERSION] and the next ## [
+          sed -n "/^## \[${VERSION}\]/,/^## \[/{/^## \[/d;p}" CHANGELOG.md \
+            > /tmp/release-notes.md
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
-          args: release --clean
+          args: release --clean --release-notes /tmp/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
