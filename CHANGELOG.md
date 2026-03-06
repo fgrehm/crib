@@ -7,11 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `crib cache clean --force` / `-f` flag to skip confirmation prompt.
+
 ### Fixed
 
 - Preserve Docker image PATH entries (e.g. `/usr/local/bundle/bin` in ruby
   images) that login shells drop during the env probe. Previously, `crib exec`
   could lose these entries, requiring `bundle exec` or similar wrappers.
+- Plugin PATH additions (e.g. `~/.bundle/bin` for bundler cache) now work with
+  zsh. Previously relied on `/etc/profile.d/` scripts which zsh doesn't source.
+  PATH additions are now injected directly via remoteEnv.
+- `crib cache clean` and `crib cache list` no longer require workspace state to
+  exist. They now work even if `crib up` was never run or the project was
+  deleted.
+- `crib cache clean --all` now prompts for confirmation since it removes volumes
+  from other projects.
+- Sensitive env var values (tokens, keys, passwords) are now redacted in
+  `--debug` output. Previously, values like `GITHUB_TOKEN` appeared in
+  plaintext in exec command logs.
 
 ## [0.5.0] - 2026-03-05
 
