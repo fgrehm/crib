@@ -29,6 +29,14 @@ Currently plugin mounts land at ad-hoc paths (`~/.crib_history/`, `/tmp/ssh-agen
 
 Add `--json` or `--format json` flag to commands like `status`, `list` for scripting and tooling integration. The internal data structures already support this.
 
+### Fully qualified workspace paths
+
+Workspace IDs are currently derived from the project directory name (e.g. `ruby-project`), which can collide when different orgs or parent directories have projects with the same name. Use a hash or full path to guarantee uniqueness.
+
+### `--force` flag for destructive commands
+
+Add a `--force` / `-f` flag to commands like `remove`, `rebuild`, and `restart` to skip confirmation prompts. Useful for scripting and CI.
+
 ### Colored log output
 
 Color-code `crib logs` lines by service name when the terminal supports it, similar to `docker compose logs`. Useful for compose workspaces with multiple services where logs are interleaved.
