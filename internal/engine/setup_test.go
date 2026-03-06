@@ -553,6 +553,54 @@ func TestMergeEnv_RemoteEnvCanOverrideMiseFilter(t *testing.T) {
 	}
 }
 
+func TestPreserveContainerPATH(t *testing.T) {
+	tests := []struct {
+		name          string
+		env           map[string]string
+		containerPATH string
+		wantEnv       map[string]string
+	}{
+		{
+			name:          "appends missing container entries",
+			env:           map[string]string{"PATH": "/root/.bundle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+			containerPATH: "/usr/local/bundle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+			wantEnv:       map[string]string{"PATH": "/root/.bundle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bundle/bin"},
+		},
+		{
+			name:          "no-op when all entries present",
+			env:           map[string]string{"PATH": "/usr/local/bin:/usr/bin:/sbin:/bin"},
+			containerPATH: "/usr/local/bin:/usr/bin",
+			wantEnv:       map[string]string{"PATH": "/usr/local/bin:/usr/bin:/sbin:/bin"},
+		},
+		{
+			name:          "no-op for empty container PATH",
+			env:           map[string]string{"PATH": "/usr/bin"},
+			containerPATH: "",
+			wantEnv:       map[string]string{"PATH": "/usr/bin"},
+		},
+		{
+			name:          "no-op for nil env",
+			env:           nil,
+			containerPATH: "/usr/bin",
+		},
+		{
+			name:          "does not insert PATH when absent",
+			env:           map[string]string{"HOME": "/root"},
+			containerPATH: "/usr/bin",
+			wantEnv:       map[string]string{"HOME": "/root"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			preserveContainerPATH(tt.env, tt.containerPATH)
+			if tt.wantEnv != nil && !reflect.DeepEqual(tt.env, tt.wantEnv) {
+				t.Errorf("env = %v, want %v", tt.env, tt.wantEnv)
+			}
+		})
+	}
+}
+
 func TestResolveBareVarRefs(t *testing.T) {
 	containerEnv := map[string]string{
 		"PATH": "/usr/local/bin:/usr/bin:/bin",

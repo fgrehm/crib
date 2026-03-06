@@ -75,6 +75,36 @@ func copyStringMap(m map[string]string) map[string]string {
 	return cp
 }
 
+// preserveContainerPATH merges container-base PATH entries into the env map's
+// PATH. Login shells on Debian reset PATH via /etc/profile, dropping entries
+// that Docker images add via ENV (e.g. /usr/local/bundle/bin in ruby images,
+// /usr/local/go/bin in golang images). This appends any missing container PATH
+// entries after the probed ones so they remain accessible.
+func preserveContainerPATH(env map[string]string, containerPATH string) {
+	if env == nil || containerPATH == "" {
+		return
+	}
+	probedPATH, ok := env["PATH"]
+	if !ok {
+		return
+	}
+
+	dirs := strings.Split(probedPATH, ":")
+	seen := make(map[string]bool, len(dirs))
+	for _, d := range dirs {
+		seen[d] = true
+	}
+
+	for _, d := range strings.Split(containerPATH, ":") {
+		if d != "" && !seen[d] {
+			dirs = append(dirs, d)
+			seen[d] = true
+		}
+	}
+
+	env["PATH"] = strings.Join(dirs, ":")
+}
+
 // envSlice converts a map of env vars to KEY=VALUE strings for ExecContainer.
 func envSlice(env map[string]string) []string {
 	if len(env) == 0 {

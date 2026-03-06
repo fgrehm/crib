@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Preserve Docker image PATH entries (e.g. `/usr/local/bundle/bin` in ruby
+  images) that login shells drop during the env probe. Previously, `crib exec`
+  could lose these entries, requiring `bundle exec` or similar wrappers.
+
 ## [0.5.0] - 2026-03-05
 
 ### Added

@@ -23,8 +23,10 @@ import (
 //   - Running lifecycle hooks
 func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, remoteUser string) error {
 	// Resolve ${containerEnv:VAR} in remoteEnv by probing the container environment.
+	// Also captures the container's base PATH for later merging.
+	var containerPATH string
 	if len(cfg.RemoteEnv) > 0 {
-		e.resolveRemoteEnv(ctx, ws.ID, containerID, cfg)
+		containerPATH = e.resolveRemoteEnv(ctx, ws.ID, containerID, cfg)
 	}
 
 	// Sync container user UID/GID with host before chowning.
@@ -53,6 +55,15 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 	// that change PATH and other vars.
 	configRemoteEnv := copyStringMap(cfg.RemoteEnv)
 
+	// If resolveRemoteEnv didn't run (no remoteEnv), capture the container's
+	// base PATH separately. Login shells on Debian reset PATH via /etc/profile,
+	// dropping entries that Docker images add via ENV (e.g. /usr/local/bundle/bin
+	// in ruby images). We merge these back after probing.
+	// Skip entirely when userEnvProbe is "none" since no login shell runs.
+	if containerPATH == "" && cfg.UserEnvProbe != "none" {
+		containerPATH = e.probeContainerPATH(ctx, ws.ID, containerID)
+	}
+
 	// Pre-hook environment probe: captures PATH and other vars from shell
 	// profile files (e.g. mise, rbenv, nvm) so lifecycle hooks have the
 	// user's full environment.
@@ -60,6 +71,7 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 	if hookEnv := mergeEnv(probedEnv, configRemoteEnv); len(hookEnv) > 0 {
 		cfg.RemoteEnv = hookEnv
 	}
+	preserveContainerPATH(cfg.RemoteEnv, containerPATH)
 
 	// Run lifecycle hooks.
 	runner := &lifecycleRunner{
@@ -85,26 +97,28 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 	if finalEnv := mergeEnv(postProbe, configRemoteEnv); len(finalEnv) > 0 {
 		cfg.RemoteEnv = finalEnv
 	}
+	preserveContainerPATH(cfg.RemoteEnv, containerPATH)
 
 	return hookErr
 }
 
 // resolveRemoteEnv resolves ${containerEnv:VAR} references in cfg.RemoteEnv by
 // probing the container's runtime environment. Updates cfg.RemoteEnv in place.
+// Returns the container's base PATH for use in PATH preservation.
 // Per the devcontainer spec, remoteEnv is injected by the tool (not written to
 // /etc/environment) and ${containerEnv:VAR} is only valid in remoteEnv.
-func (e *Engine) resolveRemoteEnv(ctx context.Context, workspaceID, containerID string, cfg *config.DevContainerConfig) {
+func (e *Engine) resolveRemoteEnv(ctx context.Context, workspaceID, containerID string, cfg *config.DevContainerConfig) string {
 	var buf bytes.Buffer
 	if err := e.driver.ExecContainer(ctx, workspaceID, containerID, []string{"env"}, nil, &buf, io.Discard, nil, ""); err != nil {
 		e.logger.Warn("failed to probe container environment for remoteEnv resolution", "error", err)
-		return
+		return ""
 	}
 
 	containerEnv := parseEnvLines(buf.String())
 	resolved, err := config.SubstituteContainerEnv(containerEnv, cfg)
 	if err != nil {
 		e.logger.Warn("failed to resolve remoteEnv container variables", "error", err)
-		return
+		return containerEnv["PATH"]
 	}
 	cfg.RemoteEnv = resolved.RemoteEnv
 
@@ -113,6 +127,8 @@ func (e *Engine) resolveRemoteEnv(ctx context.Context, workspaceID, containerID 
 	// in remoteEnv. Since exec -e doesn't do shell expansion, we must resolve
 	// these ourselves.
 	resolveBareVarRefs(cfg.RemoteEnv, containerEnv)
+
+	return containerEnv["PATH"]
 }
 
 // bareVarRe matches ${VARNAME} where VARNAME contains no colons (i.e. not
@@ -336,6 +352,18 @@ func (e *Engine) chownWorkspace(ctx context.Context, workspaceID, containerID, w
 		return fmt.Errorf("chowning workspace: %w: %s", err, stderr.String())
 	}
 	return nil
+}
+
+// probeContainerPATH returns the container's base PATH without shell
+// interpretation. This captures PATH entries set by the Docker image (ENV
+// directive) before a login shell's /etc/profile can reset them.
+func (e *Engine) probeContainerPATH(ctx context.Context, workspaceID, containerID string) string {
+	var stdout bytes.Buffer
+	if err := e.driver.ExecContainer(ctx, workspaceID, containerID, []string{"printenv", "PATH"}, nil, &stdout, io.Discard, nil, ""); err != nil {
+		e.logger.Debug("failed to probe container PATH", "error", err)
+		return ""
+	}
+	return strings.TrimSpace(stdout.String())
 }
 
 // probeUserEnv probes the container user's environment using the shell type
