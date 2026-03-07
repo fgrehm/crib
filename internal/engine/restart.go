@@ -100,15 +100,24 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		projectName := compose.ProjectName(ws.ID)
 		env := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
 
+		// Use the snapshot image if available. The snapshot includes
+		// everything installed by lifecycle hooks (e.g. mise ruby/node),
+		// so even if compose recreates the container, nothing is lost.
+		// Fall back to the stored feature image if no valid snapshot.
+		overrideImage := storedResult.ImageName
+		if img, ok := e.validSnapshot(ctx, ws, cfg); ok {
+			overrideImage = img
+		}
+
 		// Dispatch plugins so the compose override includes plugin env vars
 		// and mounts (SSH agent, package cache, shell history, etc.).
 		composeUser := e.resolveComposeUser(ctx, cfg, cd, composeFiles)
-		pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, composeUser)
+		pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, overrideImage, workspaceFolder, composeUser)
 		if err != nil {
 			return nil, err
 		}
 
-		overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, "", pluginResp)
+		overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, overrideImage, pluginResp)
 		if err != nil {
 			return nil, fmt.Errorf("generating compose override: %w", err)
 		}
@@ -121,8 +130,7 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 			return nil, fmt.Errorf("starting compose services: %w", err)
 		}
 
-		// Look up the actual container ID after compose up, since the
-		// override may have changed and caused compose to recreate it.
+		// Look up the actual container ID after compose up.
 		container, err := e.findComposeContainer(ctx, ws.ID, projectName, allFiles, env, "after restart")
 		if err != nil {
 			return nil, err
@@ -166,9 +174,10 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
 
-	// Update timestamps.
+	// Update timestamps, preserving the stored feature image name.
 	e.saveResult(ws, cfg, &UpResult{
 		ContainerID:     containerID,
+		ImageName:       storedResult.ImageName,
 		WorkspaceFolder: workspaceFolder,
 		RemoteUser:      remoteUser,
 		Ports:           ports,

@@ -46,10 +46,10 @@ func TestIntegrationComposeUpDown(t *testing.T) {
 	projectName := "crib-test-compose"
 
 	// Clean up any leftover state.
-	_ = h.Down(ctx, projectName, []string{composePath}, nil, nil, nil)
+	_ = h.Down(ctx, projectName, []string{composePath}, nil, nil, nil, false)
 
 	t.Cleanup(func() {
-		_ = h.Down(ctx, projectName, []string{composePath}, nil, nil, nil)
+		_ = h.Down(ctx, projectName, []string{composePath}, nil, nil, nil, false)
 	})
 
 	// Bring up the project.
@@ -82,7 +82,7 @@ func TestIntegrationComposeUpDown(t *testing.T) {
 	// Bring it down.
 	stdout.Reset()
 	stderr.Reset()
-	if err := h.Down(ctx, projectName, []string{composePath}, &stdout, &stderr, nil); err != nil {
+	if err := h.Down(ctx, projectName, []string{composePath}, &stdout, &stderr, nil, false); err != nil {
 		t.Fatalf("Down: %v\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 

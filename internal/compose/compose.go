@@ -152,11 +152,15 @@ func (h *Helper) Logs(ctx context.Context, projectName string, files []string, f
 	return h.Run(ctx, args, nil, stdout, stderr, extraEnv)
 }
 
-// Down runs `compose down` for the given project.
+// Down runs `compose down` for the given project. When removeVolumes is true,
+// named volumes declared in the compose file are also removed.
 // extraEnv is appended to the subprocess environment for variable substitution.
-func (h *Helper) Down(ctx context.Context, projectName string, files []string, stdout, stderr io.Writer, extraEnv []string) error {
+func (h *Helper) Down(ctx context.Context, projectName string, files []string, stdout, stderr io.Writer, extraEnv []string, removeVolumes bool) error {
 	args := projectArgs(projectName, files)
 	args = append(args, "down")
+	if removeVolumes {
+		args = append(args, "--volumes")
+	}
 	return h.Run(ctx, args, nil, stdout, stderr, extraEnv)
 }
 

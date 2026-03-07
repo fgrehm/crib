@@ -47,12 +47,25 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 	}
 
 	if container != nil && !opts.Recreate {
+		// Use the snapshot image if available, falling back to the stored
+		// feature image. The snapshot includes everything installed by
+		// lifecycle hooks, so even if compose recreates the container
+		// (podman-compose always does), nothing is lost.
+		var storedFeatureImage string
+		if stored, err := e.store.LoadResult(ws.ID); err == nil && stored != nil {
+			storedFeatureImage = stored.ImageName
+		}
+		overrideImage := storedFeatureImage
+		if img, ok := e.validSnapshot(ctx, ws, cfg); ok {
+			overrideImage = img
+		}
+
 		var pathPrepend []string
 		if !container.State.IsRunning() {
 			// Dispatch plugins so the override includes plugin env vars and
 			// mounts. The override is regenerated on every compose up.
 			composeUser := e.resolveComposeUser(ctx, cfg, configDir, composeFiles)
-			pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, "" /* featureImage already baked in */, workspaceFolder, composeUser)
+			pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, overrideImage, workspaceFolder, composeUser)
 			if err != nil {
 				return nil, err
 			}
@@ -60,7 +73,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 				pathPrepend = pluginResp.PathPrepend
 			}
 
-			overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, "", pluginResp)
+			overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, overrideImage, pluginResp)
 			if err != nil {
 				return nil, fmt.Errorf("generating compose override: %w", err)
 			}
@@ -90,14 +103,19 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			// Dispatch plugins to get PathPrepend so setupContainer can
 			// inject plugin PATH entries into RemoteEnv before saving.
 			composeUser := e.resolveComposeUser(ctx, cfg, configDir, composeFiles)
-			if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, composeUser); err != nil {
+			if resp, err := e.dispatchPlugins(ctx, ws, cfg, overrideImage, workspaceFolder, composeUser); err != nil {
 				e.logger.Warn("plugin dispatch failed for already running services", "error", err)
 			} else if resp != nil {
 				pathPrepend = resp.PathPrepend
 			}
 		}
 
-		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, pathPrepend)
+		result, err := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, pathPrepend)
+		if result != nil {
+			result.ImageName = storedFeatureImage
+			e.saveResult(ws, cfg, result)
+		}
+		return result, err
 	}
 
 	// No container but a previous result exists (e.g. after "crib down").
@@ -114,7 +132,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 		if err := e.store.ClearHookMarkers(ws.ID); err != nil {
 			e.logger.Warn("failed to clear hook markers", "error", err)
 		}
-		if err := e.composeDown(ctx, projectName, composeFiles, dcEnv); err != nil {
+		if err := e.composeDown(ctx, projectName, composeFiles, dcEnv, false); err != nil {
 			e.logger.Warn("failed to bring down existing services", "error", err)
 		}
 	}
@@ -440,13 +458,13 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 // composeDown wraps compose.Down, including a temporary x-podman override when
 // running rootless Podman. Without this override, podman-compose tries to
 // remove a pod that was never created (because Up used in_pod: false).
-func (e *Engine) composeDown(ctx context.Context, projectName string, composeFiles []string, env []string) error {
+func (e *Engine) composeDown(ctx context.Context, projectName string, composeFiles []string, env []string, removeVolumes bool) error {
 	files := composeFiles
 	if overridePath, ok := e.writePodmanDownOverride(composeFiles); ok {
 		defer func() { _ = os.Remove(overridePath) }()
 		files = append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
 	}
-	return e.compose.Down(ctx, projectName, files, e.composeStdout(), e.composeStderr(), env)
+	return e.compose.Down(ctx, projectName, files, e.composeStdout(), e.composeStderr(), env, removeVolumes)
 }
 
 // writePodmanDownOverride creates a temporary override file for podman-compose

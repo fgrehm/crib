@@ -476,6 +476,57 @@ func TestRestartSimple_NonCompose_UsesStoredRemoteUser(t *testing.T) {
 	}
 }
 
+func TestRestartSimple_NonCompose_PreservesImageName(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-restart-img", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	initialResult := &workspace.Result{
+		ContainerID: "c-1",
+		ImageName:   "crib-ws-restart-img:features",
+		RemoteUser:  "vscode",
+	}
+	if err := store.SaveResult(ws.ID, initialResult); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "c-1",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ubuntu:22.04"
+	cfg.RemoteUser = "vscode"
+
+	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	if err != nil {
+		t.Fatalf("restartSimple: %v", err)
+	}
+
+	saved, err := store.LoadResult(ws.ID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+	if saved.ImageName != "crib-ws-restart-img:features" {
+		t.Errorf("ImageName = %q, want %q", saved.ImageName, "crib-ws-restart-img:features")
+	}
+}
+
 func TestRestartSimple_NonCompose_PreservesPathPrepend(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-restart-path", Source: "/home/user/project"}

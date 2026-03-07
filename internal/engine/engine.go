@@ -228,7 +228,7 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 				projectName := compose.ProjectName(ws.ID)
 				env := devcontainerEnv(ws.ID, ws.Source, result.WorkspaceFolder)
-				return e.composeDown(ctx, projectName, composeFiles, env)
+				return e.composeDown(ctx, projectName, composeFiles, env, false)
 			}
 		}
 	}
@@ -253,8 +253,29 @@ func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
 	e.clearSnapshot(ctx, ws)
 
 	// Best-effort container removal (workspace may have no container).
-	if err := e.Down(ctx, ws); err != nil {
-		e.logger.Warn("failed to remove container", "error", err)
+	// For compose workspaces, use compose down --volumes to also remove
+	// named volumes declared in the compose file (e.g. database data).
+	composeTornDown := false
+	if result, err := e.store.LoadResult(ws.ID); err == nil && result != nil {
+		var cfg config.DevContainerConfig
+		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
+			if e.compose != nil {
+				cd := configDir(ws)
+				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
+				projectName := compose.ProjectName(ws.ID)
+				env := devcontainerEnv(ws.ID, ws.Source, result.WorkspaceFolder)
+				if err := e.composeDown(ctx, projectName, composeFiles, env, true); err != nil {
+					e.logger.Warn("failed to remove compose services", "error", err)
+				}
+				composeTornDown = true
+			}
+		}
+	}
+
+	if !composeTornDown {
+		if err := e.Down(ctx, ws); err != nil {
+			e.logger.Warn("failed to remove container", "error", err)
+		}
 	}
 
 	return e.store.Delete(ws.ID)
@@ -378,7 +399,7 @@ func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Work
 	env := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
 
 	// Down removes old containers so Up creates new ones with updated config.
-	if err := e.composeDown(ctx, projectName, composeFiles, env); err != nil {
+	if err := e.composeDown(ctx, projectName, composeFiles, env, false); err != nil {
 		return "", fmt.Errorf("compose down: %w", err)
 	}
 

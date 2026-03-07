@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `crib delete` now removes named volumes declared in compose files (e.g.
+  database data). Previously, `docker compose down` ran without `--volumes`,
+  leaving orphaned volumes behind.
+- `crib restart` no longer loses software installed by lifecycle hooks (e.g.
+  mise-managed ruby/node) on compose workspaces. The compose override now
+  references the snapshot image, so even if the container is recreated, the
+  hook-installed state is preserved.
+- Compose restart paths (`crib restart`, `crib up` on stopped containers) now
+  preserve the stored `ImageName` in workspace state. Previously, these paths
+  saved an empty `ImageName`, causing subsequent operations to lose track of
+  the feature image.
 - Preserve Docker image PATH entries (e.g. `/usr/local/bundle/bin` in ruby
   images) that login shells drop during the env probe. Previously, `crib exec`
   could lose these entries, requiring `bundle exec` or similar wrappers.

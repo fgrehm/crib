@@ -375,6 +375,53 @@ func TestGenerateComposeOverride_PluginVolumeMountsGetNameDeclaration(t *testing
 	}
 }
 
+func TestGenerateComposeOverride_IncludesFeatureImage(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	dir := t.TempDir()
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "crib-test-ws:features", nil)
+	if err != nil {
+		t.Fatalf("generateComposeOverride failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "image: crib-test-ws:features") {
+		t.Errorf("expected feature image in override, got:\n%s", content)
+	}
+}
+
+func TestGenerateComposeOverride_OmitsImageWhenEmpty(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	dir := t.TempDir()
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", nil)
+	if err != nil {
+		t.Fatalf("generateComposeOverride failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+
+	if strings.Contains(string(data), "image:") {
+		t.Errorf("expected no image line when featureImage is empty, got:\n%s", data)
+	}
+}
+
 func TestResolveComposeUser_ConfigUserTakesPrecedence(t *testing.T) {
 	eng := &Engine{
 		logger: slog.Default(),
