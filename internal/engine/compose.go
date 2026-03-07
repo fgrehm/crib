@@ -87,6 +87,13 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			}
 		} else {
 			e.reportProgress("Services already running")
+
+			// Dispatch plugins to get PathPrepend so setupContainer can
+			// inject plugin PATH entries into RemoteEnv before saving.
+			composeUser := e.resolveComposeUser(ctx, cfg, configDir, composeFiles)
+			if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, composeUser); err == nil && resp != nil {
+				pathPrepend = resp.PathPrepend
+			}
 		}
 
 		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, pathPrepend)

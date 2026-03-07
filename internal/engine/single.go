@@ -41,7 +41,14 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 			e.reportProgress("Container already running")
 		}
 
-		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, nil)
+		// Dispatch plugins to get PathPrepend so setupContainer can inject
+		// plugin PATH entries into RemoteEnv before saving the result.
+		var pathPrepend []string
+		if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, ""); err == nil && resp != nil {
+			pathPrepend = resp.PathPrepend
+		}
+
+		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, pathPrepend)
 	}
 
 	// Remove existing container if recreating.

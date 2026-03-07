@@ -150,6 +150,12 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 			return nil, fmt.Errorf("restarting container: %w", err)
 		}
 		containerID = container.ID
+
+		// Dispatch plugins to get PathPrepend so the saved RemoteEnv
+		// preserves plugin PATH entries across restarts.
+		if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, ""); err == nil && resp != nil {
+			applyPathPrepend(cfg, resp.PathPrepend)
+		}
 	}
 
 	// Run resume-flow hooks.
