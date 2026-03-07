@@ -3,6 +3,8 @@ package engine
 import (
 	"os"
 	"strings"
+
+	"github.com/fgrehm/crib/internal/config"
 )
 
 // parseEnvLines parses the output of the `env` command into a map.
@@ -135,6 +137,18 @@ func prependToPath(env map[string]string, dirs []string) {
 	} else {
 		env["PATH"] = strings.Join(prepend, ":")
 	}
+}
+
+// applyPathPrepend initializes cfg.RemoteEnv if needed and prepends the given
+// paths. Used by resume-hook callers that don't go through setupContainer.
+func applyPathPrepend(cfg *config.DevContainerConfig, dirs []string) {
+	if len(dirs) == 0 {
+		return
+	}
+	if cfg.RemoteEnv == nil {
+		cfg.RemoteEnv = make(map[string]string)
+	}
+	prependToPath(cfg.RemoteEnv, dirs)
 }
 
 // envSlice converts a map of env vars to KEY=VALUE strings for ExecContainer.

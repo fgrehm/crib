@@ -47,6 +47,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 	}
 
 	if container != nil && !opts.Recreate {
+		var pathPrepend []string
 		if !container.State.IsRunning() {
 			// Dispatch plugins so the override includes plugin env vars and
 			// mounts. The override is regenerated on every compose up.
@@ -54,6 +55,9 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, "" /* featureImage already baked in */, workspaceFolder, composeUser)
 			if err != nil {
 				return nil, err
+			}
+			if pluginResp != nil {
+				pathPrepend = pluginResp.PathPrepend
 			}
 
 			overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, "", pluginResp)
@@ -85,7 +89,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			e.reportProgress("Services already running")
 		}
 
-		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
+		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, pathPrepend)
 	}
 
 	// No container but a previous result exists (e.g. after "crib down").

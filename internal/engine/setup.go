@@ -21,7 +21,7 @@ import (
 //   - Synchronizing the container user's UID/GID with the host
 //   - Chowning the workspace directory to the remote user
 //   - Running lifecycle hooks
-func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, remoteUser string) error {
+func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, remoteUser string, pathPrepend []string) error {
 	// Resolve ${containerEnv:VAR} in remoteEnv by probing the container environment.
 	// Also captures the container's base PATH for later merging.
 	var containerPATH string
@@ -72,7 +72,7 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 		cfg.RemoteEnv = hookEnv
 	}
 	preserveContainerPATH(cfg.RemoteEnv, containerPATH)
-	prependToPath(cfg.RemoteEnv, e.pathPrepend)
+	prependToPath(cfg.RemoteEnv, pathPrepend)
 
 	// Run lifecycle hooks.
 	runner := &lifecycleRunner{
@@ -99,7 +99,7 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 		cfg.RemoteEnv = finalEnv
 	}
 	preserveContainerPATH(cfg.RemoteEnv, containerPATH)
-	prependToPath(cfg.RemoteEnv, e.pathPrepend)
+	prependToPath(cfg.RemoteEnv, pathPrepend)
 
 	return hookErr
 }

@@ -26,7 +26,6 @@ type Engine struct {
 	plugins          *plugin.Manager
 	runtimeName      string
 	buildCacheMounts []string // BuildKit cache mount targets for feature builds
-	pathPrepend      []string // absolute paths to prepend to PATH (from plugins)
 	logger           *slog.Logger
 	stdout           io.Writer
 	stderr           io.Writer
