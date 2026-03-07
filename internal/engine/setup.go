@@ -71,6 +71,9 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 	if hookEnv := mergeEnv(probedEnv, configRemoteEnv); len(hookEnv) > 0 {
 		cfg.RemoteEnv = hookEnv
 	}
+	if cfg.RemoteEnv == nil && (containerPATH != "" || len(pathPrepend) > 0) {
+		cfg.RemoteEnv = make(map[string]string)
+	}
 	preserveContainerPATH(cfg.RemoteEnv, containerPATH)
 	prependToPath(cfg.RemoteEnv, pathPrepend)
 
@@ -97,6 +100,9 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 	postProbe := e.probeUserEnv(ctx, ws.ID, containerID, remoteUser, cfg.UserEnvProbe)
 	if finalEnv := mergeEnv(postProbe, configRemoteEnv); len(finalEnv) > 0 {
 		cfg.RemoteEnv = finalEnv
+	}
+	if cfg.RemoteEnv == nil && (containerPATH != "" || len(pathPrepend) > 0) {
+		cfg.RemoteEnv = make(map[string]string)
 	}
 	preserveContainerPATH(cfg.RemoteEnv, containerPATH)
 	prependToPath(cfg.RemoteEnv, pathPrepend)

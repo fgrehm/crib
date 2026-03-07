@@ -141,6 +141,9 @@ var cacheCleanCmd = &cobra.Command{
 
 		// Prompt for confirmation when --all is used (affects other projects).
 		if cacheCleanAllFlag && !cacheCleanForceFlag {
+			if !stdinIsTerminal() {
+				return fmt.Errorf("--all requires confirmation; use --force to skip (stdin is not a terminal)")
+			}
 			fmt.Fprintf(os.Stderr, "This will remove %d cache volume(s) from ALL workspaces:\n", len(toRemove))
 			for _, name := range toRemove {
 				fmt.Fprintf(os.Stderr, "  %s\n", name)
