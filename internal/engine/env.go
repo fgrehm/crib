@@ -31,60 +31,59 @@ func envMap() map[string]string {
 	return env
 }
 
-// mergeEnv merges probed environment variables with remoteEnv.
-// remoteEnv values take precedence over probed values on conflicts.
-// Session-specific variables and tool-manager internal state are excluded
-// from the probed set to avoid overriding container runtime defaults or
-// confusing tool managers (mise, etc.) when injected into a new shell.
-func mergeEnv(probed map[string]string, remoteEnv map[string]string) map[string]string {
-	if len(probed) == 0 && len(remoteEnv) == 0 {
+// probedEnvSkip lists probed environment variables to exclude from the
+// final env. These are session-specific or host-specific values that are
+// meaningless inside containers and would override container defaults or
+// confuse tool managers (mise, etc.) when injected into a new shell.
+var probedEnvSkip = map[string]bool{
+	"HOSTNAME":   true,
+	"SHLVL":      true,
+	"PWD":        true,
+	"OLDPWD":     true,
+	"_":          true,
+	"MISE_SHELL": true,
+
+	// Terminal colors and pager helpers.
+	"LS_COLORS": true,
+	"LSCOLORS":  true,
+	"LESSCLOSE": true,
+	"LESSOPEN":  true,
+
+	// Terminal identity.
+	"TERM_PROGRAM":         true,
+	"TERM_PROGRAM_VERSION": true,
+	"COLORTERM":            true,
+	"VTE_VERSION":          true,
+
+	// X11/Wayland display.
+	"WINDOWID":        true,
+	"DISPLAY":         true,
+	"WAYLAND_DISPLAY": true,
+
+	// Desktop session.
+	"DESKTOP_SESSION":          true,
+	"SESSION_MANAGER":          true,
+	"XDG_SESSION_TYPE":         true,
+	"XDG_SESSION_CLASS":        true,
+	"XDG_SESSION_ID":           true,
+	"XDG_CURRENT_DESKTOP":      true,
+	"DBUS_SESSION_BUS_ADDRESS": true,
+	"GPG_AGENT_INFO":           true,
+}
+
+// filterProbedEnv returns a copy of probed with session-specific and
+// host-specific variables removed. Variables prefixed with __MISE_ are
+// also excluded.
+func filterProbedEnv(probed map[string]string) map[string]string {
+	if len(probed) == 0 {
 		return nil
-	}
-
-	skip := map[string]bool{
-		"HOSTNAME":   true,
-		"SHLVL":      true,
-		"PWD":        true,
-		"OLDPWD":     true,
-		"_":          true,
-		"MISE_SHELL": true,
-
-		// Terminal colors and pager helpers.
-		"LS_COLORS": true,
-		"LSCOLORS":  true,
-		"LESSCLOSE": true,
-		"LESSOPEN":  true,
-
-		// Terminal identity.
-		"TERM_PROGRAM":         true,
-		"TERM_PROGRAM_VERSION": true,
-		"COLORTERM":            true,
-		"VTE_VERSION":          true,
-
-		// X11/Wayland display.
-		"WINDOWID":        true,
-		"DISPLAY":         true,
-		"WAYLAND_DISPLAY": true,
-
-		// Desktop session.
-		"DESKTOP_SESSION":          true,
-		"SESSION_MANAGER":          true,
-		"XDG_SESSION_TYPE":         true,
-		"XDG_SESSION_CLASS":        true,
-		"XDG_SESSION_ID":           true,
-		"XDG_CURRENT_DESKTOP":      true,
-		"DBUS_SESSION_BUS_ADDRESS": true,
-		"GPG_AGENT_INFO":           true,
 	}
 
 	result := make(map[string]string)
 	for k, v := range probed {
-		if skip[k] || strings.HasPrefix(k, "__MISE_") {
+		if probedEnvSkip[k] || strings.HasPrefix(k, "__MISE_") {
 			continue
 		}
-		result[k] = v
-	}
-	for k, v := range remoteEnv {
 		result[k] = v
 	}
 	return result

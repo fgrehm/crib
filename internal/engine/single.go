@@ -50,9 +50,8 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 		}
 		if resp, err := e.dispatchPlugins(ctx, ws, cfg, remoteUser, workspaceFolder, ""); err != nil {
 			e.logger.Warn("plugin dispatch failed for already-running container", "error", err)
-		} else if resp != nil {
-			envb.AddPluginEnv(resp.Env)
-			envb.AddPluginPathPrepend(resp.PathPrepend)
+		} else {
+			envb.AddPluginResponse(resp)
 		}
 
 		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, envb)
@@ -189,10 +188,7 @@ func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg
 	}
 
 	envb := NewEnvBuilder(cfg.RemoteEnv)
-	if pluginResp != nil {
-		envb.AddPluginEnv(pluginResp.Env)
-		envb.AddPluginPathPrepend(pluginResp.PathPrepend)
-	}
+	envb.AddPluginResponse(pluginResp)
 
 	result, setupErr := e.setupAndReturn(ctx, ws, cfg, containerID, workspaceFolder, envb)
 	if result != nil {

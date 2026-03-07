@@ -1,5 +1,7 @@
 package engine
 
+import "github.com/fgrehm/crib/internal/plugin"
+
 // EnvBuilder accumulates environment variables from multiple sources,
 // each with defined precedence. Layers are merged bottom-up: higher
 // layers override lower layers for the same key.
@@ -12,20 +14,26 @@ type EnvBuilder struct {
 }
 
 // NewEnvBuilder creates a builder seeded with the devcontainer.json remoteEnv.
+// The caller must not mutate configRemoteEnv after this call; use SetConfigEnv
+// to replace the layer with a fresh copy when it changes (e.g. after
+// resolveRemoteEnv resolves ${containerEnv:VAR} references).
 func NewEnvBuilder(configRemoteEnv map[string]string) *EnvBuilder {
 	return &EnvBuilder{
-		configEnv: copyStringMap(configRemoteEnv),
+		configEnv: configRemoteEnv,
 	}
 }
 
 // SetProbed sets the probed environment (from userEnvProbe).
-// Replaces any previously set probed env.
+// Replaces any previously set probed env. The builder takes ownership
+// of env; the caller must not mutate it afterward.
 func (b *EnvBuilder) SetProbed(env map[string]string) {
 	b.probed = env
 }
 
 // RestoreFrom loads a previously saved env as the probed layer.
-// Used by restart paths that skip setupContainer.
+// Used by restart paths that skip setupContainer. The stored env is the
+// output of a previous Build() (all layers merged, already filtered),
+// so re-filtering in Build() is a no-op for skip-list vars but harmless.
 func (b *EnvBuilder) RestoreFrom(storedEnv map[string]string) {
 	b.probed = copyStringMap(storedEnv)
 }
@@ -39,6 +47,16 @@ func (b *EnvBuilder) SetContainerPATH(path string) {
 // resolves ${containerEnv:VAR} references.
 func (b *EnvBuilder) SetConfigEnv(env map[string]string) {
 	b.configEnv = copyStringMap(env)
+}
+
+// AddPluginResponse merges a plugin response's Env and PathPrepend into
+// the builder. Safe to call with nil.
+func (b *EnvBuilder) AddPluginResponse(resp *plugin.PreContainerRunResponse) {
+	if resp == nil {
+		return
+	}
+	b.AddPluginEnv(resp.Env)
+	b.AddPluginPathPrepend(resp.PathPrepend)
 }
 
 // AddPluginEnv merges plugin Env vars into the plugin layer.
@@ -61,7 +79,7 @@ func (b *EnvBuilder) AddPluginPathPrepend(dirs []string) {
 
 // Build merges all layers and returns the final env map.
 // Precedence (lowest to highest):
-//  1. probed env (filtered via mergeEnv skip list)
+//  1. probed env (filtered via filterProbedEnv skip list)
 //  2. container base PATH (append missing dirs)
 //  3. plugin Env (overrides probed)
 //  4. devcontainer.json remoteEnv (overrides everything for non-PATH keys)
@@ -72,7 +90,7 @@ func (b *EnvBuilder) Build() map[string]string {
 	}
 
 	// Start with filtered probed env.
-	result := mergeEnv(b.probed, nil)
+	result := filterProbedEnv(b.probed)
 	if result == nil {
 		result = make(map[string]string)
 	}

@@ -68,7 +68,7 @@ func TestEnvSlice(t *testing.T) {
 	})
 }
 
-func TestMergeEnv_SkipsNoisyHostVars(t *testing.T) {
+func TestFilterProbedEnv_SkipsNoisyHostVars(t *testing.T) {
 	probed := map[string]string{
 		"PATH":                     "/usr/bin",
 		"HOME":                     "/home/user",
@@ -92,7 +92,7 @@ func TestMergeEnv_SkipsNoisyHostVars(t *testing.T) {
 		"DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
 		"GPG_AGENT_INFO":           "/run/user/1000/gnupg/S.gpg-agent:0:1",
 	}
-	result := mergeEnv(probed, nil)
+	result := filterProbedEnv(probed)
 
 	noisyVars := []string{
 		"LS_COLORS", "LSCOLORS", "LESSCLOSE", "LESSOPEN",
@@ -114,21 +114,5 @@ func TestMergeEnv_SkipsNoisyHostVars(t *testing.T) {
 	}
 	if result["HOME"] != "/home/user" {
 		t.Errorf("HOME should be included, got %q", result["HOME"])
-	}
-}
-
-func TestMergeEnv_RemoteEnvCanOverrideNoisyFilter(t *testing.T) {
-	probed := map[string]string{
-		"PATH":    "/usr/bin",
-		"DISPLAY": ":0",
-	}
-	remote := map[string]string{
-		"DISPLAY": ":1",
-	}
-	result := mergeEnv(probed, remote)
-
-	// Explicit remoteEnv should override the filter.
-	if result["DISPLAY"] != ":1" {
-		t.Errorf("DISPLAY = %q, want :1 (explicit remoteEnv should override filter)", result["DISPLAY"])
 	}
 }

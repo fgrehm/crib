@@ -179,10 +179,7 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 	// sequence of applyPathPrepend + mergeStoredRemoteEnv, and also
 	// includes plugin Env vars (previously dropped in restart paths).
 	envb := NewEnvBuilder(cfg.RemoteEnv)
-	if pluginResp != nil {
-		envb.AddPluginEnv(pluginResp.Env)
-		envb.AddPluginPathPrepend(pluginResp.PathPrepend)
-	}
+	envb.AddPluginResponse(pluginResp)
 	envb.RestoreFrom(storedResult.RemoteEnv)
 	cfg.RemoteEnv = envb.Build()
 
@@ -266,10 +263,7 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, containerID)
 
 	envb := NewEnvBuilder(cfg.RemoteEnv)
-	if pluginResp != nil {
-		envb.AddPluginEnv(pluginResp.Env)
-		envb.AddPluginPathPrepend(pluginResp.PathPrepend)
-	}
+	envb.AddPluginResponse(pluginResp)
 	// When using a snapshot, restore the stored remoteEnv so probed PATH
 	// entries (mise, rbenv, nvm) survive the restart. setupContainer handles
 	// this when there's no snapshot (full re-probe).
@@ -368,11 +362,7 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 	}
 
 	envb := NewEnvBuilder(cfg.RemoteEnv)
-	if pluginResp != nil {
-		envb.AddPluginEnv(pluginResp.Env)
-		envb.AddPluginPathPrepend(pluginResp.PathPrepend)
-	}
-
+	envb.AddPluginResponse(pluginResp)
 	// When using a snapshot, restore the stored remoteEnv so probed PATH
 	// entries (mise, rbenv, nvm) survive the restart.
 	if hasSnapshot && storedResult != nil {

@@ -472,20 +472,20 @@ func TestProbeUserEnv_ProbeFails_ReturnsNil(t *testing.T) {
 	}
 }
 
-func TestMergeEnv_ProbedOnly(t *testing.T) {
+func TestFilterProbedEnv_ProbedOnly(t *testing.T) {
 	probed := map[string]string{"PATH": "/usr/bin:/custom", "HOME": "/home/user"}
-	result := mergeEnv(probed, nil)
+	result := filterProbedEnv(probed)
 	if result["PATH"] != "/usr/bin:/custom" {
 		t.Errorf("PATH = %q, want /usr/bin:/custom", result["PATH"])
 	}
 }
 
-func TestMergeEnv_RemoteEnvOverrides(t *testing.T) {
-	probed := map[string]string{"PATH": "/usr/bin", "FOO": "probed"}
-	remote := map[string]string{"FOO": "remote", "BAR": "new"}
-	result := mergeEnv(probed, remote)
+func TestEnvBuilder_ConfigEnvOverridesProbed(t *testing.T) {
+	envb := NewEnvBuilder(map[string]string{"FOO": "remote", "BAR": "new"})
+	envb.SetProbed(map[string]string{"PATH": "/usr/bin", "FOO": "probed"})
+	result := envb.Build()
 	if result["FOO"] != "remote" {
-		t.Errorf("FOO = %q, want remote (remoteEnv should win)", result["FOO"])
+		t.Errorf("FOO = %q, want remote (configEnv should win)", result["FOO"])
 	}
 	if result["BAR"] != "new" {
 		t.Errorf("BAR = %q, want new", result["BAR"])
@@ -495,7 +495,7 @@ func TestMergeEnv_RemoteEnvOverrides(t *testing.T) {
 	}
 }
 
-func TestMergeEnv_SkipsSessionVars(t *testing.T) {
+func TestFilterProbedEnv_SkipsSessionVars(t *testing.T) {
 	probed := map[string]string{
 		"PATH":     "/usr/bin",
 		"HOSTNAME": "abc123",
@@ -504,10 +504,10 @@ func TestMergeEnv_SkipsSessionVars(t *testing.T) {
 		"OLDPWD":   "/home",
 		"_":        "/usr/bin/env",
 	}
-	result := mergeEnv(probed, nil)
+	result := filterProbedEnv(probed)
 	for _, skip := range []string{"HOSTNAME", "SHLVL", "PWD", "OLDPWD", "_"} {
 		if _, ok := result[skip]; ok {
-			t.Errorf("%s should be excluded from merged env", skip)
+			t.Errorf("%s should be excluded from filtered env", skip)
 		}
 	}
 	if result["PATH"] != "/usr/bin" {
@@ -515,7 +515,7 @@ func TestMergeEnv_SkipsSessionVars(t *testing.T) {
 	}
 }
 
-func TestMergeEnv_SkipsMiseInternalVars(t *testing.T) {
+func TestFilterProbedEnv_SkipsMiseInternalVars(t *testing.T) {
 	probed := map[string]string{
 		"PATH":                  "/usr/bin:/home/user/.local/share/mise/installs/node/22/bin",
 		"HOME":                  "/home/user",
@@ -525,12 +525,12 @@ func TestMergeEnv_SkipsMiseInternalVars(t *testing.T) {
 		"__MISE_SESSION":        "eAHrWJOTn5iS...",
 		"__MISE_ZSH_PRECMD_RUN": "0",
 	}
-	result := mergeEnv(probed, nil)
+	result := filterProbedEnv(probed)
 
 	// Mise internal vars should be excluded.
 	for _, skip := range []string{"MISE_SHELL", "__MISE_DIFF", "__MISE_ORIG_PATH", "__MISE_SESSION", "__MISE_ZSH_PRECMD_RUN"} {
 		if _, ok := result[skip]; ok {
-			t.Errorf("%s should be excluded from merged env", skip)
+			t.Errorf("%s should be excluded from filtered env", skip)
 		}
 	}
 
@@ -543,13 +543,13 @@ func TestMergeEnv_SkipsMiseInternalVars(t *testing.T) {
 	}
 }
 
-func TestMergeEnv_RemoteEnvCanOverrideMiseFilter(t *testing.T) {
+func TestEnvBuilder_ConfigEnvOverridesMiseFilter(t *testing.T) {
 	// If a user explicitly sets MISE_SHELL in remoteEnv, it should be included.
-	probed := map[string]string{"PATH": "/usr/bin", "MISE_SHELL": "zsh"}
-	remote := map[string]string{"MISE_SHELL": "bash"}
-	result := mergeEnv(probed, remote)
+	envb := NewEnvBuilder(map[string]string{"MISE_SHELL": "bash"})
+	envb.SetProbed(map[string]string{"PATH": "/usr/bin", "MISE_SHELL": "zsh"})
+	result := envb.Build()
 	if result["MISE_SHELL"] != "bash" {
-		t.Errorf("MISE_SHELL = %q, want bash (explicit remoteEnv should override filter)", result["MISE_SHELL"])
+		t.Errorf("MISE_SHELL = %q, want bash (explicit configEnv should override filter)", result["MISE_SHELL"])
 	}
 }
 
@@ -711,9 +711,9 @@ func TestResolveBareVarRefs(t *testing.T) {
 	}
 }
 
-func TestMergeEnv_BothNil(t *testing.T) {
-	result := mergeEnv(nil, nil)
+func TestFilterProbedEnv_Nil(t *testing.T) {
+	result := filterProbedEnv(nil)
 	if result != nil {
-		t.Errorf("mergeEnv(nil, nil) = %v, want nil", result)
+		t.Errorf("filterProbedEnv(nil) = %v, want nil", result)
 	}
 }

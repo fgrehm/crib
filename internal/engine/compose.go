@@ -64,10 +64,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			if err != nil {
 				return nil, err
 			}
-			if pluginResp != nil {
-				envb.AddPluginEnv(pluginResp.Env)
-				envb.AddPluginPathPrepend(pluginResp.PathPrepend)
-			}
+			envb.AddPluginResponse(pluginResp)
 
 			if _, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, overrideImage, pluginResp); err != nil {
 				e.logger.Warn("failed to regenerate compose override", "error", err)
@@ -103,9 +100,8 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			composeUser := e.resolveComposeUser(ctx, cfg, configDir, composeFiles)
 			if resp, err := e.dispatchPlugins(ctx, ws, cfg, storedFeatureImage, workspaceFolder, composeUser); err != nil {
 				e.logger.Warn("plugin dispatch failed for already running services", "error", err)
-			} else if resp != nil {
-				envb.AddPluginEnv(resp.Env)
-				envb.AddPluginPathPrepend(resp.PathPrepend)
+			} else {
+				envb.AddPluginResponse(resp)
 			}
 		}
 
