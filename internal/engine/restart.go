@@ -261,18 +261,19 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 
 	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, containerID)
 
-	var pathPrepend []string
+	envb := NewEnvBuilder(cfg.RemoteEnv)
 	if pluginResp != nil {
-		pathPrepend = pluginResp.PathPrepend
+		envb.AddPluginEnv(pluginResp.Env)
+		envb.AddPluginPathPrepend(pluginResp.PathPrepend)
 	}
 	// When using a snapshot, restore the stored remoteEnv so probed PATH
 	// entries (mise, rbenv, nvm) survive the restart. setupContainer handles
 	// this when there's no snapshot (full re-probe).
 	if hasSnapshot && storedResult != nil {
-		mergeStoredRemoteEnv(cfg, storedResult.RemoteEnv)
+		envb.RestoreFrom(storedResult.RemoteEnv)
 	}
 
-	e.runRecreateLifecycle(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, hasSnapshot, pathPrepend)
+	e.runRecreateLifecycle(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, hasSnapshot, envb)
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
 
@@ -362,18 +363,19 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 		resultImageName = storedResult.ImageName
 	}
 
-	var pathPrepend []string
+	envb := NewEnvBuilder(cfg.RemoteEnv)
 	if pluginResp != nil {
-		pathPrepend = pluginResp.PathPrepend
+		envb.AddPluginEnv(pluginResp.Env)
+		envb.AddPluginPathPrepend(pluginResp.PathPrepend)
 	}
 
 	// When using a snapshot, restore the stored remoteEnv so probed PATH
 	// entries (mise, rbenv, nvm) survive the restart.
 	if hasSnapshot && storedResult != nil {
-		mergeStoredRemoteEnv(cfg, storedResult.RemoteEnv)
+		envb.RestoreFrom(storedResult.RemoteEnv)
 	}
 
-	e.runRecreateLifecycle(ctx, ws, cfg, container.ID, workspaceFolder, remoteUser, hasSnapshot, pathPrepend)
+	e.runRecreateLifecycle(ctx, ws, cfg, container.ID, workspaceFolder, remoteUser, hasSnapshot, envb)
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
 
@@ -396,15 +398,15 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 // runRecreateLifecycle decides which hooks to run after a container recreate.
 // When a valid snapshot exists, only resume hooks run (create-time effects are
 // already baked in). Otherwise, full setup runs and a new snapshot is committed.
-func (e *Engine) runRecreateLifecycle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, remoteUser string, hasSnapshot bool, pathPrepend []string) {
+func (e *Engine) runRecreateLifecycle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, remoteUser string, hasSnapshot bool, envb *EnvBuilder) {
 	if hasSnapshot {
-		applyPathPrepend(cfg, pathPrepend)
+		cfg.RemoteEnv = envb.Build()
 		if err := e.runResumeHooks(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
 			e.logger.Warn("resume hooks failed", "error", err)
 		}
 	} else {
 		e.reportProgress("No snapshot available, running full setup...")
-		if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, pathPrepend); err != nil {
+		if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, envb); err != nil {
 			e.logger.Warn("setup failed", "error", err)
 		}
 		e.commitSnapshot(ctx, ws, cfg, containerID)

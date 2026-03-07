@@ -41,9 +41,9 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 			e.reportProgress("Container already running")
 		}
 
-		// Dispatch plugins to get PathPrepend so setupContainer can inject
-		// plugin PATH entries into RemoteEnv before saving the result.
-		var pathPrepend []string
+		// Dispatch plugins so setupContainer can inject plugin PATH
+		// entries and env vars into RemoteEnv before saving the result.
+		envb := NewEnvBuilder(cfg.RemoteEnv)
 		remoteUser := cfg.RemoteUser
 		if remoteUser == "" {
 			remoteUser = cfg.ContainerUser
@@ -51,10 +51,11 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 		if resp, err := e.dispatchPlugins(ctx, ws, cfg, remoteUser, workspaceFolder, ""); err != nil {
 			e.logger.Warn("plugin dispatch failed for already-running container", "error", err)
 		} else if resp != nil {
-			pathPrepend = resp.PathPrepend
+			envb.AddPluginEnv(resp.Env)
+			envb.AddPluginPathPrepend(resp.PathPrepend)
 		}
 
-		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, pathPrepend)
+		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, envb)
 	}
 
 	// Remove existing container if recreating.
@@ -185,27 +186,15 @@ func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg
 		if remoteUser != "" && remoteUser != "root" {
 			e.chownPluginVolumes(ctx, ws.ID, containerID, remoteUser, pluginResp.Mounts)
 		}
-
-		// Merge plugin env vars into RemoteEnv so they take precedence
-		// over values from the user's shell profile (userEnvProbe).
-		// Without this, image-baked profile scripts (e.g. /etc/bash.bashrc
-		// setting CARGO_HOME) would override plugin-set env vars.
-		for k, v := range pluginResp.Env {
-			if cfg.RemoteEnv == nil {
-				cfg.RemoteEnv = make(map[string]string)
-			}
-			if _, exists := cfg.RemoteEnv[k]; !exists {
-				cfg.RemoteEnv[k] = v
-			}
-		}
 	}
 
-	var pathPrepend []string
+	envb := NewEnvBuilder(cfg.RemoteEnv)
 	if pluginResp != nil {
-		pathPrepend = pluginResp.PathPrepend
+		envb.AddPluginEnv(pluginResp.Env)
+		envb.AddPluginPathPrepend(pluginResp.PathPrepend)
 	}
 
-	result, setupErr := e.setupAndReturn(ctx, ws, cfg, containerID, workspaceFolder, pathPrepend)
+	result, setupErr := e.setupAndReturn(ctx, ws, cfg, containerID, workspaceFolder, envb)
 	if result != nil {
 		result.ImageName = imageName
 		e.saveResult(ws, cfg, result)
@@ -231,7 +220,7 @@ func (e *Engine) chownPluginVolumes(ctx context.Context, workspaceID, containerI
 // setupAndReturn runs container setup and returns the result.
 // On lifecycle hook failure, both the result and error are returned so
 // callers can persist the result (container is still usable).
-func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder string, pathPrepend []string) (*UpResult, error) {
+func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder string, envb *EnvBuilder) (*UpResult, error) {
 	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, containerID)
 
 	result := &UpResult{
@@ -247,7 +236,7 @@ func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cf
 	e.saveResult(ws, cfg, result)
 
 	// Run container setup (UID sync, env probe, lifecycle hooks).
-	if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, pathPrepend); err != nil {
+	if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, envb); err != nil {
 		return result, fmt.Errorf("setting up container: %w", err)
 	}
 

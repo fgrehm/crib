@@ -21,7 +21,11 @@ import (
 //   - Synchronizing the container user's UID/GID with the host
 //   - Chowning the workspace directory to the remote user
 //   - Running lifecycle hooks
-func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, remoteUser string, pathPrepend []string) error {
+//
+// The EnvBuilder accumulates env from all sources and produces the final
+// merged env via Build(). cfg.RemoteEnv is set to the build result at
+// each point where hooks or the final save need the merged env.
+func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, remoteUser string, envb *EnvBuilder) error {
 	// Resolve ${containerEnv:VAR} in remoteEnv by probing the container environment.
 	// Also captures the container's base PATH for later merging.
 	var containerPATH string
@@ -50,10 +54,9 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 		}
 	}
 
-	// Save the original config remoteEnv before merging with probed env.
-	// We need this to re-merge after hooks, since hooks may install tools
-	// that change PATH and other vars.
-	configRemoteEnv := copyStringMap(cfg.RemoteEnv)
+	// Update the builder's configEnv after resolveRemoteEnv has resolved
+	// ${containerEnv:VAR} references in cfg.RemoteEnv.
+	envb.SetConfigEnv(cfg.RemoteEnv)
 
 	// If resolveRemoteEnv didn't run (no remoteEnv), capture the container's
 	// base PATH separately. Login shells on Debian reset PATH via /etc/profile,
@@ -63,19 +66,14 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 	if containerPATH == "" && cfg.UserEnvProbe != "none" {
 		containerPATH = e.probeContainerPATH(ctx, ws.ID, containerID)
 	}
+	envb.SetContainerPATH(containerPATH)
 
 	// Pre-hook environment probe: captures PATH and other vars from shell
 	// profile files (e.g. mise, rbenv, nvm) so lifecycle hooks have the
 	// user's full environment.
 	probedEnv := e.probeUserEnv(ctx, ws.ID, containerID, remoteUser, cfg.UserEnvProbe)
-	if hookEnv := mergeEnv(probedEnv, configRemoteEnv); len(hookEnv) > 0 {
-		cfg.RemoteEnv = hookEnv
-	}
-	if cfg.RemoteEnv == nil && (containerPATH != "" || len(pathPrepend) > 0) {
-		cfg.RemoteEnv = make(map[string]string)
-	}
-	preserveContainerPATH(cfg.RemoteEnv, containerPATH)
-	prependToPath(cfg.RemoteEnv, pathPrepend)
+	envb.SetProbed(probedEnv)
+	cfg.RemoteEnv = envb.Build()
 
 	// Run lifecycle hooks.
 	runner := &lifecycleRunner{
@@ -98,14 +96,8 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 	// any changes from lifecycle hooks (e.g. tools installed via mise, nvm).
 	// This is what gets persisted for crib shell/exec.
 	postProbe := e.probeUserEnv(ctx, ws.ID, containerID, remoteUser, cfg.UserEnvProbe)
-	if finalEnv := mergeEnv(postProbe, configRemoteEnv); len(finalEnv) > 0 {
-		cfg.RemoteEnv = finalEnv
-	}
-	if cfg.RemoteEnv == nil && (containerPATH != "" || len(pathPrepend) > 0) {
-		cfg.RemoteEnv = make(map[string]string)
-	}
-	preserveContainerPATH(cfg.RemoteEnv, containerPATH)
-	prependToPath(cfg.RemoteEnv, pathPrepend)
+	envb.SetProbed(postProbe)
+	cfg.RemoteEnv = envb.Build()
 
 	return hookErr
 }

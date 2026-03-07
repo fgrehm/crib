@@ -52,7 +52,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			storedFeatureImage = stored.ImageName
 		}
 
-		var pathPrepend []string
+		envb := NewEnvBuilder(cfg.RemoteEnv)
 		if !container.State.IsRunning() {
 			// Regenerate the override for state persistence.
 			overrideImage := storedFeatureImage
@@ -65,7 +65,8 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 				return nil, err
 			}
 			if pluginResp != nil {
-				pathPrepend = pluginResp.PathPrepend
+				envb.AddPluginEnv(pluginResp.Env)
+				envb.AddPluginPathPrepend(pluginResp.PathPrepend)
 			}
 
 			if _, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, overrideImage, pluginResp); err != nil {
@@ -103,11 +104,12 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			if resp, err := e.dispatchPlugins(ctx, ws, cfg, storedFeatureImage, workspaceFolder, composeUser); err != nil {
 				e.logger.Warn("plugin dispatch failed for already running services", "error", err)
 			} else if resp != nil {
-				pathPrepend = resp.PathPrepend
+				envb.AddPluginEnv(resp.Env)
+				envb.AddPluginPathPrepend(resp.PathPrepend)
 			}
 		}
 
-		result, err := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, pathPrepend)
+		result, err := e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, envb)
 		if result != nil {
 			result.ImageName = storedFeatureImage
 			e.saveResult(ws, cfg, result)
