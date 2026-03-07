@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,7 +84,8 @@ func extractOCIImage(img v1.Image, dir string) error {
 }
 
 // extractTar extracts a tar archive from r into dir.
-// Entries outside dir (via path traversal) are silently skipped.
+// Returns an error if any entry attempts path traversal or contains
+// symlinks that escape the extraction directory.
 func extractTar(r io.Reader, dir string) error {
 	tr := tar.NewReader(r)
 	for {
@@ -107,8 +107,7 @@ func extractTar(r io.Reader, dir string) error {
 
 		// Guard against path traversal.
 		if !strings.HasPrefix(target, filepath.Clean(dir)+string(os.PathSeparator)) {
-			slog.Warn("skipping tar entry with path traversal", "entry", hdr.Name)
-			continue
+			return fmt.Errorf("tar entry %q has path traversal", hdr.Name)
 		}
 
 		switch hdr.Typeflag {
@@ -131,6 +130,16 @@ func extractTar(r io.Reader, dir string) error {
 			}
 			_ = f.Close()
 		case tar.TypeSymlink:
+			// Absolute symlink targets dereference to the literal path on
+			// the host filesystem, so they always escape the extraction dir.
+			if filepath.IsAbs(hdr.Linkname) {
+				return fmt.Errorf("tar entry %q has absolute symlink target %q", hdr.Name, hdr.Linkname)
+			}
+			// Relative targets are resolved from the symlink's parent dir.
+			resolved := filepath.Clean(filepath.Join(filepath.Dir(target), hdr.Linkname))
+			if !strings.HasPrefix(resolved, filepath.Clean(dir)+string(os.PathSeparator)) && resolved != filepath.Clean(dir) {
+				return fmt.Errorf("tar entry %q has symlink escaping extraction dir (target %q)", hdr.Name, hdr.Linkname)
+			}
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return fmt.Errorf("creating parent dir for symlink %s: %w", target, err)
 			}
