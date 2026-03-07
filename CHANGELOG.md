@@ -19,8 +19,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI workflows now use explicit `permissions: contents: read` instead of
   GitHub's default read-write.
 
+### Changed
+
+- Noisy host-specific environment variables (`LS_COLORS`, `DISPLAY`,
+  `WAYLAND_DISPLAY`, `XDG_SESSION_*`, `DBUS_SESSION_BUS_ADDRESS`,
+  `TERM_PROGRAM`, `COLORTERM`, `DESKTOP_SESSION`, etc.) are now filtered from
+  the probed environment. These are meaningless inside containers and cluttered
+  the output of `crib run -- env`. Users can still force any filtered variable
+  via `remoteEnv` in `devcontainer.json`.
+
 ### Fixed
 
+- Plugin environment variables (e.g. `BUNDLE_PATH`, `CARGO_HOME`, `HISTFILE`)
+  now survive `crib restart`. Previously, simple restart paths only preserved
+  plugin `PathPrepend` entries but silently dropped plugin `Env` values. The
+  values survived only because they were present in the stored result from a
+  previous `crib up`, but a plugin that changed an env value between restarts
+  would have the old stored value win over the fresh one.
 - `crib delete` now removes named volumes declared in compose files (e.g.
   database data). Previously, `docker compose down` ran without `--volumes`,
   leaving orphaned volumes behind.
@@ -46,17 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sensitive env var values (tokens, keys, passwords) are now redacted in
   `--debug` output. Previously, values like `GITHUB_TOKEN` appeared in
   plaintext in exec command logs.
-- Plugin PATH additions (e.g. `~/.bundle/bin`) now persist across `crib restart`
-  for compose workspaces. Previously, resume hooks lost plugin PATH entries.
-- Plugin PATH additions no longer vanish after a redundant `crib up` (container
-  already running) or non-compose `crib restart`. Previously, these paths
-  dispatched plugins only on fresh creation, so a second `crib up` would
-  overwrite the saved RemoteEnv without plugin PATH entries.
-- `crib restart` no longer loses probed environment (mise, rbenv, nvm PATH
-  entries) from the initial `crib up`. Previously, restart paths that skip
-  env re-probing (simple restart, snapshot-based recreate) overwrote the saved
-  `remoteEnv` with only plugin PATH entries, so `crib run` could not find
-  tools like `ruby` or `node` after a restart.
+- `crib restart` and redundant `crib up` no longer lose probed environment
+  (mise, rbenv, nvm PATH entries) or plugin PATH additions. Previously, restart
+  paths that skip env re-probing overwrote the saved `remoteEnv`, so `crib run`
+  could not find tools like `ruby` or `node` after a restart.
 
 ## [0.5.0] - 2026-03-05
 
