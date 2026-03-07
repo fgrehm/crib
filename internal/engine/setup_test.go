@@ -553,6 +553,149 @@ func TestMergeEnv_RemoteEnvCanOverrideMiseFilter(t *testing.T) {
 	}
 }
 
+func TestPreserveContainerPATH(t *testing.T) {
+	tests := []struct {
+		name          string
+		env           map[string]string
+		containerPATH string
+		wantEnv       map[string]string
+	}{
+		{
+			name:          "appends missing container entries",
+			env:           map[string]string{"PATH": "/root/.bundle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
+			containerPATH: "/usr/local/bundle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+			wantEnv:       map[string]string{"PATH": "/root/.bundle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bundle/bin"},
+		},
+		{
+			name:          "no-op when all entries present",
+			env:           map[string]string{"PATH": "/usr/local/bin:/usr/bin:/sbin:/bin"},
+			containerPATH: "/usr/local/bin:/usr/bin",
+			wantEnv:       map[string]string{"PATH": "/usr/local/bin:/usr/bin:/sbin:/bin"},
+		},
+		{
+			name:          "no-op for empty container PATH",
+			env:           map[string]string{"PATH": "/usr/bin"},
+			containerPATH: "",
+			wantEnv:       map[string]string{"PATH": "/usr/bin"},
+		},
+		{
+			name:          "no-op for nil env",
+			env:           nil,
+			containerPATH: "/usr/bin",
+		},
+		{
+			name:          "does not insert PATH when absent",
+			env:           map[string]string{"HOME": "/root"},
+			containerPATH: "/usr/bin",
+			wantEnv:       map[string]string{"HOME": "/root"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			preserveContainerPATH(tt.env, tt.containerPATH)
+			if tt.wantEnv != nil && !reflect.DeepEqual(tt.env, tt.wantEnv) {
+				t.Errorf("env = %v, want %v", tt.env, tt.wantEnv)
+			}
+		})
+	}
+}
+
+func TestPrependToPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		env     map[string]string
+		dirs    []string
+		wantEnv map[string]string
+	}{
+		{
+			name:    "prepends to existing PATH",
+			env:     map[string]string{"PATH": "/usr/bin:/bin"},
+			dirs:    []string{"/home/user/.bundle/bin"},
+			wantEnv: map[string]string{"PATH": "/home/user/.bundle/bin:/usr/bin:/bin"},
+		},
+		{
+			name:    "prepends multiple dirs in order",
+			env:     map[string]string{"PATH": "/usr/bin"},
+			dirs:    []string{"/a", "/b"},
+			wantEnv: map[string]string{"PATH": "/a:/b:/usr/bin"},
+		},
+		{
+			name:    "skips already present dirs",
+			env:     map[string]string{"PATH": "/usr/bin:/home/user/.bundle/bin"},
+			dirs:    []string{"/home/user/.bundle/bin"},
+			wantEnv: map[string]string{"PATH": "/usr/bin:/home/user/.bundle/bin"},
+		},
+		{
+			name:    "sets PATH when empty",
+			env:     map[string]string{},
+			dirs:    []string{"/home/user/.bundle/bin"},
+			wantEnv: map[string]string{"PATH": "/home/user/.bundle/bin"},
+		},
+		{
+			name:    "no-op for nil env",
+			env:     nil,
+			dirs:    []string{"/a"},
+			wantEnv: nil,
+		},
+		{
+			name:    "no-op for empty dirs",
+			env:     map[string]string{"PATH": "/usr/bin"},
+			dirs:    nil,
+			wantEnv: map[string]string{"PATH": "/usr/bin"},
+		},
+		{
+			name:    "skips empty strings in dirs",
+			env:     map[string]string{"PATH": "/usr/bin"},
+			dirs:    []string{"", "/a", ""},
+			wantEnv: map[string]string{"PATH": "/a:/usr/bin"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prependToPath(tt.env, tt.dirs)
+			if tt.wantEnv != nil && !reflect.DeepEqual(tt.env, tt.wantEnv) {
+				t.Errorf("env = %v, want %v", tt.env, tt.wantEnv)
+			}
+		})
+	}
+}
+
+func TestApplyPathPrepend(t *testing.T) {
+	t.Run("initializes nil RemoteEnv", func(t *testing.T) {
+		cfg := &config.DevContainerConfig{}
+		applyPathPrepend(cfg, []string{"/home/user/.bundle/bin"})
+		want := map[string]string{"PATH": "/home/user/.bundle/bin"}
+		if !reflect.DeepEqual(cfg.RemoteEnv, want) {
+			t.Errorf("RemoteEnv = %v, want %v", cfg.RemoteEnv, want)
+		}
+	})
+
+	t.Run("prepends to existing RemoteEnv PATH", func(t *testing.T) {
+		cfg := &config.DevContainerConfig{
+			DevContainerConfigBase: config.DevContainerConfigBase{
+				RemoteEnv: map[string]string{"PATH": "/usr/bin", "HOME": "/root"},
+			},
+		}
+		applyPathPrepend(cfg, []string{"/root/.bundle/bin"})
+		if cfg.RemoteEnv["PATH"] != "/root/.bundle/bin:/usr/bin" {
+			t.Errorf("PATH = %q, want /root/.bundle/bin:/usr/bin", cfg.RemoteEnv["PATH"])
+		}
+		if cfg.RemoteEnv["HOME"] != "/root" {
+			t.Errorf("HOME was modified: %q", cfg.RemoteEnv["HOME"])
+		}
+	})
+
+	t.Run("no-op for empty dirs", func(t *testing.T) {
+		cfg := &config.DevContainerConfig{}
+		applyPathPrepend(cfg, nil)
+		if cfg.RemoteEnv != nil {
+			t.Errorf("RemoteEnv should remain nil, got %v", cfg.RemoteEnv)
+		}
+	})
+}
+
 func TestResolveBareVarRefs(t *testing.T) {
 	containerEnv := map[string]string{
 		"PATH": "/usr/local/bin:/usr/bin:/bin",

@@ -41,7 +41,20 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 			e.reportProgress("Container already running")
 		}
 
-		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
+		// Dispatch plugins to get PathPrepend so setupContainer can inject
+		// plugin PATH entries into RemoteEnv before saving the result.
+		var pathPrepend []string
+		remoteUser := cfg.RemoteUser
+		if remoteUser == "" {
+			remoteUser = cfg.ContainerUser
+		}
+		if resp, err := e.dispatchPlugins(ctx, ws, cfg, remoteUser, workspaceFolder, ""); err != nil {
+			e.logger.Warn("plugin dispatch failed for already-running container", "error", err)
+		} else if resp != nil {
+			pathPrepend = resp.PathPrepend
+		}
+
+		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, pathPrepend)
 	}
 
 	// Remove existing container if recreating.
@@ -187,7 +200,12 @@ func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg
 		}
 	}
 
-	result, setupErr := e.setupAndReturn(ctx, ws, cfg, containerID, workspaceFolder)
+	var pathPrepend []string
+	if pluginResp != nil {
+		pathPrepend = pluginResp.PathPrepend
+	}
+
+	result, setupErr := e.setupAndReturn(ctx, ws, cfg, containerID, workspaceFolder, pathPrepend)
 	if result != nil {
 		result.ImageName = imageName
 		e.saveResult(ws, cfg, result)
@@ -213,7 +231,7 @@ func (e *Engine) chownPluginVolumes(ctx context.Context, workspaceID, containerI
 // setupAndReturn runs container setup and returns the result.
 // On lifecycle hook failure, both the result and error are returned so
 // callers can persist the result (container is still usable).
-func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder string) (*UpResult, error) {
+func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder string, pathPrepend []string) (*UpResult, error) {
 	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, containerID)
 
 	result := &UpResult{
@@ -229,7 +247,7 @@ func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cf
 	e.saveResult(ws, cfg, result)
 
 	// Run container setup (UID sync, env probe, lifecycle hooks).
-	if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
+	if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, pathPrepend); err != nil {
 		return result, fmt.Errorf("setting up container: %w", err)
 	}
 

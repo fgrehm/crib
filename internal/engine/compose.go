@@ -47,6 +47,7 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 	}
 
 	if container != nil && !opts.Recreate {
+		var pathPrepend []string
 		if !container.State.IsRunning() {
 			// Dispatch plugins so the override includes plugin env vars and
 			// mounts. The override is regenerated on every compose up.
@@ -55,12 +56,14 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			if err != nil {
 				return nil, err
 			}
+			if pluginResp != nil {
+				pathPrepend = pluginResp.PathPrepend
+			}
 
 			overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, "", pluginResp)
 			if err != nil {
 				return nil, fmt.Errorf("generating compose override: %w", err)
 			}
-			defer func() { _ = os.Remove(overridePath) }()
 
 			allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
 			services := ensureServiceIncluded(cfg.RunServices, serviceName)
@@ -83,9 +86,18 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			}
 		} else {
 			e.reportProgress("Services already running")
+
+			// Dispatch plugins to get PathPrepend so setupContainer can
+			// inject plugin PATH entries into RemoteEnv before saving.
+			composeUser := e.resolveComposeUser(ctx, cfg, configDir, composeFiles)
+			if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, composeUser); err != nil {
+				e.logger.Warn("plugin dispatch failed for already running services", "error", err)
+			} else if resp != nil {
+				pathPrepend = resp.PathPrepend
+			}
 		}
 
-		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder)
+		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, pathPrepend)
 	}
 
 	// No container but a previous result exists (e.g. after "crib down").
@@ -132,7 +144,6 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 	if err != nil {
 		return nil, fmt.Errorf("generating compose override: %w", err)
 	}
-	defer func() { _ = os.Remove(overridePath) }()
 
 	allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
 
@@ -196,7 +207,6 @@ func (e *Engine) upComposeFromStored(ctx context.Context, ws *workspace.Workspac
 	if err != nil {
 		return nil, fmt.Errorf("generating compose override: %w", err)
 	}
-	defer func() { _ = os.Remove(overridePath) }()
 
 	allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
 	services := ensureServiceIncluded(cfg.RunServices, serviceName)
@@ -413,21 +423,16 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		}
 	}
 
-	// Write to a temp file outside the workspace tree. The override must not
-	// live inside the workspace mount because chownWorkspace recursively
-	// changes ownership of the mounted directory, making the file unremovable
-	// by the host user.
-	f, err := os.CreateTemp("", "crib-compose-override-*.yml")
-	if err != nil {
-		return "", fmt.Errorf("creating compose override temp file: %w", err)
+	// Persist the override in the workspace state directory so it survives
+	// for troubleshooting. The file is overwritten on every compose up.
+	wsDir := e.store.WorkspaceDir(ws.ID)
+	if err := os.MkdirAll(wsDir, 0o755); err != nil {
+		return "", fmt.Errorf("creating workspace directory: %w", err)
 	}
-	overridePath := f.Name()
-	if _, err := f.WriteString(b.String()); err != nil {
-		_ = f.Close()
-		_ = os.Remove(overridePath)
+	overridePath := filepath.Join(wsDir, "compose-override.yml")
+	if err := os.WriteFile(overridePath, []byte(b.String()), 0o644); err != nil {
 		return "", fmt.Errorf("writing compose override: %w", err)
 	}
-	_ = f.Close()
 
 	return overridePath, nil
 }

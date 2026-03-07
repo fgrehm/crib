@@ -14,16 +14,29 @@ import (
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
+// newComposeTestEngine creates an Engine with a workspace store backed by a
+// temp directory. It saves the workspace so the directory exists for the
+// compose override file.
+func newComposeTestEngine(t *testing.T, runtime string, ws *workspace.Workspace) *Engine {
+	t.Helper()
+	store := workspace.NewStoreAt(t.TempDir())
+	if err := store.Save(ws); err != nil {
+		t.Fatalf("saving workspace: %v", err)
+	}
+	return &Engine{
+		compose: compose.NewHelperFromRuntime(runtime),
+		store:   store,
+	}
+}
+
 func TestGenerateComposeOverride_RootlessPodmanInjectsUserns(t *testing.T) {
 	origGetuid := getuid
 	t.Cleanup(func() { getuid = origGetuid })
 	getuid = func() int { return 1000 }
 
-	e := &Engine{
-		compose: compose.NewHelperFromRuntime("podman"),
-	}
-
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "podman", ws)
+
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
@@ -32,7 +45,6 @@ func TestGenerateComposeOverride_RootlessPodmanInjectsUserns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path) })
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -52,11 +64,9 @@ func TestGenerateComposeOverride_RootPodmanSkipsUserns(t *testing.T) {
 	t.Cleanup(func() { getuid = origGetuid })
 	getuid = func() int { return 0 }
 
-	e := &Engine{
-		compose: compose.NewHelperFromRuntime("podman"),
-	}
-
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "podman", ws)
+
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
@@ -65,7 +75,6 @@ func TestGenerateComposeOverride_RootPodmanSkipsUserns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path) })
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -82,11 +91,9 @@ func TestGenerateComposeOverride_DockerSkipsUserns(t *testing.T) {
 	t.Cleanup(func() { getuid = origGetuid })
 	getuid = func() int { return 1000 }
 
-	e := &Engine{
-		compose: compose.NewHelperFromRuntime("docker"),
-	}
-
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
@@ -95,7 +102,6 @@ func TestGenerateComposeOverride_DockerSkipsUserns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path) })
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -112,11 +118,9 @@ func TestGenerateComposeOverride_SkipsUsernsWhenAlreadySet(t *testing.T) {
 	t.Cleanup(func() { getuid = origGetuid })
 	getuid = func() int { return 1000 }
 
-	e := &Engine{
-		compose: compose.NewHelperFromRuntime("podman"),
-	}
-
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "podman", ws)
+
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
@@ -132,7 +136,6 @@ func TestGenerateComposeOverride_SkipsUsernsWhenAlreadySet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path) })
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -145,11 +148,9 @@ func TestGenerateComposeOverride_SkipsUsernsWhenAlreadySet(t *testing.T) {
 }
 
 func TestGenerateComposeOverride_WithFeatureImage(t *testing.T) {
-	e := &Engine{
-		compose: compose.NewHelperFromRuntime("docker"),
-	}
-
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
@@ -158,7 +159,6 @@ func TestGenerateComposeOverride_WithFeatureImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path) })
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -176,11 +176,9 @@ func TestGenerateComposeOverride_WithFeatureImage(t *testing.T) {
 // inject an image override, since the feature image is already baked in from
 // the initial up.
 func TestGenerateComposeOverride_RestartPath(t *testing.T) {
-	e := &Engine{
-		compose: compose.NewHelperFromRuntime("docker"),
-	}
-
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
@@ -189,7 +187,6 @@ func TestGenerateComposeOverride_RestartPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path) })
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -206,11 +203,9 @@ func TestGenerateComposeOverride_RestartPath(t *testing.T) {
 }
 
 func TestGenerateComposeOverride_PluginMounts(t *testing.T) {
-	e := &Engine{
-		compose: compose.NewHelperFromRuntime("docker"),
-	}
-
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
@@ -226,7 +221,6 @@ func TestGenerateComposeOverride_PluginMounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path) })
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -248,11 +242,9 @@ func TestGenerateComposeOverride_PluginMounts(t *testing.T) {
 }
 
 func TestGenerateComposeOverride_PluginEnv(t *testing.T) {
-	e := &Engine{
-		compose: compose.NewHelperFromRuntime("docker"),
-	}
-
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
@@ -268,7 +260,6 @@ func TestGenerateComposeOverride_PluginEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path) })
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -285,11 +276,9 @@ func TestGenerateComposeOverride_PluginEnv(t *testing.T) {
 }
 
 func TestGenerateComposeOverride_PluginEnvMergedWithConfigEnv(t *testing.T) {
-	e := &Engine{
-		compose: compose.NewHelperFromRuntime("docker"),
-	}
-
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 	cfg.ContainerEnv = map[string]string{"APP_ENV": "development"}
@@ -303,7 +292,6 @@ func TestGenerateComposeOverride_PluginEnvMergedWithConfigEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path) })
 
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -321,11 +309,9 @@ func TestGenerateComposeOverride_PluginEnvMergedWithConfigEnv(t *testing.T) {
 }
 
 func TestGenerateComposeOverride_NilPluginResponse(t *testing.T) {
-	e := &Engine{
-		compose: compose.NewHelperFromRuntime("docker"),
-	}
-
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
@@ -336,17 +322,14 @@ func TestGenerateComposeOverride_NilPluginResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generateComposeOverride with nil plugin failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path1) })
+	data1, _ := os.ReadFile(path1)
 
-	// With empty plugin response.
-	path2, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", &plugin.PreContainerRunResponse{})
+	// With empty plugin response (overwrites the same file).
+	_, err = e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", &plugin.PreContainerRunResponse{})
 	if err != nil {
 		t.Fatalf("generateComposeOverride with empty plugin failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path2) })
-
-	data1, _ := os.ReadFile(path1)
-	data2, _ := os.ReadFile(path2)
+	data2, _ := os.ReadFile(path1)
 
 	// Both should produce equivalent output (no extra environment/volumes sections).
 	if string(data1) != string(data2) {
@@ -355,11 +338,9 @@ func TestGenerateComposeOverride_NilPluginResponse(t *testing.T) {
 }
 
 func TestGenerateComposeOverride_PluginVolumeMountsGetNameDeclaration(t *testing.T) {
-	e := &Engine{
-		compose: compose.NewHelperFromRuntime("docker"),
-	}
-
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
@@ -375,7 +356,6 @@ func TestGenerateComposeOverride_PluginVolumeMountsGetNameDeclaration(t *testing
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
-	t.Cleanup(func() { os.Remove(path) })
 
 	data, err := os.ReadFile(path)
 	if err != nil {

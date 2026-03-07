@@ -1,8 +1,10 @@
-// Ruby project example with development tools.
+// Ruby project example with bundler cache testing.
 // Usage:
 //   cd examples/ruby-project
 //   crib up
-//   crib exec -- bash
+//   crib run -- rake --version     # should work without bundle exec
+//   crib run -- rspec --version    # should work without bundle exec
+//   crib run -- which rake         # should find it on PATH
 //   crib stop
 //   crib delete
 {
@@ -16,5 +18,5 @@
     "CRIB_EXAMPLE": "ruby-project"
   },
 
-  "postCreateCommand": "apt-get update && apt-get install -y git make curl && echo '==> Ruby dev environment ready. ruby: ' && ruby --version && gem --version"
+  "postCreateCommand": "bundle install && echo '==> Installed gems:' && gem list --no-versions rake rspec && echo '==> rake at:' && which rake && echo '==> rspec at:' && which rspec"
 }

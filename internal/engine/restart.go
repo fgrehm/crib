@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/fgrehm/crib/internal/compose"
 	"github.com/fgrehm/crib/internal/config"
@@ -113,7 +112,6 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		if err != nil {
 			return nil, fmt.Errorf("generating compose override: %w", err)
 		}
-		defer func() { _ = os.Remove(overridePath) }()
 
 		allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
 		services := ensureServiceIncluded(cfg.RunServices, cfg.Service)
@@ -135,6 +133,7 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		// changed on the host since the last up/restart.
 		if pluginResp != nil {
 			e.execPluginCopies(ctx, ws.ID, containerID, pluginResp.Copies)
+			applyPathPrepend(cfg, pluginResp.PathPrepend)
 		}
 	} else {
 		// Non-compose: restart the individual container.
@@ -149,6 +148,14 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 			return nil, fmt.Errorf("restarting container: %w", err)
 		}
 		containerID = container.ID
+
+		// Dispatch plugins to get PathPrepend so the saved RemoteEnv
+		// preserves plugin PATH entries across restarts.
+		if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, storedResult.RemoteUser); err != nil {
+			e.logger.Warn("plugin dispatch for PathPrepend failed", "error", err)
+		} else if resp != nil {
+			applyPathPrepend(cfg, resp.PathPrepend)
+		}
 	}
 
 	// Run resume-flow hooks.
@@ -229,7 +236,11 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 
 	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, containerID)
 
-	e.runRecreateLifecycle(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, hasSnapshot)
+	var pathPrepend []string
+	if pluginResp != nil {
+		pathPrepend = pluginResp.PathPrepend
+	}
+	e.runRecreateLifecycle(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, hasSnapshot, pathPrepend)
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
 
@@ -319,7 +330,11 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 		resultImageName = storedResult.ImageName
 	}
 
-	e.runRecreateLifecycle(ctx, ws, cfg, container.ID, workspaceFolder, remoteUser, hasSnapshot)
+	var pathPrepend []string
+	if pluginResp != nil {
+		pathPrepend = pluginResp.PathPrepend
+	}
+	e.runRecreateLifecycle(ctx, ws, cfg, container.ID, workspaceFolder, remoteUser, hasSnapshot, pathPrepend)
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
 
@@ -342,14 +357,15 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 // runRecreateLifecycle decides which hooks to run after a container recreate.
 // When a valid snapshot exists, only resume hooks run (create-time effects are
 // already baked in). Otherwise, full setup runs and a new snapshot is committed.
-func (e *Engine) runRecreateLifecycle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, remoteUser string, hasSnapshot bool) {
+func (e *Engine) runRecreateLifecycle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, remoteUser string, hasSnapshot bool, pathPrepend []string) {
 	if hasSnapshot {
+		applyPathPrepend(cfg, pathPrepend)
 		if err := e.runResumeHooks(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
 			e.logger.Warn("resume hooks failed", "error", err)
 		}
 	} else {
 		e.reportProgress("No snapshot available, running full setup...")
-		if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser); err != nil {
+		if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, pathPrepend); err != nil {
 			e.logger.Warn("setup failed", "error", err)
 		}
 		e.commitSnapshot(ctx, ws, cfg, containerID)

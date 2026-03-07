@@ -29,6 +29,14 @@ Currently plugin mounts land at ad-hoc paths (`~/.crib_history/`, `/tmp/ssh-agen
 
 Add `--json` or `--format json` flag to commands like `status`, `list` for scripting and tooling integration. The internal data structures already support this.
 
+### Fully qualified workspace paths
+
+Workspace IDs are currently derived from the project directory name (e.g. `ruby-project`), which can collide when different orgs or parent directories have projects with the same name. Use a hash or full path to guarantee uniqueness.
+
+### `--force` flag for destructive commands
+
+Add a `--force` / `-f` flag to commands like `remove`, `rebuild`, and `restart` to skip confirmation prompts. Useful for scripting and CI.
+
 ### Colored log output
 
 Color-code `crib logs` lines by service name when the terminal supports it, similar to `docker compose logs`. Useful for compose workspaces with multiple services where logs are interleaved.
@@ -36,6 +44,48 @@ Color-code `crib logs` lines by service name when the terminal supports it, simi
 ### Container health checks
 
 Detect when a container is unhealthy or stuck and surface it in `crib status` / `crib ps`.
+
+### Build progress indicator
+
+Show a spinner or progress bar during `docker commit` and other long-running operations when a TTY is detected. Investigate if `podman`/`docker commit` has machine-readable output we can use.
+
+### Workspace-scoped `crib status` and `crib delete`
+
+Accept an explicit workspace name argument so these commands work outside the project directory. Also useful for managing multiple workspaces from a central location.
+
+### `crib nuke` / `crib prune`
+
+Clean all crib state, containers, volumes, and images in one shot. Useful for full reset or uninstall.
+
+### Enhanced `crib list`
+
+Accept arguments to filter/show state details (container status, services, ports, etc.).
+
+### `crib build` command
+
+Build the image / container without starting it. Useful for CI or pre-warming caches.
+
+### Debug mode env var
+
+Pass `CRIB_DEBUG=1` (or `DEVCONTAINER_BUILD_DEBUG`) into containers during builds and hook execution for easier troubleshooting.
+
+### Build log capture
+
+Write all build output to `~/.crib/workspaces/{id}/logs/{timestamp}-build.txt` for post-mortem debugging.
+
+### Version tracking in workspace state
+
+Record the crib version (semver, commit SHA, build timestamp) in workspace state so we can detect version mismatches and provide upgrade guidance.
+
+### Log output scrubbing
+
+~~Redact sensitive env var values (tokens, keys, passwords) in `--debug` exec logs.~~ Done in v0.5.1.
+
+Remaining: scrub PII patterns from subprocess output and verbose logs (not just env var names). Examples: email addresses, phone numbers, IP addresses, filesystem paths containing usernames. These can leak through lifecycle hook output, build logs, and error messages.
+
+### Env var filtering for exec/run
+
+Skip injecting noisy env vars (e.g. `LS_COLORS`, `LSCOLORS`) that don't serve a purpose inside the container. Could be a configurable allowlist/denylist.
 
 ### Remote access plugin (SSH into containers)
 

@@ -79,7 +79,7 @@ func ResolveConfigDir(configDir string) (*ResolveResult, error) {
 
 	configPath := filepath.Join(absDir, "devcontainer.json")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("no devcontainer.json found in %s", absDir)
+		return nil, fmt.Errorf("no devcontainer.json found in %s: %w", absDir, ErrNoDevContainer)
 	} else if err != nil {
 		return nil, fmt.Errorf("checking devcontainer.json: %w", err)
 	}

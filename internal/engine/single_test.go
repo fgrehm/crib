@@ -3,12 +3,16 @@ package engine
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/config"
+	"github.com/fgrehm/crib/internal/driver"
+	"github.com/fgrehm/crib/internal/plugin"
+	"github.com/fgrehm/crib/internal/workspace"
 )
 
 func TestBuildRunOptions_Minimal(t *testing.T) {
@@ -524,6 +528,163 @@ func TestChownPluginVolumes_ErrorContinues(t *testing.T) {
 	// Should attempt both even if first fails.
 	if len(mockDrv.execCalls) != 2 {
 		t.Fatalf("expected 2 exec calls (continues after error), got %d", len(mockDrv.execCalls))
+	}
+}
+
+func TestUpSingle_AlreadyRunning_PreservesPathPrepend(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-path", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "existing-c",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(&testPlugin{
+		resp: &plugin.PreContainerRunResponse{
+			PathPrepend: []string{"/home/vscode/.bundle/bin"},
+		},
+	})
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ruby:3.2"
+	cfg.RemoteUser = "vscode"
+
+	result, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	if err != nil {
+		t.Fatalf("upSingle: %v", err)
+	}
+	if result.ContainerID != "existing-c" {
+		t.Errorf("ContainerID = %q, want existing-c", result.ContainerID)
+	}
+
+	// cfg.RemoteEnv is mutated in place by setupContainer. The caller (Up)
+	// passes it to saveResult after upSingle returns. Verify it contains
+	// the plugin PATH entry.
+	if cfg.RemoteEnv == nil {
+		t.Fatal("cfg.RemoteEnv is nil after upSingle, expected plugin PATH entries")
+	}
+	path := cfg.RemoteEnv["PATH"]
+	if !strings.Contains(path, "/home/vscode/.bundle/bin") {
+		t.Errorf("cfg.RemoteEnv PATH = %q, want to contain /home/vscode/.bundle/bin", path)
+	}
+}
+
+func TestUpSingle_AlreadyRunning_PassesRemoteUserToPlugins(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-user", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "existing-c",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	tp := &testPlugin{
+		resp: &plugin.PreContainerRunResponse{
+			PathPrepend: []string{"/home/vscode/.local/bin"},
+		},
+	}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(tp)
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ubuntu:22.04"
+	cfg.RemoteUser = "vscode"
+
+	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	if err != nil {
+		t.Fatalf("upSingle: %v", err)
+	}
+
+	if tp.req == nil {
+		t.Fatal("plugin was not called")
+	}
+	if tp.req.RemoteUser != "vscode" {
+		t.Errorf("plugin received RemoteUser = %q, want %q", tp.req.RemoteUser, "vscode")
+	}
+}
+
+func TestUpSingle_AlreadyRunning_FallsBackToContainerUser(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-user2", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "existing-c",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	tp := &testPlugin{
+		resp: &plugin.PreContainerRunResponse{},
+	}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(tp)
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	// No RemoteUser, only ContainerUser.
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ubuntu:22.04"
+	cfg.ContainerUser = "devuser"
+
+	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	if err != nil {
+		t.Fatalf("upSingle: %v", err)
+	}
+
+	if tp.req == nil {
+		t.Fatal("plugin was not called")
+	}
+	// dispatchPlugins falls back to configRemoteUser which returns ContainerUser
+	// when RemoteUser is empty.
+	if tp.req.RemoteUser != "devuser" {
+		t.Errorf("plugin received RemoteUser = %q, want %q", tp.req.RemoteUser, "devuser")
 	}
 }
 

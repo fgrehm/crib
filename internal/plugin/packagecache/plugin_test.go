@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/plugin"
@@ -298,22 +297,12 @@ func TestPlugin_BundlerSetsBUNDLEPATH(t *testing.T) {
 		t.Errorf("BUNDLE_BIN = %q, want /home/vscode/.bundle/bin", resp.Env["BUNDLE_BIN"])
 	}
 
-	// Should have a profile.d script for PATH.
-	var foundProfile bool
-	for _, cp := range resp.Copies {
-		if cp.Target == "/etc/profile.d/crib-bundler-path.sh" {
-			foundProfile = true
-			data, err := os.ReadFile(cp.Source)
-			if err != nil {
-				t.Fatalf("reading profile script: %v", err)
-			}
-			if !strings.Contains(string(data), ".bundle/bin") {
-				t.Errorf("profile script missing .bundle/bin: %q", string(data))
-			}
-		}
+	// Should have PathPrepend for the bundle bin dir.
+	if len(resp.PathPrepend) != 1 {
+		t.Fatalf("expected 1 PathPrepend entry, got %d", len(resp.PathPrepend))
 	}
-	if !foundProfile {
-		t.Error("expected profile.d copy for bundler PATH")
+	if resp.PathPrepend[0] != "/home/vscode/.bundle/bin" {
+		t.Errorf("PathPrepend[0] = %q, want /home/vscode/.bundle/bin", resp.PathPrepend[0])
 	}
 }
 

@@ -3,6 +3,8 @@ package engine
 import (
 	"os"
 	"strings"
+
+	"github.com/fgrehm/crib/internal/config"
 )
 
 // parseEnvLines parses the output of the `env` command into a map.
@@ -73,6 +75,80 @@ func copyStringMap(m map[string]string) map[string]string {
 		cp[k] = v
 	}
 	return cp
+}
+
+// preserveContainerPATH merges container-base PATH entries into the env map's
+// PATH. Login shells on Debian reset PATH via /etc/profile, dropping entries
+// that Docker images add via ENV (e.g. /usr/local/bundle/bin in ruby images,
+// /usr/local/go/bin in golang images). This appends any missing container PATH
+// entries after the probed ones so they remain accessible.
+func preserveContainerPATH(env map[string]string, containerPATH string) {
+	if env == nil || containerPATH == "" {
+		return
+	}
+	probedPATH, ok := env["PATH"]
+	if !ok {
+		return
+	}
+
+	dirs := strings.Split(probedPATH, ":")
+	seen := make(map[string]bool, len(dirs))
+	for _, d := range dirs {
+		seen[d] = true
+	}
+
+	for _, d := range strings.Split(containerPATH, ":") {
+		if d != "" && !seen[d] {
+			dirs = append(dirs, d)
+			seen[d] = true
+		}
+	}
+
+	env["PATH"] = strings.Join(dirs, ":")
+}
+
+// prependToPath prepends the given directories to the PATH in env, skipping
+// any that are already present. This is used to inject plugin-requested PATH
+// additions (e.g. ~/.bundle/bin for bundler) that work regardless of shell type.
+func prependToPath(env map[string]string, dirs []string) {
+	if env == nil || len(dirs) == 0 {
+		return
+	}
+	current := env["PATH"]
+	existing := make(map[string]bool)
+	if current != "" {
+		for _, d := range strings.Split(current, ":") {
+			existing[d] = true
+		}
+	}
+
+	var prepend []string
+	for _, d := range dirs {
+		if d != "" && !existing[d] {
+			prepend = append(prepend, d)
+			existing[d] = true
+		}
+	}
+	if len(prepend) == 0 {
+		return
+	}
+	if current != "" {
+		env["PATH"] = strings.Join(prepend, ":") + ":" + current
+	} else {
+		env["PATH"] = strings.Join(prepend, ":")
+	}
+}
+
+// applyPathPrepend initializes cfg.RemoteEnv if needed and prepends the given
+// paths. Used by resume-hook callers that don't go through setupContainer.
+func applyPathPrepend(cfg *config.DevContainerConfig, dirs []string) {
+	if len(dirs) == 0 {
+		return
+	}
+	if cfg.RemoteEnv == nil {
+		cfg.RemoteEnv = make(map[string]string)
+	}
+	prependToPath(cfg.RemoteEnv, dirs)
 }
 
 // envSlice converts a map of env vars to KEY=VALUE strings for ExecContainer.

@@ -1,7 +1,11 @@
 package cmd
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fgrehm/crib/internal/driver/oci"
@@ -12,6 +16,7 @@ import (
 
 var cacheListAllFlag bool
 var cacheCleanAllFlag bool
+var cacheCleanForceFlag bool
 
 var cacheCmd = &cobra.Command{
 	Use:   "cache",
@@ -33,15 +38,11 @@ var cacheListCmd = &cobra.Command{
 		if cacheListAllFlag {
 			filter = packagecache.GlobalVolumePrefix
 		} else {
-			store, err := workspace.NewStore()
+			wsID, err := inferWorkspaceID()
 			if err != nil {
 				return err
 			}
-			ws, err := currentWorkspace(store, false)
-			if err != nil {
-				return err
-			}
-			filter = packagecache.VolumePrefix(ws.ID)
+			filter = packagecache.VolumePrefix(wsID)
 		}
 
 		volumes, err := d.ListVolumes(cmd.Context(), filter)
@@ -99,15 +100,11 @@ var cacheCleanCmd = &cobra.Command{
 		if cacheCleanAllFlag {
 			filter = packagecache.GlobalVolumePrefix
 		} else {
-			store, err := workspace.NewStore()
+			wsID, err := inferWorkspaceID()
 			if err != nil {
 				return err
 			}
-			ws, err := currentWorkspace(store, false)
-			if err != nil {
-				return err
-			}
-			filter = packagecache.VolumePrefix(ws.ID)
+			filter = packagecache.VolumePrefix(wsID)
 		}
 
 		volumes, err := d.ListVolumes(cmd.Context(), filter)
@@ -121,38 +118,53 @@ var cacheCleanCmd = &cobra.Command{
 		}
 
 		// Filter by specific providers if given.
+		var toRemove []string
 		if len(args) > 0 {
 			wanted := make(map[string]bool, len(args))
 			for _, a := range args {
 				wanted[a] = true
 			}
-			var filtered []string
 			for _, v := range volumes {
 				_, provider := parseVolumeName(v.Name)
 				if wanted[provider] {
-					filtered = append(filtered, v.Name)
+					toRemove = append(toRemove, v.Name)
 				}
 			}
-			if len(filtered) == 0 {
+			if len(toRemove) == 0 {
 				u.Dim("No matching cache volumes found")
 				return nil
 			}
-			for _, name := range filtered {
-				if err := d.RemoveVolume(cmd.Context(), name); err != nil {
-					u.Dim(fmt.Sprintf("  warning: %s: %v", name, err))
-					continue
-				}
-				u.Success("Removed " + name)
+		} else {
+			for _, v := range volumes {
+				toRemove = append(toRemove, v.Name)
 			}
-			return nil
 		}
 
-		for _, v := range volumes {
-			if err := d.RemoveVolume(cmd.Context(), v.Name); err != nil {
-				u.Dim(fmt.Sprintf("  warning: %s: %v", v.Name, err))
+		// Prompt for confirmation when --all is used (affects other projects).
+		if cacheCleanAllFlag && !cacheCleanForceFlag {
+			if !stdinIsTerminal() {
+				return fmt.Errorf("--all requires confirmation; use --force to skip (stdin is not a terminal)")
+			}
+			fmt.Fprintf(os.Stderr, "This will remove %d cache volume(s) from ALL workspaces:\n", len(toRemove))
+			for _, name := range toRemove {
+				fmt.Fprintf(os.Stderr, "  %s\n", name)
+			}
+			fmt.Fprint(os.Stderr, "Continue? [y/N] ")
+			reader := bufio.NewReader(os.Stdin)
+			answer, _ := reader.ReadString('\n')
+			answer = strings.TrimSpace(strings.ToLower(answer))
+			if answer != "y" && answer != "yes" {
+				u.Dim("Aborted")
+				return nil
+			}
+		}
+
+		for _, name := range toRemove {
+			if err := d.RemoveVolume(cmd.Context(), name); err != nil {
+				u.Dim(fmt.Sprintf("  warning: %s: %v", name, err))
 				continue
 			}
-			u.Success("Removed " + v.Name)
+			u.Success("Removed " + name)
 		}
 
 		return nil
@@ -176,9 +188,61 @@ func parseVolumeName(name string) (workspaceID, provider string) {
 	return suffix, ""
 }
 
+// inferWorkspaceID derives a workspace ID from the current directory (or --dir / --config flags)
+// without requiring workspace state to exist. It first tries the normal devcontainer resolution
+// (which walks up to find .devcontainer/), and falls back to slugifying the directory name if
+// no devcontainer config is found. This allows cache commands to work even if the project was
+// deleted or was never set up with crib.
+func inferWorkspaceID() (string, error) {
+	switch {
+	case configDirFlag != "":
+		rr, err := workspace.ResolveConfigDir(configDirFlag)
+		if err == nil {
+			return rr.WorkspaceID, nil
+		}
+		// Only fall back when the config doesn't exist (project deleted
+		// or never set up). Surface real errors (permissions, I/O).
+		if !errors.Is(err, workspace.ErrNoDevContainer) {
+			return "", err
+		}
+		absDir, err := filepath.Abs(configDirFlag)
+		if err != nil {
+			return "", fmt.Errorf("resolving config dir: %w", err)
+		}
+		return workspace.Slugify(filepath.Base(filepath.Dir(absDir))), nil
+	case dirFlag != "":
+		rr, err := workspace.Resolve(dirFlag)
+		if err == nil {
+			return rr.WorkspaceID, nil
+		}
+		if !errors.Is(err, workspace.ErrNoDevContainer) {
+			return "", err
+		}
+		absDir, err := filepath.Abs(dirFlag)
+		if err != nil {
+			return "", fmt.Errorf("resolving dir: %w", err)
+		}
+		return workspace.Slugify(filepath.Base(absDir)), nil
+	default:
+		cwd, err := os.Getwd()
+		if err != nil {
+			return "", fmt.Errorf("getting working directory: %w", err)
+		}
+		rr, err := workspace.Resolve(cwd)
+		if err == nil {
+			return rr.WorkspaceID, nil
+		}
+		if !errors.Is(err, workspace.ErrNoDevContainer) {
+			return "", err
+		}
+		return workspace.Slugify(filepath.Base(cwd)), nil
+	}
+}
+
 func init() {
 	cacheListCmd.Flags().BoolVar(&cacheListAllFlag, "all", false, "list cache volumes for all workspaces")
 	cacheCleanCmd.Flags().BoolVar(&cacheCleanAllFlag, "all", false, "remove cache volumes for all workspaces")
+	cacheCleanCmd.Flags().BoolVarP(&cacheCleanForceFlag, "force", "f", false, "skip confirmation prompt for --all")
 	cacheCmd.AddCommand(cacheListCmd)
 	cacheCmd.AddCommand(cacheCleanCmd)
 }

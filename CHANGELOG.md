@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `crib cache clean --force` / `-f` flag to skip confirmation prompt.
+
+### Security
+
+- Reject OCI feature archives containing symlinks that escape the extraction
+  directory (absolute targets or relative traversal). Previously, a malicious
+  feature archive could write to arbitrary host paths via symlinks.
+- CI workflows now use explicit `permissions: contents: read` instead of
+  GitHub's default read-write.
+
+### Fixed
+
+- Preserve Docker image PATH entries (e.g. `/usr/local/bundle/bin` in ruby
+  images) that login shells drop during the env probe. Previously, `crib exec`
+  could lose these entries, requiring `bundle exec` or similar wrappers.
+- Plugin PATH additions (e.g. `~/.bundle/bin` for bundler cache) now work with
+  zsh. Previously relied on `/etc/profile.d/` scripts which zsh doesn't source.
+  PATH additions are now injected directly via remoteEnv.
+- `crib cache clean` and `crib cache list` no longer require workspace state to
+  exist. They now work even if `crib up` was never run or the project was
+  deleted.
+- `crib cache clean --all` now prompts for confirmation since it removes volumes
+  from other projects.
+- Sensitive env var values (tokens, keys, passwords) are now redacted in
+  `--debug` output. Previously, values like `GITHUB_TOKEN` appeared in
+  plaintext in exec command logs.
+- Plugin PATH additions (e.g. `~/.bundle/bin`) now persist across `crib restart`
+  for compose workspaces. Previously, resume hooks lost plugin PATH entries.
+- Plugin PATH additions no longer vanish after a redundant `crib up` (container
+  already running) or non-compose `crib restart`. Previously, these paths
+  dispatched plugins only on fresh creation, so a second `crib up` would
+  overwrite the saved RemoteEnv without plugin PATH entries.
+
 ## [0.5.0] - 2026-03-05
 
 ### Added
