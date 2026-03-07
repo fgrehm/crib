@@ -52,6 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already running) or non-compose `crib restart`. Previously, these paths
   dispatched plugins only on fresh creation, so a second `crib up` would
   overwrite the saved RemoteEnv without plugin PATH entries.
+- `crib restart` no longer loses probed environment (mise, rbenv, nvm PATH
+  entries) from the initial `crib up`. Previously, restart paths that skip
+  env re-probing (simple restart, snapshot-based recreate) overwrote the saved
+  `remoteEnv` with only plugin PATH entries, so `crib run` could not find
+  tools like `ruby` or `node` after a restart.
 
 ## [0.5.0] - 2026-03-05
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 
 	"github.com/fgrehm/crib/internal/compose"
 	"github.com/fgrehm/crib/internal/config"
@@ -100,40 +101,46 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		projectName := compose.ProjectName(ws.ID)
 		env := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
 
-		// Use the snapshot image if available. The snapshot includes
-		// everything installed by lifecycle hooks (e.g. mise ruby/node),
-		// so even if compose recreates the container, nothing is lost.
-		// Fall back to the stored feature image if no valid snapshot.
+		// Dispatch plugins for file re-injection and PathPrepend.
+		composeUser := e.resolveComposeUser(ctx, cfg, cd, composeFiles)
+		pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, storedResult.ImageName, workspaceFolder, composeUser)
+		if err != nil {
+			return nil, err
+		}
+
+		// Regenerate the override so it stays current for the next
+		// compose up (e.g. after crib down + crib up).
 		overrideImage := storedResult.ImageName
 		if img, ok := e.validSnapshot(ctx, ws, cfg); ok {
 			overrideImage = img
 		}
-
-		// Dispatch plugins so the compose override includes plugin env vars
-		// and mounts (SSH agent, package cache, shell history, etc.).
-		composeUser := e.resolveComposeUser(ctx, cfg, cd, composeFiles)
-		pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, overrideImage, workspaceFolder, composeUser)
-		if err != nil {
-			return nil, err
+		if _, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, overrideImage, pluginResp); err != nil {
+			e.logger.Warn("failed to regenerate compose override", "error", err)
 		}
 
-		overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, overrideImage, pluginResp)
-		if err != nil {
-			return nil, fmt.Errorf("generating compose override: %w", err)
-		}
-
+		// Use compose stop + start instead of compose up. compose up
+		// recreates containers (podman-compose always does this), losing
+		// anything installed by lifecycle hooks. stop + start only
+		// operates on existing containers without recreation.
+		overridePath := filepath.Join(e.store.WorkspaceDir(ws.ID), "compose-override.yml")
 		allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
-		services := ensureServiceIncluded(cfg.RunServices, cfg.Service)
+
+		e.reportProgress("Stopping services...")
+		if err := e.compose.Stop(ctx, projectName, allFiles, e.composeStdout(), e.composeStderr(), env); err != nil {
+			e.logger.Warn("failed to stop services", "error", err)
+		}
 
 		e.reportProgress("Starting services...")
-		if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.composeStderr(), env); err != nil {
+		if err := e.compose.Start(ctx, projectName, allFiles, e.composeStdout(), e.composeStderr(), env); err != nil {
 			return nil, fmt.Errorf("starting compose services: %w", err)
 		}
 
-		// Look up the actual container ID after compose up.
-		container, err := e.findComposeContainer(ctx, ws.ID, projectName, allFiles, env, "after restart")
+		container, err := e.driver.FindContainer(ctx, ws.ID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("finding container after restart: %w", err)
+		}
+		if container == nil {
+			return nil, fmt.Errorf("no container found for workspace %s after restart", ws.ID)
 		}
 		containerID = container.ID
 
@@ -165,6 +172,15 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 			applyPathPrepend(cfg, resp.PathPrepend)
 		}
 	}
+
+	// Restore the probed environment from the stored result. restartSimple
+	// skips setupContainer (no env re-probe), so cfg.RemoteEnv only has
+	// plugin PathPrepend and devcontainer.json values. Without this, the
+	// saved remoteEnv loses probed PATH entries (e.g. mise ruby/node paths)
+	// and tools become unavailable via "crib run".
+	// Use the stored env as base; cfg.RemoteEnv values (devcontainer.json +
+	// fresh PathPrepend) take precedence over stored values.
+	mergeStoredRemoteEnv(cfg, storedResult.RemoteEnv)
 
 	// Run resume-flow hooks.
 	remoteUser := storedResult.RemoteUser
@@ -205,14 +221,14 @@ func (e *Engine) restartWithRecreate(ctx context.Context, ws *workspace.Workspac
 
 	// For compose: down + up (picks up volume/env/port changes).
 	if len(cfg.DockerComposeFile) > 0 {
-		return e.restartRecreateCompose(ctx, ws, cfg, workspaceFolder)
+		return e.restartRecreateCompose(ctx, ws, cfg, workspaceFolder, storedResult)
 	}
 
 	return e.restartRecreateSingle(ctx, ws, cfg, workspaceFolder, storedResult)
 }
 
 // restartRecreateCompose handles the compose path for restartWithRecreate.
-func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string) (*RestartResult, error) {
+func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, storedResult *workspace.Result) (*RestartResult, error) {
 	if e.compose == nil {
 		return nil, fmt.Errorf("compose is not available")
 	}
@@ -249,6 +265,13 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 	if pluginResp != nil {
 		pathPrepend = pluginResp.PathPrepend
 	}
+	// When using a snapshot, restore the stored remoteEnv so probed PATH
+	// entries (mise, rbenv, nvm) survive the restart. setupContainer handles
+	// this when there's no snapshot (full re-probe).
+	if hasSnapshot && storedResult != nil {
+		mergeStoredRemoteEnv(cfg, storedResult.RemoteEnv)
+	}
+
 	e.runRecreateLifecycle(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, hasSnapshot, pathPrepend)
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
@@ -343,6 +366,13 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 	if pluginResp != nil {
 		pathPrepend = pluginResp.PathPrepend
 	}
+
+	// When using a snapshot, restore the stored remoteEnv so probed PATH
+	// entries (mise, rbenv, nvm) survive the restart.
+	if hasSnapshot && storedResult != nil {
+		mergeStoredRemoteEnv(cfg, storedResult.RemoteEnv)
+	}
+
 	e.runRecreateLifecycle(ctx, ws, cfg, container.ID, workspaceFolder, remoteUser, hasSnapshot, pathPrepend)
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))

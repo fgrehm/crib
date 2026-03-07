@@ -139,6 +139,58 @@ func prependToPath(env map[string]string, dirs []string) {
 	}
 }
 
+// mergeStoredRemoteEnv restores the stored probed environment into cfg.RemoteEnv.
+// Restart paths that skip setupContainer (no env re-probe) must call this
+// before saveResult so the probed PATH entries (mise, rbenv, nvm) persist.
+//
+// For PATH: uses the stored value as the base and prepends any dirs from
+// cfg.RemoteEnv["PATH"] that aren't already present (fresh plugin PathPrepend).
+// For all other vars: stored values fill in as fallbacks; values already in
+// cfg.RemoteEnv (from devcontainer.json or plugins) take precedence.
+func mergeStoredRemoteEnv(cfg *config.DevContainerConfig, storedEnv map[string]string) {
+	if len(storedEnv) == 0 {
+		return
+	}
+	if cfg.RemoteEnv == nil {
+		cfg.RemoteEnv = make(map[string]string)
+	}
+
+	// Handle PATH specially: prepend any new dirs from cfg onto the stored PATH.
+	if storedPath, ok := storedEnv["PATH"]; ok {
+		if freshPath, hasFresh := cfg.RemoteEnv["PATH"]; hasFresh && freshPath != "" {
+			// Prepend fresh dirs that aren't already in the stored PATH.
+			storedDirs := strings.Split(storedPath, ":")
+			storedSet := make(map[string]bool, len(storedDirs))
+			for _, d := range storedDirs {
+				storedSet[d] = true
+			}
+			var newDirs []string
+			for _, d := range strings.Split(freshPath, ":") {
+				if d != "" && !storedSet[d] {
+					newDirs = append(newDirs, d)
+				}
+			}
+			if len(newDirs) > 0 {
+				cfg.RemoteEnv["PATH"] = strings.Join(newDirs, ":") + ":" + storedPath
+			} else {
+				cfg.RemoteEnv["PATH"] = storedPath
+			}
+		} else {
+			cfg.RemoteEnv["PATH"] = storedPath
+		}
+	}
+
+	// For all other vars, stored values are fallbacks.
+	for k, v := range storedEnv {
+		if k == "PATH" {
+			continue
+		}
+		if _, exists := cfg.RemoteEnv[k]; !exists {
+			cfg.RemoteEnv[k] = v
+		}
+	}
+}
+
 // applyPathPrepend initializes cfg.RemoteEnv if needed and prepends the given
 // paths. Used by resume-hook callers that don't go through setupContainer.
 func applyPathPrepend(cfg *config.DevContainerConfig, dirs []string) {

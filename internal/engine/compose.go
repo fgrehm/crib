@@ -47,23 +47,18 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 	}
 
 	if container != nil && !opts.Recreate {
-		// Use the snapshot image if available, falling back to the stored
-		// feature image. The snapshot includes everything installed by
-		// lifecycle hooks, so even if compose recreates the container
-		// (podman-compose always does), nothing is lost.
 		var storedFeatureImage string
 		if stored, err := e.store.LoadResult(ws.ID); err == nil && stored != nil {
 			storedFeatureImage = stored.ImageName
 		}
-		overrideImage := storedFeatureImage
-		if img, ok := e.validSnapshot(ctx, ws, cfg); ok {
-			overrideImage = img
-		}
 
 		var pathPrepend []string
 		if !container.State.IsRunning() {
-			// Dispatch plugins so the override includes plugin env vars and
-			// mounts. The override is regenerated on every compose up.
+			// Regenerate the override for state persistence.
+			overrideImage := storedFeatureImage
+			if img, ok := e.validSnapshot(ctx, ws, cfg); ok {
+				overrideImage = img
+			}
 			composeUser := e.resolveComposeUser(ctx, cfg, configDir, composeFiles)
 			pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, overrideImage, workspaceFolder, composeUser)
 			if err != nil {
@@ -73,21 +68,25 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 				pathPrepend = pluginResp.PathPrepend
 			}
 
-			overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, overrideImage, pluginResp)
-			if err != nil {
-				return nil, fmt.Errorf("generating compose override: %w", err)
+			if _, err := e.generateComposeOverride(ws, cfg, workspaceFolder, configDir, composeFiles, overrideImage, pluginResp); err != nil {
+				e.logger.Warn("failed to regenerate compose override", "error", err)
 			}
 
+			// Use compose stop + start instead of compose up to avoid
+			// container recreation (podman-compose always recreates on up).
+			overridePath := filepath.Join(e.store.WorkspaceDir(ws.ID), "compose-override.yml")
 			allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
-			services := ensureServiceIncluded(cfg.RunServices, serviceName)
 
 			e.reportProgress("Starting services...")
-			if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.composeStderr(), dcEnv); err != nil {
+			if err := e.compose.Start(ctx, projectName, allFiles, e.composeStdout(), e.composeStderr(), dcEnv); err != nil {
 				return nil, fmt.Errorf("starting compose services: %w", err)
 			}
-			container, err = e.findComposeContainer(ctx, ws.ID, projectName, allFiles, dcEnv, "after restart")
+			container, err = e.driver.FindContainer(ctx, ws.ID)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("finding container: %w", err)
+			}
+			if container == nil {
+				return nil, fmt.Errorf("no container found for workspace %s after start", ws.ID)
 			}
 			if err := e.ensureContainerRunning(ctx, ws.ID, container); err != nil {
 				return nil, err
@@ -100,10 +99,8 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 		} else {
 			e.reportProgress("Services already running")
 
-			// Dispatch plugins to get PathPrepend so setupContainer can
-			// inject plugin PATH entries into RemoteEnv before saving.
 			composeUser := e.resolveComposeUser(ctx, cfg, configDir, composeFiles)
-			if resp, err := e.dispatchPlugins(ctx, ws, cfg, overrideImage, workspaceFolder, composeUser); err != nil {
+			if resp, err := e.dispatchPlugins(ctx, ws, cfg, storedFeatureImage, workspaceFolder, composeUser); err != nil {
 				e.logger.Warn("plugin dispatch failed for already running services", "error", err)
 			} else if resp != nil {
 				pathPrepend = resp.PathPrepend

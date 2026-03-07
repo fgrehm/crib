@@ -127,6 +127,15 @@ func (h *Helper) Stop(ctx context.Context, projectName string, files []string, s
 	return h.Run(ctx, args, nil, stdout, stderr, extraEnv)
 }
 
+// Start runs `compose start` for the given project. Unlike Up, Start only
+// starts existing stopped containers without creating or recreating them.
+// extraEnv is appended to the subprocess environment for variable substitution.
+func (h *Helper) Start(ctx context.Context, projectName string, files []string, stdout, stderr io.Writer, extraEnv []string) error {
+	args := projectArgs(projectName, files)
+	args = append(args, "start")
+	return h.Run(ctx, args, nil, stdout, stderr, extraEnv)
+}
+
 // Restart runs `compose restart` for the given project.
 // extraEnv is appended to the subprocess environment for variable substitution.
 func (h *Helper) Restart(ctx context.Context, projectName string, files []string, stdout, stderr io.Writer, extraEnv []string) error {

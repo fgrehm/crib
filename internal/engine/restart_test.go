@@ -582,7 +582,8 @@ func TestRestartSimple_NonCompose_PreservesPathPrepend(t *testing.T) {
 		t.Errorf("ContainerID = %q, want c-1", result.ContainerID)
 	}
 
-	// Verify the saved RemoteEnv includes the plugin PATH entry.
+	// Verify the saved RemoteEnv includes both the plugin PATH entry and
+	// the probed PATH entries from the stored result.
 	saved, err := store.LoadResult(ws.ID)
 	if err != nil {
 		t.Fatalf("LoadResult: %v", err)
@@ -593,5 +594,99 @@ func TestRestartSimple_NonCompose_PreservesPathPrepend(t *testing.T) {
 	path := saved.RemoteEnv["PATH"]
 	if !strings.Contains(path, "/home/vscode/.bundle/bin") {
 		t.Errorf("saved PATH = %q, want to contain /home/vscode/.bundle/bin", path)
+	}
+	// The probed PATH from the stored result must survive the restart.
+	if !strings.Contains(path, "/usr/local/bin") {
+		t.Errorf("saved PATH = %q, want to contain probed /usr/local/bin", path)
+	}
+}
+
+func TestRestartSimple_NonCompose_PreservesProbedEnv(t *testing.T) {
+	// Regression test: after initial "crib up", setupContainer probes the
+	// container env and saves it (including mise ruby/node PATH entries).
+	// restartSimple skips setupContainer, so it must restore the probed env
+	// from the stored result. Without this, "crib run -- ruby ..." fails
+	// because the PATH only has plugin dirs, not the probed mise paths.
+
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-restart-env", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate the result from an initial "crib up" with probed env.
+	initialResult := &workspace.Result{
+		ContainerID: "c-1",
+		ImageName:   "ruby:3.2",
+		RemoteUser:  "vscode",
+		RemoteEnv: map[string]string{
+			"PATH":      "/home/vscode/.bundle/bin:/home/vscode/.local/share/mise/installs/ruby/3.4.7/bin:/home/vscode/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/bin",
+			"RUBY_ROOT": "/home/vscode/.local/share/mise/installs/ruby/3.4.7",
+			"GEM_HOME":  "/home/vscode/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems",
+		},
+	}
+	if err := store.SaveResult(ws.ID, initialResult); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "c-1",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(&testPlugin{
+		resp: &plugin.PreContainerRunResponse{
+			PathPrepend: []string{"/home/vscode/.bundle/bin"},
+		},
+	})
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ruby:3.2"
+	cfg.RemoteUser = "vscode"
+
+	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	if err != nil {
+		t.Fatalf("restartSimple: %v", err)
+	}
+
+	saved, err := store.LoadResult(ws.ID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+
+	// The probed mise ruby PATH must survive restart.
+	path := saved.RemoteEnv["PATH"]
+	if !strings.Contains(path, "/home/vscode/.local/share/mise/installs/ruby/3.4.7/bin") {
+		t.Errorf("PATH missing mise ruby bin: %q", path)
+	}
+	if !strings.Contains(path, "/home/vscode/.local/share/mise/shims") {
+		t.Errorf("PATH missing mise shims: %q", path)
+	}
+
+	// Plugin PathPrepend entry must still be present.
+	if !strings.Contains(path, "/home/vscode/.bundle/bin") {
+		t.Errorf("PATH missing plugin .bundle/bin: %q", path)
+	}
+
+	// Non-PATH probed env vars must also survive.
+	if saved.RemoteEnv["RUBY_ROOT"] != "/home/vscode/.local/share/mise/installs/ruby/3.4.7" {
+		t.Errorf("RUBY_ROOT = %q, want probed value", saved.RemoteEnv["RUBY_ROOT"])
+	}
+	if saved.RemoteEnv["GEM_HOME"] != "/home/vscode/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems" {
+		t.Errorf("GEM_HOME = %q, want probed value", saved.RemoteEnv["GEM_HOME"])
 	}
 }
