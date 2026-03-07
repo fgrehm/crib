@@ -91,7 +91,9 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			// Dispatch plugins to get PathPrepend so setupContainer can
 			// inject plugin PATH entries into RemoteEnv before saving.
 			composeUser := e.resolveComposeUser(ctx, cfg, configDir, composeFiles)
-			if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, composeUser); err == nil && resp != nil {
+			if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, composeUser); err != nil {
+				e.logger.Warn("plugin dispatch failed for already running services", "error", err)
+			} else if resp != nil {
 				pathPrepend = resp.PathPrepend
 			}
 		}

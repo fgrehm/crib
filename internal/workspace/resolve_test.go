@@ -1,8 +1,10 @@
 package workspace
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -84,6 +86,19 @@ func TestResolve_NotFound(t *testing.T) {
 	_, err := Resolve(dir)
 	if err != ErrNoDevContainer {
 		t.Errorf("expected ErrNoDevContainer, got %v", err)
+	}
+}
+
+func TestResolveConfigDir_NotFound(t *testing.T) {
+	dir := t.TempDir()
+
+	_, err := ResolveConfigDir(dir)
+	if !errors.Is(err, ErrNoDevContainer) {
+		t.Errorf("expected error wrapping ErrNoDevContainer, got %v", err)
+	}
+	// Should also include the directory path in the message.
+	if !strings.Contains(err.Error(), dir) {
+		t.Errorf("expected error to contain dir path %q, got %v", dir, err)
 	}
 }
 

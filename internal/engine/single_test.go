@@ -587,6 +587,107 @@ func TestUpSingle_AlreadyRunning_PreservesPathPrepend(t *testing.T) {
 	}
 }
 
+func TestUpSingle_AlreadyRunning_PassesRemoteUserToPlugins(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-user", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "existing-c",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	tp := &testPlugin{
+		resp: &plugin.PreContainerRunResponse{
+			PathPrepend: []string{"/home/vscode/.local/bin"},
+		},
+	}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(tp)
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ubuntu:22.04"
+	cfg.RemoteUser = "vscode"
+
+	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	if err != nil {
+		t.Fatalf("upSingle: %v", err)
+	}
+
+	if tp.req == nil {
+		t.Fatal("plugin was not called")
+	}
+	if tp.req.RemoteUser != "vscode" {
+		t.Errorf("plugin received RemoteUser = %q, want %q", tp.req.RemoteUser, "vscode")
+	}
+}
+
+func TestUpSingle_AlreadyRunning_FallsBackToContainerUser(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-user2", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "existing-c",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	tp := &testPlugin{
+		resp: &plugin.PreContainerRunResponse{},
+	}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(tp)
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	// No RemoteUser, only ContainerUser.
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ubuntu:22.04"
+	cfg.ContainerUser = "devuser"
+
+	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	if err != nil {
+		t.Fatalf("upSingle: %v", err)
+	}
+
+	if tp.req == nil {
+		t.Fatal("plugin was not called")
+	}
+	// dispatchPlugins falls back to configRemoteUser which returns ContainerUser
+	// when RemoteUser is empty.
+	if tp.req.RemoteUser != "devuser" {
+		t.Errorf("plugin received RemoteUser = %q, want %q", tp.req.RemoteUser, "devuser")
+	}
+}
+
 func TestConfigRemoteUser(t *testing.T) {
 	tests := []struct {
 		remoteUser    string

@@ -153,7 +153,9 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 
 		// Dispatch plugins to get PathPrepend so the saved RemoteEnv
 		// preserves plugin PATH entries across restarts.
-		if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, ""); err == nil && resp != nil {
+		if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, storedResult.RemoteUser); err != nil {
+			e.logger.Warn("plugin dispatch for PathPrepend failed", "error", err)
+		} else if resp != nil {
 			applyPathPrepend(cfg, resp.PathPrepend)
 		}
 	}

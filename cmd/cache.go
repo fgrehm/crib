@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -199,7 +200,11 @@ func inferWorkspaceID() (string, error) {
 		if err == nil {
 			return rr.WorkspaceID, nil
 		}
-		// Fall back to deriving from config dir parent.
+		// Only fall back when the config doesn't exist (project deleted
+		// or never set up). Surface real errors (permissions, I/O).
+		if !errors.Is(err, workspace.ErrNoDevContainer) {
+			return "", err
+		}
 		absDir, err := filepath.Abs(configDirFlag)
 		if err != nil {
 			return "", fmt.Errorf("resolving config dir: %w", err)
@@ -210,7 +215,9 @@ func inferWorkspaceID() (string, error) {
 		if err == nil {
 			return rr.WorkspaceID, nil
 		}
-		// Fall back to deriving from the directory name.
+		if !errors.Is(err, workspace.ErrNoDevContainer) {
+			return "", err
+		}
 		absDir, err := filepath.Abs(dirFlag)
 		if err != nil {
 			return "", fmt.Errorf("resolving dir: %w", err)
@@ -225,7 +232,9 @@ func inferWorkspaceID() (string, error) {
 		if err == nil {
 			return rr.WorkspaceID, nil
 		}
-		// Fall back to deriving from cwd name (e.g., project deleted).
+		if !errors.Is(err, workspace.ErrNoDevContainer) {
+			return "", err
+		}
 		return workspace.Slugify(filepath.Base(cwd)), nil
 	}
 }

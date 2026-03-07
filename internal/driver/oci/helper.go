@@ -33,7 +33,9 @@ func (h *Helper) Command() string {
 // Run executes the command with the given args and attached I/O streams.
 // If the command exits non-zero, the returned error includes captured stderr.
 func (h *Helper) Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	h.logger.Debug("exec", "cmd", h.command, "args", scrubArgs(args))
+	if h.logger.Enabled(ctx, slog.LevelDebug) {
+		h.logger.Debug("exec", "cmd", h.command, "args", scrubArgs(args))
+	}
 
 	cmd := exec.CommandContext(ctx, h.command, args...)
 	cmd.Stdin = stdin

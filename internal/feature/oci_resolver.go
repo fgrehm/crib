@@ -84,8 +84,8 @@ func extractOCIImage(img v1.Image, dir string) error {
 }
 
 // extractTar extracts a tar archive from r into dir.
-// Returns an error if any entry attempts path traversal or contains
-// symlinks that escape the extraction directory.
+// It normalizes entry paths and returns an error if the resulting files or
+// symlinks would escape the extraction directory.
 func extractTar(r io.Reader, dir string) error {
 	tr := tar.NewReader(r)
 	for {

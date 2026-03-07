@@ -44,7 +44,13 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 		// Dispatch plugins to get PathPrepend so setupContainer can inject
 		// plugin PATH entries into RemoteEnv before saving the result.
 		var pathPrepend []string
-		if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, ""); err == nil && resp != nil {
+		remoteUser := cfg.RemoteUser
+		if remoteUser == "" {
+			remoteUser = cfg.ContainerUser
+		}
+		if resp, err := e.dispatchPlugins(ctx, ws, cfg, remoteUser, workspaceFolder, ""); err != nil {
+			e.logger.Warn("plugin dispatch failed for already-running container", "error", err)
+		} else if resp != nil {
 			pathPrepend = resp.PathPrepend
 		}
 
