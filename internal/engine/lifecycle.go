@@ -29,6 +29,24 @@ type lifecycleRunner struct {
 	verbose     bool
 }
 
+// newLifecycleRunner creates a lifecycleRunner from the engine's dependencies,
+// a container context, and the resolved remote environment.
+func (e *Engine) newLifecycleRunner(ws *workspace.Workspace, cc containerContext, remoteEnv map[string]string) *lifecycleRunner {
+	return &lifecycleRunner{
+		driver:      e.driver,
+		store:       e.store,
+		workspaceID: ws.ID,
+		containerID: cc.containerID,
+		remoteUser:  cc.remoteUser,
+		remoteEnv:   remoteEnv,
+		logger:      e.logger,
+		stdout:      e.stdout,
+		stderr:      e.stderr,
+		progress:    e.progress,
+		verbose:     e.verbose,
+	}
+}
+
 // runLifecycleHooks executes the devcontainer lifecycle hooks in order.
 // Hooks run as the remote user. Marker files provide idempotency for
 // create-time hooks (onCreate, updateContent, postCreate).

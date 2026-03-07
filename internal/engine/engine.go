@@ -18,6 +18,33 @@ import (
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
+// containerContext identifies a running container for exec operations.
+// Passed by value; callers may fill fields incrementally (e.g. remoteUser
+// resolved after container creation).
+type containerContext struct {
+	workspaceID     string
+	containerID     string
+	remoteUser      string
+	workspaceFolder string
+}
+
+// composeInvocation bundles the parameters needed to invoke docker compose.
+type composeInvocation struct {
+	projectName string
+	files       []string
+	env         []string
+}
+
+// newComposeInvocation constructs a composeInvocation from workspace and config.
+func newComposeInvocation(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string) composeInvocation {
+	cd := configDir(ws)
+	return composeInvocation{
+		projectName: compose.ProjectName(ws.ID),
+		files:       resolveComposeFiles(cd, cfg.DockerComposeFile),
+		env:         devcontainerEnv(ws.ID, ws.Source, workspaceFolder),
+	}
+}
+
 // Engine orchestrates devcontainer lifecycle operations.
 type Engine struct {
 	driver           driver.Driver
@@ -224,11 +251,8 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 		var cfg config.DevContainerConfig
 		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
 			if e.compose != nil {
-				cd := configDir(ws)
-				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
-				projectName := compose.ProjectName(ws.ID)
-				env := devcontainerEnv(ws.ID, ws.Source, result.WorkspaceFolder)
-				return e.composeDown(ctx, projectName, composeFiles, env, false)
+				inv := newComposeInvocation(ws, &cfg, result.WorkspaceFolder)
+				return e.composeDown(ctx, inv, false)
 			}
 		}
 	}
@@ -260,11 +284,8 @@ func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
 		var cfg config.DevContainerConfig
 		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
 			if e.compose != nil {
-				cd := configDir(ws)
-				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
-				projectName := compose.ProjectName(ws.ID)
-				env := devcontainerEnv(ws.ID, ws.Source, result.WorkspaceFolder)
-				if err := e.composeDown(ctx, projectName, composeFiles, env, true); err != nil {
+				inv := newComposeInvocation(ws, &cfg, result.WorkspaceFolder)
+				if err := e.composeDown(ctx, inv, true); err != nil {
 					e.logger.Warn("failed to remove compose services", "error", err)
 				}
 				composeTornDown = true
@@ -304,11 +325,8 @@ func (e *Engine) Status(ctx context.Context, ws *workspace.Workspace) (*StatusRe
 		if stored, err := e.store.LoadResult(ws.ID); err == nil && stored != nil {
 			var cfg config.DevContainerConfig
 			if json.Unmarshal(stored.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
-				cd := configDir(ws)
-				composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
-				projectName := compose.ProjectName(ws.ID)
-				env := devcontainerEnv(ws.ID, ws.Source, stored.WorkspaceFolder)
-				if statuses, err := e.compose.ListServiceStatuses(ctx, projectName, composeFiles, env); err == nil {
+				inv := newComposeInvocation(ws, &cfg, stored.WorkspaceFolder)
+				if statuses, err := e.compose.ListServiceStatuses(ctx, inv.projectName, inv.files, inv.env); err == nil {
 					result.Services = statuses
 				} else {
 					e.logger.Debug("failed to list compose services", "error", err)
@@ -370,10 +388,10 @@ func configRemoteUser(cfg *config.DevContainerConfig) string {
 // resolveRemoteUser determines the remote user for a container, using the
 // config's remoteUser/containerUser with fallback to detecting the container's
 // default user via whoami.
-func (e *Engine) resolveRemoteUser(ctx context.Context, workspaceID string, cfg *config.DevContainerConfig, containerID string) string {
+func (e *Engine) resolveRemoteUser(ctx context.Context, cc containerContext, cfg *config.DevContainerConfig) string {
 	remoteUser := configRemoteUser(cfg)
 	if remoteUser == "" {
-		remoteUser = e.detectContainerUser(ctx, workspaceID, containerID)
+		remoteUser = e.detectContainerUser(ctx, cc)
 	}
 	if remoteUser == "" {
 		remoteUser = "root"
@@ -393,31 +411,28 @@ func configDir(ws *workspace.Workspace) string {
 // pluginResp may be nil; when non-nil, plugin mounts and env are included in
 // the compose override.
 func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder, featureImage string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
-	cd := configDir(ws)
-	composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
-	projectName := compose.ProjectName(ws.ID)
-	env := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
+	inv := newComposeInvocation(ws, cfg, workspaceFolder)
 
 	// Down removes old containers so Up creates new ones with updated config.
-	if err := e.composeDown(ctx, projectName, composeFiles, env, false); err != nil {
+	if err := e.composeDown(ctx, inv, false); err != nil {
 		return "", fmt.Errorf("compose down: %w", err)
 	}
 
 	// Generate override and bring services up.
-	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, cd, composeFiles, featureImage, pluginResp)
+	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, inv.files, featureImage, pluginResp)
 	if err != nil {
 		return "", fmt.Errorf("generating compose override: %w", err)
 	}
 
-	allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
+	allFiles := append(inv.files[:len(inv.files):len(inv.files)], overridePath)
 	services := ensureServiceIncluded(cfg.RunServices, cfg.Service)
 
 	e.reportProgress("Starting services...")
-	if err := e.compose.Up(ctx, projectName, allFiles, services, e.composeStdout(), e.composeStderr(), env); err != nil {
+	if err := e.compose.Up(ctx, inv.projectName, allFiles, services, e.composeStdout(), e.composeStderr(), inv.env); err != nil {
 		return "", fmt.Errorf("compose up: %w", err)
 	}
 
-	container, err := e.findComposeContainer(ctx, ws.ID, projectName, allFiles, env, "after recreate")
+	container, err := e.findComposeContainer(ctx, ws.ID, inv, "after recreate")
 	if err != nil {
 		return "", err
 	}

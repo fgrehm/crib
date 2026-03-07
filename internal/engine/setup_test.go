@@ -204,7 +204,7 @@ func TestExecGetUserID(t *testing.T) {
 	}
 
 	// Test getting UID.
-	uid, err := engine.execGetUserID(context.Background(), "ws-1", "container-1", "vscode", "u")
+	uid, err := engine.execGetUserID(context.Background(), containerContext{workspaceID: "ws-1", containerID: "container-1", remoteUser: "vscode"}, "u")
 	if err != nil {
 		t.Fatalf("execGetUserID failed: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestExecGetUserID(t *testing.T) {
 	}
 
 	// Test getting GID.
-	gid, err := engine.execGetUserID(context.Background(), "ws-1", "container-1", "vscode", "g")
+	gid, err := engine.execGetUserID(context.Background(), containerContext{workspaceID: "ws-1", containerID: "container-1", remoteUser: "vscode"}, "g")
 	if err != nil {
 		t.Fatalf("execGetUserID failed: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestExecGetGroupName(t *testing.T) {
 		logger: slog.Default(),
 	}
 
-	name, err := engine.execGetGroupName(context.Background(), "ws-1", "container-1", "vscode")
+	name, err := engine.execGetGroupName(context.Background(), containerContext{workspaceID: "ws-1", containerID: "container-1", remoteUser: "vscode"})
 	if err != nil {
 		t.Fatalf("execGetGroupName failed: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestSyncRemoteUserUID_Disabled(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.UpdateRemoteUserUID = &false_
 
-	inSync, err := engine.syncRemoteUserUID(context.Background(), "ws-1", "container-1", "vscode", cfg)
+	inSync, err := engine.syncRemoteUserUID(context.Background(), containerContext{workspaceID: "ws-1", containerID: "container-1", remoteUser: "vscode"}, cfg)
 	if err != nil {
 		t.Fatalf("syncRemoteUserUID failed: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestSyncRemoteUserUID_RootUser(t *testing.T) {
 
 	cfg := &config.DevContainerConfig{}
 
-	inSync, err := engine.syncRemoteUserUID(context.Background(), "ws-1", "container-1", "root", cfg)
+	inSync, err := engine.syncRemoteUserUID(context.Background(), containerContext{workspaceID: "ws-1", containerID: "container-1", remoteUser: "root"}, cfg)
 	if err != nil {
 		t.Fatalf("syncRemoteUserUID failed: %v", err)
 	}
@@ -304,7 +304,7 @@ func TestSyncRemoteUserUID_UIDsMatch(t *testing.T) {
 
 	cfg := &config.DevContainerConfig{}
 
-	inSync, err := engine.syncRemoteUserUID(context.Background(), "ws-1", "container-1", "vscode", cfg)
+	inSync, err := engine.syncRemoteUserUID(context.Background(), containerContext{workspaceID: "ws-1", containerID: "container-1", remoteUser: "vscode"}, cfg)
 	if err != nil {
 		t.Fatalf("syncRemoteUserUID failed: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestDetectUserShell_FromGetent(t *testing.T) {
 	}
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
-	shell := eng.detectUserShell(context.Background(), "ws-1", "c-1", "vscode")
+	shell := eng.detectUserShell(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"})
 	if shell != "/bin/bash" {
 		t.Errorf("detectUserShell = %q, want /bin/bash", shell)
 	}
@@ -342,7 +342,7 @@ func TestDetectUserShell_GetentFails_FallsBackToBash(t *testing.T) {
 	}
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
-	shell := eng.detectUserShell(context.Background(), "ws-1", "c-1", "vscode")
+	shell := eng.detectUserShell(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"})
 	// test -x /bin/bash succeeds by default (no error entry), so fallback returns /bin/bash.
 	if shell != "/bin/bash" {
 		t.Errorf("detectUserShell = %q, want /bin/bash (fallback)", shell)
@@ -360,7 +360,7 @@ func TestDetectUserShell_ShellNotExecutable_FallsBack(t *testing.T) {
 	}
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
-	shell := eng.detectUserShell(context.Background(), "ws-1", "c-1", "vscode")
+	shell := eng.detectUserShell(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"})
 	if shell != "/bin/bash" {
 		t.Errorf("detectUserShell = %q, want /bin/bash (fallback after zsh not found)", shell)
 	}
@@ -370,7 +370,7 @@ func TestProbeUserEnv_None(t *testing.T) {
 	mockDrv := &mockDriver{responses: map[string]string{}}
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
-	result := eng.probeUserEnv(context.Background(), "ws-1", "c-1", "vscode", "none")
+	result := eng.probeUserEnv(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"}, "none")
 	if result != nil {
 		t.Errorf("probeUserEnv(none) = %v, want nil", result)
 	}
@@ -388,7 +388,7 @@ func TestProbeUserEnv_LoginInteractiveShell(t *testing.T) {
 	}
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
-	result := eng.probeUserEnv(context.Background(), "ws-1", "c-1", "vscode", "loginInteractiveShell")
+	result := eng.probeUserEnv(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"}, "loginInteractiveShell")
 	if result == nil {
 		t.Fatal("probeUserEnv returned nil")
 	}
@@ -410,7 +410,7 @@ func TestProbeUserEnv_DefaultIsLoginInteractiveShell(t *testing.T) {
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
 	// Empty string should default to loginInteractiveShell.
-	result := eng.probeUserEnv(context.Background(), "ws-1", "c-1", "vscode", "")
+	result := eng.probeUserEnv(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"}, "")
 	if result == nil {
 		t.Fatal("probeUserEnv with empty probe returned nil")
 	}
@@ -428,7 +428,7 @@ func TestProbeUserEnv_LoginShell(t *testing.T) {
 	}
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
-	result := eng.probeUserEnv(context.Background(), "ws-1", "c-1", "vscode", "loginShell")
+	result := eng.probeUserEnv(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"}, "loginShell")
 	if result == nil {
 		t.Fatal("probeUserEnv returned nil")
 	}
@@ -446,7 +446,7 @@ func TestProbeUserEnv_InteractiveShell(t *testing.T) {
 	}
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
-	result := eng.probeUserEnv(context.Background(), "ws-1", "c-1", "vscode", "interactiveShell")
+	result := eng.probeUserEnv(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"}, "interactiveShell")
 	if result == nil {
 		t.Fatal("probeUserEnv returned nil")
 	}
@@ -466,7 +466,7 @@ func TestProbeUserEnv_ProbeFails_ReturnsNil(t *testing.T) {
 	}
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
-	result := eng.probeUserEnv(context.Background(), "ws-1", "c-1", "vscode", "")
+	result := eng.probeUserEnv(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"}, "")
 	if result != nil {
 		t.Errorf("probeUserEnv should return nil on probe failure, got %v", result)
 	}

@@ -317,7 +317,7 @@ func TestExecPluginCopies(t *testing.T) {
 		{Source: srcFile, Target: "/home/vscode/.config/test.json", Mode: "0600", User: "vscode"},
 	}
 
-	eng.execPluginCopies(context.Background(), "ws-1", "container-123", copies)
+	eng.execPluginCopies(context.Background(), containerContext{workspaceID: "ws-1", containerID: "container-123"}, copies)
 
 	// Should have made one exec call.
 	if len(mockDrv.execCalls) != 1 {
@@ -358,7 +358,7 @@ func TestExecPluginCopies_NoMode(t *testing.T) {
 		{Source: srcFile, Target: "/home/vscode/.config.json", User: "vscode"},
 	}
 
-	eng.execPluginCopies(context.Background(), "ws-1", "c-1", copies)
+	eng.execPluginCopies(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1"}, copies)
 
 	cmdStr := strings.Join(mockDrv.execCalls[0].cmd, " ")
 	// No chmod when Mode is empty.
@@ -384,7 +384,7 @@ func TestExecPluginCopies_NoUser(t *testing.T) {
 		{Source: srcFile, Target: "/root/.config.json"},
 	}
 
-	eng.execPluginCopies(context.Background(), "ws-1", "c-1", copies)
+	eng.execPluginCopies(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1"}, copies)
 
 	cmdStr := strings.Join(mockDrv.execCalls[0].cmd, " ")
 	// No chown when User is empty.
@@ -400,7 +400,7 @@ func TestExecPluginCopies_Empty(t *testing.T) {
 		logger: slog.Default(),
 	}
 
-	eng.execPluginCopies(context.Background(), "ws-1", "c-1", nil)
+	eng.execPluginCopies(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1"}, nil)
 
 	if len(mockDrv.execCalls) != 0 {
 		t.Errorf("expected 0 exec calls for empty copies, got %d", len(mockDrv.execCalls))
@@ -425,7 +425,7 @@ func TestExecPluginCopies_MissingSource(t *testing.T) {
 		{Source: goodFile, Target: "/home/vscode/.config/good.json"},
 	}
 
-	eng.execPluginCopies(context.Background(), "ws-1", "c-1", copies)
+	eng.execPluginCopies(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1"}, copies)
 
 	// Missing source should be skipped, good file should still be copied.
 	if len(mockDrv.execCalls) != 1 {
@@ -464,7 +464,7 @@ func TestExecPluginCopies_ExecFailure(t *testing.T) {
 		{Source: file2, Target: "/home/vscode/b.json"},
 	}
 
-	eng.execPluginCopies(context.Background(), "ws-1", "c-1", copies)
+	eng.execPluginCopies(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1"}, copies)
 
 	// After first exec failure, remaining copies should be skipped.
 	if failDrv.execCount != 1 {
@@ -489,7 +489,7 @@ func TestExecPluginCopies_IfNotExists(t *testing.T) {
 		{Source: srcFile, Target: "/home/vscode/.config.json", IfNotExists: true},
 	}
 
-	eng.execPluginCopies(context.Background(), "ws-1", "c-1", copies)
+	eng.execPluginCopies(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1"}, copies)
 
 	if len(mockDrv.execCalls) != 1 {
 		t.Fatalf("expected 1 exec call, got %d", len(mockDrv.execCalls))
@@ -599,7 +599,7 @@ func TestExecPluginCopies_MissingSourceThenExecFailure(t *testing.T) {
 		{Source: goodFile, Target: "/home/vscode/other.json"},
 	}
 
-	eng.execPluginCopies(context.Background(), "ws-1", "c-1", copies)
+	eng.execPluginCopies(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1"}, copies)
 
 	// Missing source is skipped (continue), good.json triggers exec which fails,
 	// other.json should NOT be attempted (bail out after first exec failure).

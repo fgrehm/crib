@@ -40,8 +40,7 @@ func TestGenerateComposeOverride_RootlessPodmanInjectsUserns(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
-	dir := t.TempDir()
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", nil)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -70,8 +69,7 @@ func TestGenerateComposeOverride_RootPodmanSkipsUserns(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
-	dir := t.TempDir()
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", nil)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -97,8 +95,7 @@ func TestGenerateComposeOverride_DockerSkipsUserns(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
-	dir := t.TempDir()
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", nil)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -132,7 +129,7 @@ func TestGenerateComposeOverride_SkipsUsernsWhenAlreadySet(t *testing.T) {
 		t.Fatalf("writing compose file: %v", err)
 	}
 
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, []string{composeFile}, "", nil)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", []string{composeFile}, "", nil)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -154,8 +151,7 @@ func TestGenerateComposeOverride_WithFeatureImage(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
-	dir := t.TempDir()
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "crib-test-ws:crib-abc123", nil)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "crib-test-ws:crib-abc123", nil)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -182,8 +178,7 @@ func TestGenerateComposeOverride_RestartPath(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
-	dir := t.TempDir()
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "" /* featureImage already baked in */, nil)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "" /* featureImage already baked in */, nil)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -216,8 +211,7 @@ func TestGenerateComposeOverride_PluginMounts(t *testing.T) {
 		},
 	}
 
-	dir := t.TempDir()
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", pluginResp)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", pluginResp)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -255,8 +249,7 @@ func TestGenerateComposeOverride_PluginEnv(t *testing.T) {
 		},
 	}
 
-	dir := t.TempDir()
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", pluginResp)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", pluginResp)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -287,8 +280,7 @@ func TestGenerateComposeOverride_PluginEnvMergedWithConfigEnv(t *testing.T) {
 		Env: map[string]string{"HISTFILE": "/home/vscode/.crib_history/.shell_history"},
 	}
 
-	dir := t.TempDir()
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", pluginResp)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", pluginResp)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -315,17 +307,15 @@ func TestGenerateComposeOverride_NilPluginResponse(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
-	dir := t.TempDir()
-
 	// With nil plugin response.
-	path1, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", nil)
+	path1, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil)
 	if err != nil {
 		t.Fatalf("generateComposeOverride with nil plugin failed: %v", err)
 	}
 	data1, _ := os.ReadFile(path1)
 
 	// With empty plugin response (overwrites the same file).
-	_, err = e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", &plugin.PreContainerRunResponse{})
+	_, err = e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", &plugin.PreContainerRunResponse{})
 	if err != nil {
 		t.Fatalf("generateComposeOverride with empty plugin failed: %v", err)
 	}
@@ -351,8 +341,7 @@ func TestGenerateComposeOverride_PluginVolumeMountsGetNameDeclaration(t *testing
 		},
 	}
 
-	dir := t.TempDir()
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", pluginResp)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", pluginResp)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -382,8 +371,7 @@ func TestGenerateComposeOverride_IncludesFeatureImage(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
-	dir := t.TempDir()
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "crib-test-ws:features", nil)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "crib-test-ws:features", nil)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -406,8 +394,7 @@ func TestGenerateComposeOverride_OmitsImageWhenEmpty(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
-	dir := t.TempDir()
-	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", dir, nil, "", nil)
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil)
 	if err != nil {
 		t.Fatalf("generateComposeOverride failed: %v", err)
 	}
@@ -433,14 +420,14 @@ func TestResolveComposeUser_ConfigUserTakesPrecedence(t *testing.T) {
 
 	// When config already specifies a user, resolveComposeUser returns empty
 	// (meaning: don't override, let dispatchPlugins use cfg fields).
-	user := eng.resolveComposeUser(context.Background(), cfg, t.TempDir(), nil)
+	user := eng.resolveComposeUser(context.Background(), cfg, nil)
 	if user != "" {
 		t.Errorf("expected empty user when config has remoteUser, got %q", user)
 	}
 
 	cfg.RemoteUser = ""
 	cfg.ContainerUser = "devuser"
-	user = eng.resolveComposeUser(context.Background(), cfg, t.TempDir(), nil)
+	user = eng.resolveComposeUser(context.Background(), cfg, nil)
 	if user != "" {
 		t.Errorf("expected empty user when config has containerUser, got %q", user)
 	}

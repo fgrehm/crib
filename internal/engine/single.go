@@ -43,6 +43,11 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 
 		// Dispatch plugins so setupContainer can inject plugin PATH
 		// entries and env vars into RemoteEnv before saving the result.
+		cc := containerContext{
+			workspaceID:     ws.ID,
+			containerID:     container.ID,
+			workspaceFolder: workspaceFolder,
+		}
 		envb := NewEnvBuilder(cfg.RemoteEnv)
 		remoteUser := cfg.RemoteUser
 		if remoteUser == "" {
@@ -54,7 +59,7 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 			envb.AddPluginResponse(resp)
 		}
 
-		return e.setupAndReturn(ctx, ws, cfg, container.ID, workspaceFolder, envb)
+		return e.setupAndReturn(ctx, ws, cfg, cc, envb)
 	}
 
 	// Remove existing container if recreating.
@@ -100,7 +105,12 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 		return nil, fmt.Errorf("container not found after creation")
 	}
 
-	return e.finalizeSetup(ctx, ws, cfg, container.ID, workspaceFolder, buildRes.imageName, pluginResp)
+	cc := containerContext{
+		workspaceID:     ws.ID,
+		containerID:     container.ID,
+		workspaceFolder: workspaceFolder,
+	}
+	return e.finalizeSetup(ctx, ws, cfg, cc, buildRes.imageName, pluginResp)
 }
 
 // buildRunOptions constructs RunOptions from the devcontainer config.
@@ -174,23 +184,25 @@ func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, proj
 // finalizeSetup copies plugin files, runs container setup, and persists the
 // result. Both the single-container and compose paths converge here after the
 // container has been created/started.
-func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder, imageName string, pluginResp *plugin.PreContainerRunResponse) (*UpResult, error) {
+func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, imageName string, pluginResp *plugin.PreContainerRunResponse) (*UpResult, error) {
 	if pluginResp != nil {
-		e.execPluginCopies(ctx, ws.ID, containerID, pluginResp.Copies)
+		e.execPluginCopies(ctx, cc, pluginResp.Copies)
 
 		// Chown volume mounts to the remote user. Docker volumes are
 		// created with root ownership, so non-root users can't write
 		// to them until we fix permissions.
 		remoteUser := configRemoteUser(cfg)
 		if remoteUser != "" && remoteUser != "root" {
-			e.chownPluginVolumes(ctx, ws.ID, containerID, remoteUser, pluginResp.Mounts)
+			volCC := cc
+			volCC.remoteUser = remoteUser
+			e.chownPluginVolumes(ctx, volCC, pluginResp.Mounts)
 		}
 	}
 
 	envb := NewEnvBuilder(cfg.RemoteEnv)
 	envb.AddPluginResponse(pluginResp)
 
-	result, setupErr := e.setupAndReturn(ctx, ws, cfg, containerID, workspaceFolder, envb)
+	result, setupErr := e.setupAndReturn(ctx, ws, cfg, cc, envb)
 	if result != nil {
 		result.ImageName = imageName
 		e.saveResult(ws, cfg, result)
@@ -201,13 +213,13 @@ func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg
 // chownPluginVolumes changes ownership of plugin volume mounts to the
 // remote user. Docker/Podman create volumes with root ownership, so
 // non-root users get permission errors when writing to them.
-func (e *Engine) chownPluginVolumes(ctx context.Context, workspaceID, containerID, remoteUser string, mounts []config.Mount) {
+func (e *Engine) chownPluginVolumes(ctx context.Context, cc containerContext, mounts []config.Mount) {
 	for _, m := range mounts {
 		if m.Type != "volume" {
 			continue
 		}
-		cmd := []string{"chown", remoteUser + ":", m.Target}
-		if err := e.driver.ExecContainer(ctx, workspaceID, containerID, cmd, nil, io.Discard, io.Discard, nil, "root"); err != nil {
+		cmd := []string{"chown", cc.remoteUser + ":", m.Target}
+		if err := e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID, cmd, nil, io.Discard, io.Discard, nil, "root"); err != nil {
 			e.logger.Debug("chown plugin volume failed", "target", m.Target, "error", err)
 		}
 	}
@@ -216,13 +228,13 @@ func (e *Engine) chownPluginVolumes(ctx context.Context, workspaceID, containerI
 // setupAndReturn runs container setup and returns the result.
 // On lifecycle hook failure, both the result and error are returned so
 // callers can persist the result (container is still usable).
-func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID, workspaceFolder string, envb *EnvBuilder) (*UpResult, error) {
-	remoteUser := e.resolveRemoteUser(ctx, ws.ID, cfg, containerID)
+func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, envb *EnvBuilder) (*UpResult, error) {
+	cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg)
 
 	result := &UpResult{
-		ContainerID:     containerID,
-		WorkspaceFolder: workspaceFolder,
-		RemoteUser:      remoteUser,
+		ContainerID:     cc.containerID,
+		WorkspaceFolder: cc.workspaceFolder,
+		RemoteUser:      cc.remoteUser,
 		Ports:           portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort)),
 	}
 
@@ -232,22 +244,24 @@ func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cf
 	e.saveResult(ws, cfg, result)
 
 	// Run container setup (UID sync, env probe, lifecycle hooks).
-	if err := e.setupContainer(ctx, ws, cfg, containerID, workspaceFolder, remoteUser, envb); err != nil {
+	finalEnv, err := e.setupContainer(ctx, ws, cfg, cc, envb)
+	cfg.RemoteEnv = finalEnv
+	if err != nil {
 		return result, fmt.Errorf("setting up container: %w", err)
 	}
 
 	// After create-time hooks complete, commit a snapshot so restart can
 	// use it instead of re-running hooks.
-	e.commitSnapshot(ctx, ws, cfg, containerID)
+	e.commitSnapshot(ctx, ws, cfg, cc.containerID)
 
 	return result, nil
 }
 
 // detectContainerUser runs whoami inside the container to detect the default
 // user. Returns empty string on failure or if the user is root.
-func (e *Engine) detectContainerUser(ctx context.Context, workspaceID, containerID string) string {
+func (e *Engine) detectContainerUser(ctx context.Context, cc containerContext) string {
 	var stdout bytes.Buffer
-	if err := e.driver.ExecContainer(ctx, workspaceID, containerID, []string{"whoami"}, nil, &stdout, io.Discard, nil, ""); err != nil {
+	if err := e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID, []string{"whoami"}, nil, &stdout, io.Discard, nil, ""); err != nil {
 		return ""
 	}
 	user := strings.TrimSpace(stdout.String())
@@ -386,7 +400,7 @@ func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Wo
 // ~/.claude/.credentials.json). If we add external/user-defined plugins, the
 // values must be shell-escaped first to prevent breakage or injection from
 // paths containing single quotes.
-func (e *Engine) execPluginCopies(ctx context.Context, workspaceID, containerID string, copies []plugin.FileCopy) {
+func (e *Engine) execPluginCopies(ctx context.Context, cc containerContext, copies []plugin.FileCopy) {
 	for _, cp := range copies {
 		data, err := os.ReadFile(cp.Source)
 		if err != nil {
@@ -412,7 +426,7 @@ func (e *Engine) execPluginCopies(ctx context.Context, workspaceID, containerID 
 			shellCmd = writeCmd
 		}
 
-		err = e.driver.ExecContainer(ctx, workspaceID, containerID,
+		err = e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
 			[]string{"sh", "-c", shellCmd},
 			bytes.NewReader(data), io.Discard, io.Discard, nil, "root")
 		if err != nil {

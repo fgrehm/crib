@@ -454,7 +454,7 @@ func TestDetectContainerUser_NonRoot(t *testing.T) {
 	}
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
-	user := eng.detectContainerUser(context.Background(), "ws-1", "c-1")
+	user := eng.detectContainerUser(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1"})
 	if user != "vscode" {
 		t.Errorf("detectContainerUser = %q, want vscode", user)
 	}
@@ -468,7 +468,7 @@ func TestDetectContainerUser_Root(t *testing.T) {
 	}
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
-	user := eng.detectContainerUser(context.Background(), "ws-1", "c-1")
+	user := eng.detectContainerUser(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1"})
 	if user != "" {
 		t.Errorf("detectContainerUser = %q, want empty (root should fall through)", user)
 	}
@@ -484,7 +484,7 @@ func TestChownPluginVolumes_OnlyVolumes(t *testing.T) {
 		{Type: "volume", Source: "apt-vol", Target: "/var/cache/apt"},
 	}
 
-	eng.chownPluginVolumes(context.Background(), "ws-1", "c-1", "vscode", mounts)
+	eng.chownPluginVolumes(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"}, mounts)
 
 	// Should only chown volumes, not binds.
 	if len(mockDrv.execCalls) != 2 {
@@ -502,7 +502,7 @@ func TestChownPluginVolumes_SkipsEmpty(t *testing.T) {
 	mockDrv := &mockDriver{responses: map[string]string{}}
 	eng := &Engine{driver: mockDrv, logger: slog.Default()}
 
-	eng.chownPluginVolumes(context.Background(), "ws-1", "c-1", "vscode", nil)
+	eng.chownPluginVolumes(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"}, nil)
 
 	if len(mockDrv.execCalls) != 0 {
 		t.Errorf("expected 0 exec calls for nil mounts, got %d", len(mockDrv.execCalls))
@@ -523,7 +523,7 @@ func TestChownPluginVolumes_ErrorContinues(t *testing.T) {
 		{Type: "volume", Source: "vol2", Target: "/second"},
 	}
 
-	eng.chownPluginVolumes(context.Background(), "ws-1", "c-1", "vscode", mounts)
+	eng.chownPluginVolumes(context.Background(), containerContext{workspaceID: "ws-1", containerID: "c-1", remoteUser: "vscode"}, mounts)
 
 	// Should attempt both even if first fails.
 	if len(mockDrv.execCalls) != 2 {

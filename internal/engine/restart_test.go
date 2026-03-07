@@ -399,7 +399,7 @@ func TestRunResumeHooks_PropagatesVerbose(t *testing.T) {
 	// The key thing we're testing is that the verbose field is set on the
 	// lifecycleRunner (previously it was missing, causing --verbose to not
 	// print hook commands during restart).
-	err := eng.runResumeHooks(context.Background(), ws, cfg, "container-1", "/workspaces/project", "vscode")
+	err := eng.runResumeHooks(context.Background(), ws, cfg, containerContext{workspaceID: ws.ID, containerID: "container-1", remoteUser: "vscode", workspaceFolder: "/workspaces/project"})
 	if err != nil {
 		t.Fatalf("runResumeHooks: %v", err)
 	}
