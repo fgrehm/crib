@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plaintext in exec command logs.
 - Plugin PATH additions (e.g. `~/.bundle/bin`) now persist across `crib restart`
   for compose workspaces. Previously, resume hooks lost plugin PATH entries.
+- Plugin PATH additions no longer vanish after a redundant `crib up` (container
+  already running) or non-compose `crib restart`. Previously, these paths
+  dispatched plugins only on fresh creation, so a second `crib up` would
+  overwrite the saved RemoteEnv without plugin PATH entries.
 
 ## [0.5.0] - 2026-03-05
 

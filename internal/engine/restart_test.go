@@ -416,3 +416,72 @@ func TestRunResumeHooks_PropagatesVerbose(t *testing.T) {
 		t.Error("postStartCommand was not executed during runResumeHooks")
 	}
 }
+
+func TestRestartSimple_NonCompose_PreservesPathPrepend(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-restart-path", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	// Save an initial result (restartSimple needs storedResult).
+	initialResult := &workspace.Result{
+		ContainerID: "c-1",
+		ImageName:   "ruby:3.2",
+		RemoteUser:  "vscode",
+		RemoteEnv:   map[string]string{"PATH": "/home/vscode/.bundle/bin:/usr/local/bin:/usr/bin"},
+	}
+	if err := store.SaveResult(ws.ID, initialResult); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "c-1",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(&testPlugin{
+		resp: &plugin.PreContainerRunResponse{
+			PathPrepend: []string{"/home/vscode/.bundle/bin"},
+		},
+	})
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ruby:3.2"
+	cfg.RemoteUser = "vscode"
+
+	result, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	if err != nil {
+		t.Fatalf("restartSimple: %v", err)
+	}
+	if result.ContainerID != "c-1" {
+		t.Errorf("ContainerID = %q, want c-1", result.ContainerID)
+	}
+
+	// Verify the saved RemoteEnv includes the plugin PATH entry.
+	saved, err := store.LoadResult(ws.ID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+	if saved.RemoteEnv == nil {
+		t.Fatal("saved RemoteEnv is nil, expected plugin PATH entries")
+	}
+	path := saved.RemoteEnv["PATH"]
+	if !strings.Contains(path, "/home/vscode/.bundle/bin") {
+		t.Errorf("saved PATH = %q, want to contain /home/vscode/.bundle/bin", path)
+	}
+}
