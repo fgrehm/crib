@@ -87,10 +87,10 @@ func (e *Engine) Restart(ctx context.Context, ws *workspace.Workspace) (*Restart
 
 // restartSimple performs a simple container restart without recreation.
 func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, storedResult *workspace.Result) (*RestartResult, error) {
-	// For compose workspaces, use compose up instead of compose restart.
-	// compose restart only restarts already-running containers and fails when
-	// dependency services are stopped. compose up handles starting all
-	// services (including dependencies) in the correct order.
+	// For compose workspaces, use compose stop + start instead of compose
+	// restart. compose restart only restarts already-running containers and
+	// fails when dependency services are stopped. stop + start handles all
+	// services (including dependencies) without recreating containers.
 	var containerID string
 	var pluginResp *plugin.PreContainerRunResponse
 	if len(cfg.DockerComposeFile) > 0 {

@@ -53,7 +53,7 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 		if remoteUser == "" {
 			remoteUser = cfg.ContainerUser
 		}
-		if resp, err := e.dispatchPlugins(ctx, ws, cfg, remoteUser, workspaceFolder, ""); err != nil {
+		if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, remoteUser); err != nil {
 			e.logger.Warn("plugin dispatch failed for already-running container", "error", err)
 		} else {
 			envb.AddPluginResponse(resp)

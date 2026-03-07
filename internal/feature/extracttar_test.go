@@ -97,8 +97,12 @@ func TestExtractTar_PathTraversalNeutralized(t *testing.T) {
 	if string(data) != "safe" {
 		t.Errorf("escape.txt = %q, want %q", data, "safe")
 	}
-	// Verify nothing was written outside dir.
-	if _, err := os.Stat(filepath.Join(dir, "..", "escape.txt")); err == nil {
+	// Verify nothing was written outside dir. Use the parent dir explicitly
+	// so the assertion doesn't depend on the temp dir structure.
+	outsidePath := filepath.Join(filepath.Dir(dir), "escape.txt")
+	if _, err := os.Stat(outsidePath); err == nil {
+		// Clean up in case a previous broken run left it behind.
+		_ = os.Remove(outsidePath)
 		t.Error("file should not have been created outside extraction dir")
 	}
 }
