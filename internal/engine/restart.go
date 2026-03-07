@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 
 	"github.com/fgrehm/crib/internal/compose"
 	"github.com/fgrehm/crib/internal/config"
@@ -113,7 +112,6 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		if err != nil {
 			return nil, fmt.Errorf("generating compose override: %w", err)
 		}
-		defer func() { _ = os.Remove(overridePath) }()
 
 		allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
 		services := ensureServiceIncluded(cfg.RunServices, cfg.Service)

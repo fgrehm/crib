@@ -64,7 +64,6 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 			if err != nil {
 				return nil, fmt.Errorf("generating compose override: %w", err)
 			}
-			defer func() { _ = os.Remove(overridePath) }()
 
 			allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
 			services := ensureServiceIncluded(cfg.RunServices, serviceName)
@@ -145,7 +144,6 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 	if err != nil {
 		return nil, fmt.Errorf("generating compose override: %w", err)
 	}
-	defer func() { _ = os.Remove(overridePath) }()
 
 	allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
 
@@ -209,7 +207,6 @@ func (e *Engine) upComposeFromStored(ctx context.Context, ws *workspace.Workspac
 	if err != nil {
 		return nil, fmt.Errorf("generating compose override: %w", err)
 	}
-	defer func() { _ = os.Remove(overridePath) }()
 
 	allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
 	services := ensureServiceIncluded(cfg.RunServices, serviceName)
@@ -426,21 +423,12 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		}
 	}
 
-	// Write to a temp file outside the workspace tree. The override must not
-	// live inside the workspace mount because chownWorkspace recursively
-	// changes ownership of the mounted directory, making the file unremovable
-	// by the host user.
-	f, err := os.CreateTemp("", "crib-compose-override-*.yml")
-	if err != nil {
-		return "", fmt.Errorf("creating compose override temp file: %w", err)
-	}
-	overridePath := f.Name()
-	if _, err := f.WriteString(b.String()); err != nil {
-		_ = f.Close()
-		_ = os.Remove(overridePath)
+	// Persist the override in the workspace state directory so it survives
+	// for troubleshooting. The file is overwritten on every compose up.
+	overridePath := filepath.Join(e.store.WorkspaceDir(ws.ID), "compose-override.yml")
+	if err := os.WriteFile(overridePath, []byte(b.String()), 0o644); err != nil {
 		return "", fmt.Errorf("writing compose override: %w", err)
 	}
-	_ = f.Close()
 
 	return overridePath, nil
 }

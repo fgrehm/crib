@@ -41,12 +41,13 @@ PathPrepend beforehand. The 6 save sites:
 Tests in `single_test.go` and `restart_test.go` cover this invariant. See
 `docs/decisions/001-no-save-path-abstraction.md` for the ADR.
 
-## Compose override is ephemeral
+## Compose override is regenerated on every up
 
-The compose override YAML is a temp file regenerated on every `compose up`.
-Every code path that calls `generateComposeOverride()` must dispatch plugins and
-pass the response; otherwise plugin env vars and mounts silently disappear.
-Paths that generate overrides:
+The compose override YAML is written to
+`~/.crib/workspaces/{id}/compose-override.yml` and regenerated on every
+`compose up`. Every code path that calls `generateComposeOverride()` must
+dispatch plugins and pass the response; otherwise plugin env vars and mounts
+silently disappear. Paths that generate overrides:
 
 - `upCompose` (fresh up, stopped container restart, stored result)
 - `restartSimple` compose path
@@ -54,3 +55,16 @@ Paths that generate overrides:
 
 Always call `findComposeContainer()` after `compose up` to get the current
 container ID. The override may have caused compose to recreate the container.
+
+## Persisted build artifacts
+
+The workspace state directory (`~/.crib/workspaces/{id}/`) stores artifacts for
+troubleshooting:
+
+| File | Written by | Contents |
+|------|-----------|----------|
+| `compose-override.yml` | `generateComposeOverride()` | Last compose override YAML (compose only) |
+| `Dockerfile` | `doBuild()` | Generated Dockerfile used for the last image build |
+
+Both are overwritten on each build/up and cleaned up by `store.Delete` when the
+workspace is removed.

@@ -387,7 +387,6 @@ func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Work
 	if err != nil {
 		return "", fmt.Errorf("generating compose override: %w", err)
 	}
-	defer func() { _ = os.Remove(overridePath) }()
 
 	allFiles := append(composeFiles[:len(composeFiles):len(composeFiles)], overridePath)
 	services := ensureServiceIncluded(cfg.RunServices, cfg.Service)

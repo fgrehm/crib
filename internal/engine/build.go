@@ -147,6 +147,9 @@ func (e *Engine) doBuild(ctx context.Context, ws *workspace.Workspace, cfg *conf
 	}
 	defer func() { _ = os.Remove(tmpDockerfile) }()
 
+	// Persist a copy in workspace state for troubleshooting.
+	_ = os.WriteFile(filepath.Join(e.store.WorkspaceDir(ws.ID), "Dockerfile"), []byte(dockerfileContent), 0o644)
+
 	// Calculate prebuild hash for cache tag.
 	arch, _ := e.driver.TargetArchitecture(ctx)
 	hash, err := config.CalculatePrebuildHash(config.PrebuildHashParams{
