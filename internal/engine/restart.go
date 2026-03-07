@@ -9,6 +9,7 @@ import (
 	"github.com/fgrehm/crib/internal/compose"
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/driver"
+	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
@@ -92,6 +93,7 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 	// dependency services are stopped. compose up handles starting all
 	// services (including dependencies) in the correct order.
 	var containerID string
+	var pluginResp *plugin.PreContainerRunResponse
 	if len(cfg.DockerComposeFile) > 0 {
 		if e.compose == nil {
 			return nil, fmt.Errorf("compose is not available")
@@ -101,12 +103,13 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		projectName := compose.ProjectName(ws.ID)
 		env := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
 
-		// Dispatch plugins for file re-injection and PathPrepend.
+		// Dispatch plugins for file re-injection, Env, and PathPrepend.
 		composeUser := e.resolveComposeUser(ctx, cfg, cd, composeFiles)
-		pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, storedResult.ImageName, workspaceFolder, composeUser)
+		resp, err := e.dispatchPlugins(ctx, ws, cfg, storedResult.ImageName, workspaceFolder, composeUser)
 		if err != nil {
 			return nil, err
 		}
+		pluginResp = resp
 
 		// Regenerate the override so it stays current for the next
 		// compose up (e.g. after crib down + crib up).
@@ -148,7 +151,6 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		// changed on the host since the last up/restart.
 		if pluginResp != nil {
 			e.execPluginCopies(ctx, ws.ID, containerID, pluginResp.Copies)
-			applyPathPrepend(cfg, pluginResp.PathPrepend)
 		}
 	} else {
 		// Non-compose: restart the individual container.
@@ -164,23 +166,25 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		}
 		containerID = container.ID
 
-		// Dispatch plugins to get PathPrepend so the saved RemoteEnv
-		// preserves plugin PATH entries across restarts.
+		// Dispatch plugins to get Env and PathPrepend so the saved
+		// RemoteEnv includes plugin env vars across restarts.
 		if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, storedResult.RemoteUser); err != nil {
-			e.logger.Warn("plugin dispatch for PathPrepend failed", "error", err)
-		} else if resp != nil {
-			applyPathPrepend(cfg, resp.PathPrepend)
+			e.logger.Warn("plugin dispatch failed", "error", err)
+		} else {
+			pluginResp = resp
 		}
 	}
 
-	// Restore the probed environment from the stored result. restartSimple
-	// skips setupContainer (no env re-probe), so cfg.RemoteEnv only has
-	// plugin PathPrepend and devcontainer.json values. Without this, the
-	// saved remoteEnv loses probed PATH entries (e.g. mise ruby/node paths)
-	// and tools become unavailable via "crib run".
-	// Use the stored env as base; cfg.RemoteEnv values (devcontainer.json +
-	// fresh PathPrepend) take precedence over stored values.
-	mergeStoredRemoteEnv(cfg, storedResult.RemoteEnv)
+	// Build the final env using the EnvBuilder. This replaces the old
+	// sequence of applyPathPrepend + mergeStoredRemoteEnv, and also
+	// includes plugin Env vars (previously dropped in restart paths).
+	envb := NewEnvBuilder(cfg.RemoteEnv)
+	if pluginResp != nil {
+		envb.AddPluginEnv(pluginResp.Env)
+		envb.AddPluginPathPrepend(pluginResp.PathPrepend)
+	}
+	envb.RestoreFrom(storedResult.RemoteEnv)
+	cfg.RemoteEnv = envb.Build()
 
 	// Run resume-flow hooks.
 	remoteUser := storedResult.RemoteUser

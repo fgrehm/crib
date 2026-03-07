@@ -837,3 +837,161 @@ func TestRestartSimple_NonCompose_ConfigEnvOverridesStored(t *testing.T) {
 		t.Errorf("PATH missing stored mise ruby: %q", saved.RemoteEnv["PATH"])
 	}
 }
+
+func TestRestartSimple_NonCompose_PluginEnvMerged(t *testing.T) {
+	// Plugin Env values (e.g. BUNDLE_PATH, CARGO_HOME) must be included
+	// in the saved RemoteEnv after a simple restart. Previously these
+	// were silently dropped because only PathPrepend was extracted.
+
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-restart-plugenv", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	initialResult := &workspace.Result{
+		ContainerID: "c-1",
+		ImageName:   "ruby:3.2",
+		RemoteUser:  "vscode",
+		RemoteEnv: map[string]string{
+			"PATH":      "/home/vscode/.bundle/bin:/usr/local/bin:/usr/bin",
+			"RUBY_ROOT": "/home/vscode/.local/share/mise/installs/ruby/3.4.7",
+		},
+	}
+	if err := store.SaveResult(ws.ID, initialResult); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "c-1",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(&testPlugin{
+		resp: &plugin.PreContainerRunResponse{
+			PathPrepend: []string{"/home/vscode/.bundle/bin"},
+			Env: map[string]string{
+				"BUNDLE_PATH": "/home/vscode/.bundle",
+				"HISTFILE":    "/home/vscode/.crib_history/.shell_history",
+			},
+		},
+	})
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ruby:3.2"
+	cfg.RemoteUser = "vscode"
+
+	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	if err != nil {
+		t.Fatalf("restartSimple: %v", err)
+	}
+
+	saved, err := store.LoadResult(ws.ID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+
+	// Plugin Env values must be present in saved RemoteEnv.
+	if saved.RemoteEnv["BUNDLE_PATH"] != "/home/vscode/.bundle" {
+		t.Errorf("BUNDLE_PATH = %q, want /home/vscode/.bundle", saved.RemoteEnv["BUNDLE_PATH"])
+	}
+	if saved.RemoteEnv["HISTFILE"] != "/home/vscode/.crib_history/.shell_history" {
+		t.Errorf("HISTFILE = %q, want plugin value", saved.RemoteEnv["HISTFILE"])
+	}
+	// Stored probed vars should still survive.
+	if saved.RemoteEnv["RUBY_ROOT"] != "/home/vscode/.local/share/mise/installs/ruby/3.4.7" {
+		t.Errorf("RUBY_ROOT = %q, want stored value", saved.RemoteEnv["RUBY_ROOT"])
+	}
+	// PATH should include both plugin prepend and stored probed paths.
+	path := saved.RemoteEnv["PATH"]
+	if !strings.Contains(path, "/home/vscode/.bundle/bin") {
+		t.Errorf("PATH missing plugin .bundle/bin: %q", path)
+	}
+	if !strings.Contains(path, "/usr/local/bin") {
+		t.Errorf("PATH missing stored /usr/local/bin: %q", path)
+	}
+}
+
+func TestRestartSimple_NonCompose_PluginEnvDoesNotOverrideConfig(t *testing.T) {
+	// devcontainer.json remoteEnv must win over plugin Env values.
+
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-restart-plugcfg", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	initialResult := &workspace.Result{
+		ContainerID: "c-1",
+		ImageName:   "ruby:3.2",
+		RemoteUser:  "vscode",
+		RemoteEnv: map[string]string{
+			"PATH":   "/usr/local/bin:/usr/bin",
+			"EDITOR": "vim",
+		},
+	}
+	if err := store.SaveResult(ws.ID, initialResult); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "c-1",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(&testPlugin{
+		resp: &plugin.PreContainerRunResponse{
+			Env: map[string]string{
+				"EDITOR": "code",
+			},
+		},
+	})
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ruby:3.2"
+	cfg.RemoteUser = "vscode"
+	cfg.RemoteEnv = map[string]string{"EDITOR": "nano"}
+
+	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	if err != nil {
+		t.Fatalf("restartSimple: %v", err)
+	}
+
+	saved, err := store.LoadResult(ws.ID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+
+	// Config EDITOR=nano must win over plugin EDITOR=code.
+	if saved.RemoteEnv["EDITOR"] != "nano" {
+		t.Errorf("EDITOR = %q, want nano (config should override plugin)", saved.RemoteEnv["EDITOR"])
+	}
+}
