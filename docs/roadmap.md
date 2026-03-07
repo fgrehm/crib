@@ -79,7 +79,9 @@ Record the crib version (semver, commit SHA, build timestamp) in workspace state
 
 ### Log output scrubbing
 
-Redact sensitive values (tokens, keys, phone numbers) from debug logs and verbose output. Currently env vars like `GITHUB_TOKEN` appear in plaintext in `--debug` output.
+~~Redact sensitive env var values (tokens, keys, passwords) in `--debug` exec logs.~~ Done in v0.5.1.
+
+Remaining: scrub PII patterns from subprocess output and verbose logs (not just env var names). Examples: email addresses, phone numbers, IP addresses, filesystem paths containing usernames. These can leak through lifecycle hook output, build logs, and error messages.
 
 ### Env var filtering for exec/run
 
