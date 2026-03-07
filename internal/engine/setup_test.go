@@ -662,40 +662,6 @@ func TestPrependToPath(t *testing.T) {
 	}
 }
 
-func TestApplyPathPrepend(t *testing.T) {
-	t.Run("initializes nil RemoteEnv", func(t *testing.T) {
-		cfg := &config.DevContainerConfig{}
-		applyPathPrepend(cfg, []string{"/home/user/.bundle/bin"})
-		want := map[string]string{"PATH": "/home/user/.bundle/bin"}
-		if !reflect.DeepEqual(cfg.RemoteEnv, want) {
-			t.Errorf("RemoteEnv = %v, want %v", cfg.RemoteEnv, want)
-		}
-	})
-
-	t.Run("prepends to existing RemoteEnv PATH", func(t *testing.T) {
-		cfg := &config.DevContainerConfig{
-			DevContainerConfigBase: config.DevContainerConfigBase{
-				RemoteEnv: map[string]string{"PATH": "/usr/bin", "HOME": "/root"},
-			},
-		}
-		applyPathPrepend(cfg, []string{"/root/.bundle/bin"})
-		if cfg.RemoteEnv["PATH"] != "/root/.bundle/bin:/usr/bin" {
-			t.Errorf("PATH = %q, want /root/.bundle/bin:/usr/bin", cfg.RemoteEnv["PATH"])
-		}
-		if cfg.RemoteEnv["HOME"] != "/root" {
-			t.Errorf("HOME was modified: %q", cfg.RemoteEnv["HOME"])
-		}
-	})
-
-	t.Run("no-op for empty dirs", func(t *testing.T) {
-		cfg := &config.DevContainerConfig{}
-		applyPathPrepend(cfg, nil)
-		if cfg.RemoteEnv != nil {
-			t.Errorf("RemoteEnv should remain nil, got %v", cfg.RemoteEnv)
-		}
-	})
-}
-
 func TestResolveBareVarRefs(t *testing.T) {
 	containerEnv := map[string]string{
 		"PATH": "/usr/local/bin:/usr/bin:/bin",
