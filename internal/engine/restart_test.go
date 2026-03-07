@@ -690,3 +690,150 @@ func TestRestartSimple_NonCompose_PreservesProbedEnv(t *testing.T) {
 		t.Errorf("GEM_HOME = %q, want probed value", saved.RemoteEnv["GEM_HOME"])
 	}
 }
+
+func TestRestartRecreateSingle_WithSnapshot_PreservesProbedEnv(t *testing.T) {
+	// When restartRecreateSingle uses a snapshot (hasSnapshot=true), it
+	// skips setupContainer. The probed env from the stored result must
+	// survive via mergeStoredRemoteEnv.
+
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-recreate-env", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	// Stored result with probed env and a valid snapshot.
+	storedResult := &workspace.Result{
+		ContainerID:      "old-container",
+		ImageName:        "ruby:3.2",
+		RemoteUser:       "vscode",
+		SnapshotImage:    "crib-ws-recreate-env:snapshot",
+		SnapshotHookHash: "44136fa355b3678a", // hash for empty hooks
+		RemoteEnv: map[string]string{
+			"PATH":      "/home/vscode/.bundle/bin:/home/vscode/.local/share/mise/installs/ruby/3.4.7/bin:/usr/local/bin:/usr/bin",
+			"RUBY_ROOT": "/home/vscode/.local/share/mise/installs/ruby/3.4.7",
+		},
+	}
+	if err := store.SaveResult(ws.ID, storedResult); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := &restartMockDriver{}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(&testPlugin{
+		resp: &plugin.PreContainerRunResponse{
+			PathPrepend: []string{"/home/vscode/.bundle/bin"},
+		},
+	})
+
+	eng := &Engine{
+		driver:      mockDrv,
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ruby:3.2"
+	cfg.RemoteUser = "vscode"
+
+	result, err := eng.restartRecreateSingle(context.Background(), ws, cfg, "/workspaces/project", storedResult)
+	if err != nil {
+		t.Fatalf("restartRecreateSingle: %v", err)
+	}
+	if result.ContainerID == "" {
+		t.Fatal("expected non-empty ContainerID")
+	}
+
+	saved, err := store.LoadResult(ws.ID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+
+	path := saved.RemoteEnv["PATH"]
+	if !strings.Contains(path, "/home/vscode/.local/share/mise/installs/ruby/3.4.7/bin") {
+		t.Errorf("PATH missing mise ruby: %q", path)
+	}
+	if !strings.Contains(path, "/home/vscode/.bundle/bin") {
+		t.Errorf("PATH missing plugin .bundle/bin: %q", path)
+	}
+	if saved.RemoteEnv["RUBY_ROOT"] != "/home/vscode/.local/share/mise/installs/ruby/3.4.7" {
+		t.Errorf("RUBY_ROOT = %q, want probed value", saved.RemoteEnv["RUBY_ROOT"])
+	}
+}
+
+func TestRestartSimple_NonCompose_ConfigEnvOverridesStored(t *testing.T) {
+	// devcontainer.json remoteEnv values must take precedence over stored
+	// values from a previous run. This ensures users can override probed
+	// values by editing their devcontainer.json.
+
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-restart-override", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	initialResult := &workspace.Result{
+		ContainerID: "c-1",
+		ImageName:   "ruby:3.2",
+		RemoteUser:  "vscode",
+		RemoteEnv: map[string]string{
+			"EDITOR":    "vim",
+			"RUBY_ROOT": "/home/vscode/.local/share/mise/installs/ruby/3.4.7",
+			"PATH":      "/home/vscode/.local/share/mise/installs/ruby/3.4.7/bin:/usr/local/bin:/usr/bin",
+		},
+	}
+	if err := store.SaveResult(ws.ID, initialResult); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "c-1",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ruby:3.2"
+	cfg.RemoteUser = "vscode"
+	// User overrides EDITOR in devcontainer.json.
+	cfg.RemoteEnv = map[string]string{"EDITOR": "nano"}
+
+	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	if err != nil {
+		t.Fatalf("restartSimple: %v", err)
+	}
+
+	saved, err := store.LoadResult(ws.ID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+
+	// devcontainer.json EDITOR=nano must win over stored EDITOR=vim.
+	if saved.RemoteEnv["EDITOR"] != "nano" {
+		t.Errorf("EDITOR = %q, want %q (config should override stored)", saved.RemoteEnv["EDITOR"], "nano")
+	}
+	// Stored RUBY_ROOT should still be present (no conflict).
+	if saved.RemoteEnv["RUBY_ROOT"] != "/home/vscode/.local/share/mise/installs/ruby/3.4.7" {
+		t.Errorf("RUBY_ROOT = %q, want stored value", saved.RemoteEnv["RUBY_ROOT"])
+	}
+	// Stored PATH should survive.
+	if !strings.Contains(saved.RemoteEnv["PATH"], "/home/vscode/.local/share/mise/installs/ruby/3.4.7/bin") {
+		t.Errorf("PATH missing stored mise ruby: %q", saved.RemoteEnv["PATH"])
+	}
+}
