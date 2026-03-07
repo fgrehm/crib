@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-07
+
 ### Added
 
 - `crib cache clean --force` / `-f` flag to skip confirmation prompt.
@@ -80,6 +82,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (mise, rbenv, nvm PATH entries) or plugin PATH additions. Previously, restart
   paths that skip env re-probing overwrote the saved `remoteEnv`, so `crib run`
   could not find tools like `ruby` or `node` after a restart.
+- Plugin dispatch in the already-running container path now passes arguments in
+  the correct order. Previously, the remote user was passed as the image name,
+  causing plugins to see an incorrect image and potentially resolve wrong home
+  directory paths.
 
 ## [0.5.0] - 2026-03-05
 
