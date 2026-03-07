@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `crib cache clean --force` / `-f` flag to skip confirmation prompt.
 
+### Security
+
+- Reject OCI feature archives containing symlinks that escape the extraction
+  directory (absolute targets or relative traversal). Previously, a malicious
+  feature archive could write to arbitrary host paths via symlinks.
+- CI workflows now use explicit `permissions: contents: read` instead of
+  GitHub's default read-write.
+
 ### Fixed
 
 - Preserve Docker image PATH entries (e.g. `/usr/local/bundle/bin` in ruby
