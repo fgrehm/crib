@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sensitive env var values (tokens, keys, passwords) are now redacted in
   `--debug` output. Previously, values like `GITHUB_TOKEN` appeared in
   plaintext in exec command logs.
+- Plugin PATH additions (e.g. `~/.bundle/bin`) now persist across `crib restart`
+  for compose workspaces. Previously, resume hooks lost plugin PATH entries.
 
 ## [0.5.0] - 2026-03-05
 
