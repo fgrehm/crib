@@ -6,7 +6,7 @@ applyTo: "internal/engine/**,internal/plugin/**"
 
 Bundled plugins are in-process Go code under `internal/plugin/`. The engine
 dispatches them via `dispatchPlugins()` which builds the request and returns the
-response without merging into any target.
+response without merging into any target. Plugin dispatch is idempotent.
 
 ## Dispatch and wiring
 
@@ -17,9 +17,6 @@ Both code paths call `dispatchPlugins()`, then apply the response differently:
 - **Compose**: response passed to `generateComposeOverride()` for mounts/env in
   the override YAML. `runArgs` are ignored (compose owns container config).
   `execPluginCopies()` runs after `compose up`.
-
-Plugin dispatch is idempotent. Bundled plugins are in-process Go code with no
-I/O side effects.
 
 ## dispatchPlugins parameter order
 
@@ -38,11 +35,10 @@ When calling from different contexts:
 - **Restart paths**: pass `storedResult.RemoteUser` (detected at Up() time, may
   differ from config when compose auto-detects the user).
 
-Always log a warning when dispatch fails instead of silently ignoring the error.
+Log a warning when dispatch fails.
 
 ## Bind mount gotcha: file vs directory
 
-Never bind-mount a single file if anything inside the container does atomic
-renames on it. Docker/Podman hold the inode, so `rename(tmp, target)` fails with
-EBUSY. Mount the parent directory instead, or use `FileCopy` (exec-based
-injection).
+Use directory mounts or `FileCopy` (exec-based injection) for files that undergo
+atomic renames inside the container. Docker/Podman hold the inode on single-file
+bind mounts, so `rename(tmp, target)` fails with EBUSY.

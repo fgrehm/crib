@@ -4,7 +4,17 @@ applyTo: "internal/**,cmd/**"
 
 # Logging and Output
 
-Four output mechanisms, each with a distinct purpose:
+## Rules
+
+- Use `internal/ui` for user-facing messages in `cmd/` (slog is for diagnostics).
+- Keep exec logging at `Debug` level. Use the engine's stderr writer for verbose
+  command echoing.
+- Use `e.stdout`/`e.stderr` (verbose-aware writers) for subprocess output. These
+  resolve to `io.Discard` when verbose is off.
+- Guard expensive log argument evaluation (like `scrubArgs`) behind
+  `logger.Enabled(ctx, slog.LevelDebug)`.
+
+## Output mechanisms
 
 | Mechanism | Audience | Controlled by |
 |-----------|----------|---------------|
@@ -17,15 +27,6 @@ Four output mechanisms, each with a distinct purpose:
 non-fatal fallbacks; `Info` for one-time startup events only (runtime/compose
 detection).
 
-**`-V`** passes subprocess stdout through instead of discarding it. Does not
-change the slog level. To echo a command in verbose mode, write it to the
-engine's stderr writer, not slog.
+**`-V`** passes subprocess stdout through. Does not change the slog level.
 
 **`--debug`** sets slog to Debug and also implies verbose.
-
-Rules:
-- Do not use slog in `cmd/` for user messages.
-- Do not promote exec logging above `Debug` to fake verbose output.
-- Do not hardcode `io.Discard` where the verbose flag should decide.
-- Guard expensive log argument evaluation (like `scrubArgs`) behind
-  `logger.Enabled(ctx, slog.LevelDebug)`.

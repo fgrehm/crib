@@ -10,12 +10,12 @@ applyTo: "docs/**,website/**,CHANGELOG.md,README.md"
   references: `devcontainer.json`, `.devcontainer/`, `devcontainer-feature.json`.
 - **"dev container"** (two words, lowercase) for the generic concept: "start a
   dev container", "your dev container environment".
-- **"DevContainer Features"** (PascalCase, proper noun) for the spec's Feature
-  system. Same for "DevContainer Spec" when referring to the specification.
+- **"DevContainer Features"** and **"DevContainer Spec"** (PascalCase) when
+  referring to these as proper nouns from the specification.
 - **`crib exec --`** always use `--` separator in docs examples before the
   command to run.
-- Never use "Dev Containers" (space, both capitalized) unless referring to the
-  VS Code extension by its product name.
+- Reserve **"Dev Containers"** (capitalized, two words) for the VS Code extension
+  product name only.
 
 ## Docs site workflow
 
@@ -29,16 +29,15 @@ When adding a new doc:
 ## Changelog
 
 `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
-format. Update `[Unreleased]` for user-facing changes. Internal refactors don't
-need entries.
+format. Update `[Unreleased]` for user-facing changes. Internal refactors that
+preserve behavior need no entry.
 
 At release time, entries move to a versioned section. The CI release workflow
 intentionally fails if no release notes exist for the tagged version; this is by
 design.
 
-When releasing, also mirror the version section into
-`website/src/content/docs/reference/changelog.md` (no `[Unreleased]` section on
-the site; version headers are links to GitHub releases).
+Mirror the version section into `website/src/content/docs/reference/changelog.md`
+(no `[Unreleased]` on the site; version headers link to GitHub releases).
 
 ## Troubleshooting
 
