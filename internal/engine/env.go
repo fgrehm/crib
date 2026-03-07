@@ -50,6 +50,33 @@ func mergeEnv(probed map[string]string, remoteEnv map[string]string) map[string]
 		"OLDPWD":     true,
 		"_":          true,
 		"MISE_SHELL": true,
+
+		// Terminal colors and pager helpers.
+		"LS_COLORS": true,
+		"LSCOLORS":  true,
+		"LESSCLOSE": true,
+		"LESSOPEN":  true,
+
+		// Terminal identity.
+		"TERM_PROGRAM":         true,
+		"TERM_PROGRAM_VERSION": true,
+		"COLORTERM":            true,
+		"VTE_VERSION":          true,
+
+		// X11/Wayland display.
+		"WINDOWID":        true,
+		"DISPLAY":         true,
+		"WAYLAND_DISPLAY": true,
+
+		// Desktop session.
+		"DESKTOP_SESSION":          true,
+		"SESSION_MANAGER":          true,
+		"XDG_SESSION_TYPE":         true,
+		"XDG_SESSION_CLASS":        true,
+		"XDG_SESSION_ID":           true,
+		"XDG_CURRENT_DESKTOP":      true,
+		"DBUS_SESSION_BUS_ADDRESS": true,
+		"GPG_AGENT_INFO":           true,
 	}
 
 	result := make(map[string]string)

@@ -183,3 +183,68 @@ func TestMergeStoredRemoteEnv(t *testing.T) {
 		}
 	})
 }
+
+func TestMergeEnv_SkipsNoisyHostVars(t *testing.T) {
+	probed := map[string]string{
+		"PATH":                     "/usr/bin",
+		"HOME":                     "/home/user",
+		"LS_COLORS":                "rs=0:di=01;34:...",
+		"LSCOLORS":                 "Gxfxcxdxbxegedabagacad",
+		"LESSCLOSE":                "/usr/bin/lesspipe %s %s",
+		"LESSOPEN":                 "| /usr/bin/lesspipe %s",
+		"TERM_PROGRAM":             "tmux",
+		"TERM_PROGRAM_VERSION":     "3.4",
+		"COLORTERM":                "truecolor",
+		"VTE_VERSION":              "7200",
+		"WINDOWID":                 "12345",
+		"DISPLAY":                  ":0",
+		"WAYLAND_DISPLAY":          "wayland-0",
+		"DESKTOP_SESSION":          "gnome",
+		"SESSION_MANAGER":          "local/hostname:@/tmp/.ICE-unix/1234",
+		"XDG_SESSION_TYPE":         "wayland",
+		"XDG_SESSION_CLASS":        "user",
+		"XDG_SESSION_ID":           "2",
+		"XDG_CURRENT_DESKTOP":      "GNOME",
+		"DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+		"GPG_AGENT_INFO":           "/run/user/1000/gnupg/S.gpg-agent:0:1",
+	}
+	result := mergeEnv(probed, nil)
+
+	noisyVars := []string{
+		"LS_COLORS", "LSCOLORS", "LESSCLOSE", "LESSOPEN",
+		"TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM", "VTE_VERSION",
+		"WINDOWID", "DISPLAY", "WAYLAND_DISPLAY",
+		"DESKTOP_SESSION", "SESSION_MANAGER",
+		"XDG_SESSION_TYPE", "XDG_SESSION_CLASS", "XDG_SESSION_ID",
+		"XDG_CURRENT_DESKTOP", "DBUS_SESSION_BUS_ADDRESS", "GPG_AGENT_INFO",
+	}
+	for _, v := range noisyVars {
+		if _, ok := result[v]; ok {
+			t.Errorf("%s should be filtered from probed env", v)
+		}
+	}
+
+	// Regular vars should survive.
+	if result["PATH"] != "/usr/bin" {
+		t.Errorf("PATH should be included, got %q", result["PATH"])
+	}
+	if result["HOME"] != "/home/user" {
+		t.Errorf("HOME should be included, got %q", result["HOME"])
+	}
+}
+
+func TestMergeEnv_RemoteEnvCanOverrideNoisyFilter(t *testing.T) {
+	probed := map[string]string{
+		"PATH":    "/usr/bin",
+		"DISPLAY": ":0",
+	}
+	remote := map[string]string{
+		"DISPLAY": ":1",
+	}
+	result := mergeEnv(probed, remote)
+
+	// Explicit remoteEnv should override the filter.
+	if result["DISPLAY"] != ":1" {
+		t.Errorf("DISPLAY = %q, want :1 (explicit remoteEnv should override filter)", result["DISPLAY"])
+	}
+}
