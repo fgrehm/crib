@@ -1,88 +1,46 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in this repository.
 
-# crib
+Detailed instructions for specific areas are in `docs/ai-instructions/`. Read
+them when working on the relevant code:
 
-Dev containers without the ceremony. crib reads `.devcontainer` configs, builds the container, and gets out of the way.
+- `engine.instructions.md` - dual code paths, remoteEnv invariants, save sites
+- `plugins.instructions.md` - plugin dispatch, wiring, parameter order
+- `logging.instructions.md` - output mechanisms, slog rules, verbose/debug
+- `docs.instructions.md` - naming conventions, docs workflow, changelog
 
-## Project Context
+## What is crib
 
-crib is a fresh implementation of a devcontainer CLI tool. It is not a fork of DevPod. The architecture uses DevPod's algorithms as reference (see `../devpod` local clone) but owns all its code.
-
-## Documentation
-
-The [docs site](https://fgrehm.github.io/crib/) is the single source of truth for user-facing documentation. README.md is a GitHub landing page that links to the site.
-
-Canonical docs live in `docs/` and are symlinked into the website for publishing. When adding a new doc:
-1. Create the file in `docs/`.
-2. Symlink into the website: `ln -s ../../../../../docs/<file>.md website/src/content/docs/<section>/<file>.md`
-3. Add a sidebar entry in `website/astro.config.mjs` (under the appropriate section).
-
-Key reference pages:
-
-- **DevContainer Spec Reference** (`docs/devcontainers-spec.md`) - quick-lookup companion to the [official spec](https://containers.dev/implementors/spec/). Use when implementing or debugging config parsing, lifecycle hooks, Features, Docker Compose, or workspace mounts.
-- **Implementation Notes** (`docs/implementation-notes.md`) - quirks, workarounds, and spec compliance status. Use when debugging rootless Podman issues, lifecycle hooks, container user detection, or checking which spec features are implemented.
-- **Plugin Development** (`docs/plugin-development.md`) - how to write bundled plugins. Covers the plugin interface, response types, merge rules, staging directories, and the bind-mount-file-vs-directory gotcha.
-- **Remote Access RFC** (`docs/rfcs/remote-access.md`) - design for SSH-into-container support and volume workspaces. Internal design doc, not published to website.
+Dev containers without the ceremony. crib reads `.devcontainer` configs, builds
+the container, and gets out of the way. CLI only, no IDE integration.
 
 ## Architecture
 
 ```
-cmd/           -> CLI commands (cobra). Thin layer, delegates to engine/workspace.
+cmd/           -> CLI (cobra). Thin layer, delegates to engine/.
 internal/
   config/      -> devcontainer.json parsing, variable substitution, merging
   feature/     -> DevContainer Features (OCI resolution, ordering, Dockerfile generation)
   engine/      -> Core orchestration (up/down/remove flows, lifecycle hooks)
   driver/      -> Container runtime abstraction (Docker/Podman via single OCI driver)
   compose/     -> Docker Compose / Podman Compose helper
-  plugin/      -> Plugin system (manager, bundled plugins: codingagents, packagecache, shellhistory, ssh)
+  plugin/      -> Plugin system (codingagents, packagecache, shellhistory, ssh)
   workspace/   -> Workspace state management (~/.crib/workspaces/)
   dockerfile/  -> Dockerfile parsing and rewriting
 ```
 
-Dependency flow: `cmd/ -> engine/ -> config/, feature/, driver/, compose/, dockerfile/, workspace/ -> config/`. No cycles. Leaves at the bottom, CLI at the top.
+Dependency flow: `cmd/ -> engine/ -> {config/, feature/, driver/, compose/,
+dockerfile/, workspace/}`. No cycles.
 
 ## Key Design Decisions
 
 - No agent injection. All container setup via `docker exec` from the host.
-- No SSH, no providers, no IDE integration. CLI only.
 - Docker and Podman through a single `OCIDriver` (not separate implementations).
 - Implicit workspace resolution from `cwd` (walk up to find `.devcontainer/`).
-- Container naming: `crib-{workspace-id}` for human-readable `docker ps`.
-- Container labels: `crib.workspace=<id>` for discovery.
+- Container naming: `crib-{workspace-id}`, labels: `crib.workspace=<id>`.
 - State stored in `~/.crib/workspaces/{id}/`.
 - Runtime detection: `CRIB_RUNTIME` env var > podman > docker.
-
-## Dual Code Paths: Single-Container vs Compose
-
-The engine has two separate code paths that diverge at `Up()`:
-
-- **Single-container** (`engine/single.go`): image-based and Dockerfile-based devcontainers. Uses `driver.RunOptions` + `driver.RunContainer()`.
-- **Compose** (`engine/compose.go`): Docker Compose devcontainers. Generates a compose override YAML and delegates to `compose up`.
-
-Both paths converge at `setupAndReturn()` for lifecycle hooks and result saving.
-
-When adding a feature that affects container creation (plugins, mounts, env vars, labels), it must be wired into **both** paths. The compose path cannot use `RunOptions` directly, so inject config via `generateComposeOverride()` (for mounts, env, labels) and `execPluginCopies()` (for file copies after container start). The `restart.go` file also has separate methods for each path (`restartRecreateSingle` vs `restartRecreateCompose`).
-
-`dispatchPlugins()` builds the plugin request and returns the response without merging into any target. Both paths call it, then apply the response differently: single-container merges into `RunOptions`, compose passes it to `generateComposeOverride`.
-
-### Compose override is ephemeral, not baked in
-
-For single-container workspaces, env vars and mounts are baked into the container config at creation time and survive `docker restart`. For compose workspaces, the override YAML is a temp file regenerated on every `compose up`. This means **every code path that calls `generateComposeOverride()` must dispatch plugins and pass the response**, otherwise plugin env vars and mounts silently disappear. This includes:
-
-- `upCompose` (fresh up, stopped container restart, stored result)
-- `restartSimple` compose path
-- `restartRecreateCompose`
-
-Similarly, **never use a stored container ID for compose operations after `compose up`**. The override may have changed, causing compose to recreate the container with a new ID. Always call `findComposeContainer()` after `compose up` returns.
-
-## Development Workflow
-
-See the [Development](https://fgrehm.github.io/crib/contributing/development/) page on the docs site for branching model and build instructions.
-
-- All work happens on `main`. No long-lived feature branches.
-- Releases are tagged (e.g. `v0.3.0`) and the `stable` branch is updated to match.
 
 ## Build and Test
 
@@ -91,81 +49,31 @@ Requires Go 1.26+.
 ```
 make build            # build bin/crib
 make test             # unit tests (go test ./internal/... -short)
-make lint             # golangci-lint (v2, managed as go tool dependency)
+make lint             # golangci-lint v2 (managed as go tool dependency)
 make test-integration # integration tests (requires Docker or Podman)
-make setup-hooks      # configure git hooks (.githooks/pre-commit)
 ```
 
-Run a single test:
-```
-go test ./internal/config/ -short -run TestParseFull
-```
-
-## Releasing
-
-To cut a new release:
-
-1. Run `make test` and `make lint` to verify everything is clean.
-2. Update `CHANGELOG.md`: move `[Unreleased]` entries into a new `[X.Y.Z] - YYYY-MM-DD` section.
-3. Update `VERSION` file to `X.Y.Z`.
-4. Commit: `chore: release vX.Y.Z`.
-5. Tag: `git tag vX.Y.Z`.
-6. Update `stable` branch: `git branch -f stable vX.Y.Z`.
-7. Push: `git push origin main vX.Y.Z stable`.
-
-## Changelog
-
-`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format. Update the `[Unreleased]` section when making user-facing changes (new features, bug fixes, breaking changes, command renames, etc.). Internal refactors that don't affect behavior don't need an entry.
-
-When releasing, also mirror the new version section into `website/src/content/docs/reference/changelog.md`:
-- The site changelog has no `[Unreleased]` section.
-- Version headers are links: `## [0.3.1](https://github.com/fgrehm/crib/releases/tag/v0.3.1) - YYYY-MM-DD`
-
-## Logging and Output
-
-Four output mechanisms, each with a distinct purpose:
-
-| Mechanism | Audience | Controlled by |
-|-----------|----------|---------------|
-| `internal/ui` (stdout) | User — results and errors | always visible; `cmd/` layer only |
-| Engine progress callback | User — operation status (`  Creating container...`) | always visible |
-| Engine stdout/stderr writers | User — subprocess output (hooks, build, compose) | `-V` / `--verbose` |
-| `log/slog` (stderr) | Developer diagnostics | `--debug` |
-
-**slog levels:** `Debug` for exec commands and internal decisions; `Warn` for non-fatal
-fallbacks; `Info` for one-time startup events only (runtime/compose detection).
-
-**`-V`** passes subprocess stdout through instead of discarding it. Does not change the slog
-level. To echo a command in verbose mode, write it to the engine's stderr writer — not slog.
-
-**`--debug`** sets slog to Debug and should also imply verbose.
-
-Don't use slog in `cmd/` for user messages, don't promote exec logging above `Debug` to fake
-verbose output, and don't hardcode `io.Discard` where the verbose flag should decide.
-
-## Naming Conventions: "devcontainer" vs "dev container"
-
-Use these consistently in docs, comments, and commit messages:
-
-- **`devcontainer`** (one word, lowercase) for files, directories, and config references: `devcontainer.json`, `.devcontainer/`, `devcontainer-feature.json`.
-- **"dev container"** (two words, lowercase) for the generic concept: "start a dev container", "your dev container environment".
-- **"DevContainer Features"** (PascalCase, proper noun) for the spec's Feature system. Same for "DevContainer Spec" when referring to the specification by name.
-- **`crib exec --`** always use `--` separator in docs examples before the command to run.
-- Never use "Dev Containers" (space, both capitalized) unless referring to the VS Code extension by its product name.
+Run a single test: `go test ./internal/config/ -short -run TestParseFull`
 
 ## Conventions
 
 - Go module: `github.com/fgrehm/crib`
-- All packages under `internal/`, this is a binary not a library.
-- Logging via `log/slog`.
-- CLI framework: `spf13/cobra`.
+- All packages under `internal/`; this is a binary, not a library.
+- CLI: `spf13/cobra`. Logging: `log/slog`.
 - Linting: golangci-lint v2 (errcheck, govet, staticcheck, unused, ineffassign).
 - Pre-commit hooks: gofmt + golangci-lint on staged Go files.
 
-## Known Issues / Troubleshooting
+## Key Reference Pages
 
-`docs/troubleshooting.md` (symlinked into the website at `reference/troubleshooting`) collects common issues and solutions. When users report container environment problems (permission errors, missing tools, networking issues), add an entry there even if the root cause is outside crib (e.g. base image permissions, runtime quirks). Users look for help in crib's docs first regardless of whose "fault" it is.
+- `docs/devcontainers-spec.md` - quick-lookup companion to the [official spec](https://containers.dev/implementors/spec/)
+- `docs/implementation-notes.md` - quirks, workarounds, spec compliance status
+- `docs/plugin-development.md` - plugin interface, response types, merge rules
+- `docs/decisions/` - architecture decision records
 
-## Implementation Status
+## Releasing
 
-All core packages and CLI commands are implemented. The tool supports image-based, Dockerfile-based, and Docker Compose-based devcontainers, including feature installation, lifecycle hooks, and workspace state management.
+1. `make test && make lint`
+2. Move `CHANGELOG.md` `[Unreleased]` entries into `[X.Y.Z] - YYYY-MM-DD`.
+3. Update `VERSION` file.
+4. Commit: `chore: release vX.Y.Z`.
+5. Tag, update stable, push: `git tag vX.Y.Z && git branch -f stable vX.Y.Z && git push origin main vX.Y.Z stable`

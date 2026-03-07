@@ -1,0 +1,1 @@
+../../docs/ai-instructions/plugins.instructions.md
