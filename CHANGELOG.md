@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-03-08
+
+### Fixed
+
+- Compose container lookup fallback now filters by service name. Previously,
+  when the primary service failed to start, crib could pick up the wrong
+  container (e.g. postgres instead of rails-app) and show misleading logs in
+  the error message. The fallback now uses `compose ps --format json` with
+  service label matching, which also works on podman-compose (unlike
+  `compose ps -q <service>` which podman-compose doesn't support).
+
 ## [0.6.0] - 2026-03-08
 
 ### Added
