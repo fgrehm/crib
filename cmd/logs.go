@@ -14,7 +14,7 @@ var (
 var logsCmd = &cobra.Command{
 	Use:   "logs",
 	Short: "Show container logs",
-	Args:  cobra.NoArgs,
+	Args:  noArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		eng, _, store, err := newEngine()
 		if err != nil {

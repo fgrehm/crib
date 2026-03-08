@@ -10,7 +10,7 @@ import (
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Show version information",
-	Args:  cobra.NoArgs,
+	Args:  noArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		u := newUI()
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "crib "+Version)

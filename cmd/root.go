@@ -29,6 +29,16 @@ import (
 // none exists for the workspace. Used by exec, run, and shell.
 var errNoContainer = fmt.Errorf("no container found (run 'crib up' first)")
 
+// noArgs rejects any positional arguments with a clear error message.
+// Prefer this over cobra.NoArgs, whose error says "unknown command" which is
+// misleading when the extra token is not a subcommand.
+func noArgs(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("%s does not accept arguments", cmd.CommandPath())
+	}
+	return nil
+}
+
 var (
 	debugFlag      bool
 	verboseFlag    bool

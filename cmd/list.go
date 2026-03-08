@@ -11,7 +11,7 @@ var listCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List all workspaces",
-	Args:    cobra.NoArgs,
+	Args:    noArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 
