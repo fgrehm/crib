@@ -336,8 +336,8 @@ func TestExecPluginCopies(t *testing.T) {
 	if !strings.Contains(cmdStr, "chmod '0600'") {
 		t.Errorf("expected chmod '0600' in command, got: %s", cmdStr)
 	}
-	if !strings.Contains(cmdStr, "chown 'vscode'") {
-		t.Errorf("expected chown 'vscode' in command, got: %s", cmdStr)
+	if !strings.Contains(cmdStr, "chown 'vscode' '/home/vscode/.config' '/home/vscode/.config/test.json'") {
+		t.Errorf("expected chown of both dir and file in command, got: %s", cmdStr)
 	}
 }
 

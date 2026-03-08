@@ -416,7 +416,7 @@ func (e *Engine) execPluginCopies(ctx context.Context, cc containerContext, copi
 			writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", cp.Mode, cp.Target)
 		}
 		if cp.User != "" {
-			writeCmd += fmt.Sprintf(" && chown '%s' '%s'", cp.User, cp.Target)
+			writeCmd += fmt.Sprintf(" && chown '%s' '%s' '%s'", cp.User, dir, cp.Target)
 		}
 
 		var shellCmd string
