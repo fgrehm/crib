@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SSH `known_hosts` could not be written inside the container. The SSH plugin
+  created `~/.ssh/` as root but only chowned individual files, leaving the
+  directory root-owned. The container user could not create new files in it.
 - Plugin environment variables (e.g. `BUNDLE_PATH`, `CARGO_HOME`, `HISTFILE`)
   now survive `crib restart`. Previously, simple restart paths only preserved
   plugin `PathPrepend` entries but silently dropped plugin `Env` values. The
