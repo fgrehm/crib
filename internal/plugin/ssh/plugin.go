@@ -14,7 +14,11 @@ import (
 	"github.com/fgrehm/crib/internal/plugin"
 )
 
-const agentSocketTarget = "/tmp/ssh-agent.sock"
+// agentSocketTarget is the path where the host SSH agent socket is
+// bind-mounted inside the container. We use /run rather than /tmp because
+// Docker-in-Docker features remount /tmp as a fresh tmpfs, which hides any
+// bind mounts beneath it.
+const agentSocketTarget = "/run/ssh-agent.sock"
 
 // Plugin shares SSH credentials with containers. It provides:
 //   - SSH agent socket forwarding (so private keys never leave the host)

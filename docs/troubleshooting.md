@@ -250,6 +250,34 @@ Alternatively, use the spec-standard `${containerEnv:PATH}` syntax, which works 
 }
 ```
 
+## SSH agent not working with Docker-in-Docker
+
+If `SSH_AUTH_SOCK` is set inside the container but the socket file doesn't exist at that path,
+the Docker-in-Docker feature is likely remounting `/tmp` as a fresh tmpfs, hiding the SSH agent
+bind mount underneath it.
+
+**Verify:** Check if `/tmp` is a separate tmpfs inside the container:
+
+```bash
+crib exec -- findmnt /tmp
+```
+
+If it shows `tmpfs` (not the container's root filesystem), DinD has remounted `/tmp`.
+
+**Fix:** Update to crib v0.7.0+, which mounts the SSH agent socket at `/run/ssh-agent.sock`
+instead of `/tmp/ssh-agent.sock` to avoid this conflict.
+
+If you're on an older version, you can work around it by adding to your `devcontainer.json`:
+
+```jsonc
+{
+  "postStartCommand": "ln -sf /proc/1/root/tmp/ssh-agent.sock /tmp/ssh-agent.sock"
+}
+```
+
+This creates a symlink from the DinD-mounted `/tmp` to the original mount point visible in PID 1's
+mount namespace.
+
 ## `crib exec` can't find tools installed by mise/asdf/nvm/rbenv
 
 If `crib exec -- ruby -v` fails with "not found" but `crib shell` followed by `ruby -v` works,
