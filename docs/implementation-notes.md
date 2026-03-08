@@ -175,6 +175,13 @@ the feature entrypoint while still keeping the container alive with a sleep loop
 `HasFeatureEntrypoints` flag is persisted in `result.json` so restart paths that don't
 rebuild the image can apply the same logic.
 
+Feature-declared volume mounts (e.g. docker-in-docker's `/var/lib/docker`) use named Docker
+volumes (`dind-var-lib-docker-${devcontainerId}`). Named volumes are managed by the Docker/Podman
+daemon and persist independently of containers. This means the volume's contents (layer cache,
+container state, etc.) survive `crib restart`, `crib rebuild`, and even `crib remove` followed
+by `crib up`, as long as the volume itself isn't explicitly deleted. For docker-in-docker, this
+means image layers built inside the container are cached across rebuilds.
+
 **Files**:
 
 - `internal/feature/dockerfile.go` (`GenerateDockerfile`)
