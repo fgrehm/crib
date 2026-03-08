@@ -271,6 +271,109 @@ func TestSubstitute_PreservesOrigin(t *testing.T) {
 	}
 }
 
+func TestSubstituteString(t *testing.T) {
+	ctx := &SubstitutionContext{
+		DevContainerID:           "ws-123",
+		LocalWorkspaceFolder:     "/home/user/myproject",
+		ContainerWorkspaceFolder: "/workspaces/myproject",
+		Env: map[string]string{
+			"HOME":   "/home/user",
+			"GOPATH": "/home/user/go",
+		},
+	}
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			"devcontainerId",
+			"dind-var-lib-docker-${devcontainerId}",
+			"dind-var-lib-docker-ws-123",
+		},
+		{
+			"localWorkspaceFolder",
+			"${localWorkspaceFolder}/src",
+			"/home/user/myproject/src",
+		},
+		{
+			"localWorkspaceFolderBasename",
+			"vol-${localWorkspaceFolderBasename}",
+			"vol-myproject",
+		},
+		{
+			"containerWorkspaceFolder",
+			"${containerWorkspaceFolder}/build",
+			"/workspaces/myproject/build",
+		},
+		{
+			"containerWorkspaceFolderBasename",
+			"${containerWorkspaceFolderBasename}-data",
+			"myproject-data",
+		},
+		{
+			"localEnv with value",
+			"${localEnv:HOME}/.config",
+			"/home/user/.config",
+		},
+		{
+			"localEnv with default",
+			"${localEnv:EDITOR:vim}",
+			"vim",
+		},
+		{
+			"localEnv missing no default",
+			"prefix-${localEnv:MISSING}-suffix",
+			"prefix--suffix",
+		},
+		{
+			"containerEnv left as-is",
+			"${containerEnv:PATH}:/extra",
+			"${containerEnv:PATH}:/extra",
+		},
+		{
+			"unknown variable left as-is",
+			"${unknownVar}",
+			"${unknownVar}",
+		},
+		{
+			"multiple variables",
+			"${devcontainerId}-${localWorkspaceFolderBasename}",
+			"ws-123-myproject",
+		},
+		{
+			"no variables",
+			"plain string",
+			"plain string",
+		},
+		{
+			"empty string",
+			"",
+			"",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := SubstituteString(ctx, tt.input)
+			if got != tt.want {
+				t.Errorf("SubstituteString(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSubstituteString_NilEnv(t *testing.T) {
+	ctx := &SubstitutionContext{
+		DevContainerID: "ws-1",
+	}
+	got := SubstituteString(ctx, "${localEnv:HOME}")
+	if got != "" {
+		t.Errorf("expected empty string for nil env lookup, got %q", got)
+	}
+}
+
 func TestSubstituteContainerEnv(t *testing.T) {
 	containerEnv := map[string]string{
 		"PATH": "/usr/local/bin:/usr/bin",

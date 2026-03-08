@@ -996,6 +996,135 @@ func TestRestartSimple_NonCompose_PluginEnvDoesNotOverrideConfig(t *testing.T) {
 	}
 }
 
+func TestRestartRecreateSingle_PreservesFeatureEntrypoints(t *testing.T) {
+	// When restartRecreateSingle uses a stored result with HasFeatureEntrypoints,
+	// the recreated container should keep that flag so entrypoint/cmd are set
+	// correctly and the flag is persisted for subsequent restarts.
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-recreate-feat", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	storedResult := &workspace.Result{
+		ContainerID:           "old-container",
+		ImageName:             "crib-ws-recreate-feat:abc",
+		RemoteUser:            "vscode",
+		HasFeatureEntrypoints: true,
+	}
+	if err := store.SaveResult(ws.ID, storedResult); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := &restartMockDriver{}
+	eng := &Engine{
+		driver:      mockDrv,
+		store:       store,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ubuntu:22.04"
+	cfg.RemoteUser = "vscode"
+
+	_, err := eng.restartRecreateSingle(context.Background(), ws, cfg, "/workspaces/project", storedResult)
+	if err != nil {
+		t.Fatalf("restartRecreateSingle: %v", err)
+	}
+
+	// Verify RunContainer was called with feature entrypoint handling.
+	if len(mockDrv.runCalls) != 1 {
+		t.Fatalf("expected 1 RunContainer call, got %d", len(mockDrv.runCalls))
+	}
+	runOpts := mockDrv.runCalls[0]
+
+	// With HasFeatureEntrypoints, Entrypoint should be empty (feature entrypoint
+	// is in the image) and Cmd should be a full command.
+	if runOpts.Entrypoint != "" {
+		t.Errorf("Entrypoint = %q, want empty (feature entrypoint in image)", runOpts.Entrypoint)
+	}
+	if len(runOpts.Cmd) == 0 || runOpts.Cmd[0] != "/bin/sh" {
+		t.Errorf("Cmd = %v, want [/bin/sh ...] (full command for feature entrypoint)", runOpts.Cmd)
+	}
+
+	// Verify the saved result preserves HasFeatureEntrypoints.
+	saved, err := store.LoadResult(ws.ID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+	if !saved.HasFeatureEntrypoints {
+		t.Error("saved HasFeatureEntrypoints should be true")
+	}
+}
+
+func TestRestartRecreateSingle_ResolvedConfigEnv(t *testing.T) {
+	// When restartRecreateSingle has a snapshot, ${containerEnv:PATH} in
+	// cfg.RemoteEnv should be resolved using the stored env.
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-recreate-envres", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	storedResult := &workspace.Result{
+		ContainerID:      "old-container",
+		ImageName:        "go:1.22",
+		RemoteUser:       "vscode",
+		SnapshotImage:    "crib-ws-recreate-envres:snapshot",
+		SnapshotHookHash: "44136fa355b3678a",
+		RemoteEnv: map[string]string{
+			"PATH":   "/go/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin",
+			"GOPATH": "/go",
+		},
+	}
+	if err := store.SaveResult(ws.ID, storedResult); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := &restartMockDriver{}
+	eng := &Engine{
+		driver:      mockDrv,
+		store:       store,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(string) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "go:1.22"
+	cfg.RemoteUser = "vscode"
+	cfg.RemoteEnv = map[string]string{
+		"PATH": "/usr/local/go/bin:${containerEnv:PATH}",
+	}
+
+	_, err := eng.restartRecreateSingle(context.Background(), ws, cfg, "/workspaces/project", storedResult)
+	if err != nil {
+		t.Fatalf("restartRecreateSingle: %v", err)
+	}
+
+	saved, err := store.LoadResult(ws.ID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+
+	path := saved.RemoteEnv["PATH"]
+	if strings.Contains(path, "${containerEnv") {
+		t.Errorf("PATH has unresolved reference: %q", path)
+	}
+	if !strings.Contains(path, "/go/bin") {
+		t.Errorf("PATH missing stored /go/bin: %q", path)
+	}
+	if !strings.Contains(path, "/usr/local/go/bin") {
+		t.Errorf("PATH missing /usr/local/go/bin: %q", path)
+	}
+}
+
 func TestResolveConfigEnvFromStored(t *testing.T) {
 	cfg := &config.DevContainerConfig{
 		DevContainerConfigBase: config.DevContainerConfigBase{
@@ -1021,5 +1150,77 @@ func TestResolveConfigEnvFromStored(t *testing.T) {
 	// Non-containerEnv values should pass through.
 	if got["EDITOR"] != "nano" {
 		t.Errorf("EDITOR = %q, want nano", got["EDITOR"])
+	}
+}
+
+func TestResolveConfigEnvFromStored_EmptyRemoteEnv(t *testing.T) {
+	cfg := &config.DevContainerConfig{}
+	got := resolveConfigEnvFromStored(cfg, map[string]string{"PATH": "/usr/bin"})
+	if got != nil {
+		t.Errorf("expected nil for empty RemoteEnv, got %v", got)
+	}
+}
+
+func TestResolveConfigEnvFromStored_NoContainerEnvRefs(t *testing.T) {
+	cfg := &config.DevContainerConfig{
+		DevContainerConfigBase: config.DevContainerConfigBase{
+			RemoteEnv: map[string]string{
+				"EDITOR": "nano",
+				"LANG":   "en_US.UTF-8",
+			},
+		},
+	}
+	storedEnv := map[string]string{"PATH": "/usr/bin"}
+
+	got := resolveConfigEnvFromStored(cfg, storedEnv)
+
+	if got["EDITOR"] != "nano" {
+		t.Errorf("EDITOR = %q, want nano", got["EDITOR"])
+	}
+	if got["LANG"] != "en_US.UTF-8" {
+		t.Errorf("LANG = %q, want en_US.UTF-8", got["LANG"])
+	}
+}
+
+func TestResolveConfigEnvFromStored_BareVarRefs(t *testing.T) {
+	cfg := &config.DevContainerConfig{
+		DevContainerConfigBase: config.DevContainerConfigBase{
+			RemoteEnv: map[string]string{
+				"PATH": "/extra:${PATH}",
+			},
+		},
+	}
+	storedEnv := map[string]string{
+		"PATH": "/usr/local/bin:/usr/bin",
+	}
+
+	got := resolveConfigEnvFromStored(cfg, storedEnv)
+
+	if !strings.Contains(got["PATH"], "/usr/local/bin") {
+		t.Errorf("PATH should contain stored /usr/local/bin: %q", got["PATH"])
+	}
+	if !strings.Contains(got["PATH"], "/extra") {
+		t.Errorf("PATH should contain /extra: %q", got["PATH"])
+	}
+	if strings.Contains(got["PATH"], "${PATH}") {
+		t.Errorf("PATH should not contain unresolved ${PATH}: %q", got["PATH"])
+	}
+}
+
+func TestResolveConfigEnvFromStored_ContainerEnvDefault(t *testing.T) {
+	cfg := &config.DevContainerConfig{
+		DevContainerConfigBase: config.DevContainerConfigBase{
+			RemoteEnv: map[string]string{
+				"DISPLAY": "${containerEnv:DISPLAY:localhost:0}",
+			},
+		},
+	}
+	storedEnv := map[string]string{"PATH": "/usr/bin"}
+
+	got := resolveConfigEnvFromStored(cfg, storedEnv)
+
+	// DISPLAY is not in stored env, so the default should apply.
+	if got["DISPLAY"] != "localhost:0" {
+		t.Errorf("DISPLAY = %q, want localhost:0", got["DISPLAY"])
 	}
 }

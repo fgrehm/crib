@@ -450,6 +450,234 @@ func TestRemoveService(t *testing.T) {
 	}
 }
 
+func TestGenerateComposeOverride_FeatureCapabilities(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	priv := true
+	init := true
+	metadata := []*config.ImageMetadata{
+		{
+			NonComposeBase: config.NonComposeBase{
+				Privileged:  &priv,
+				Init:        &init,
+				CapAdd:      []string{"SYS_PTRACE", "NET_ADMIN"},
+				SecurityOpt: []string{"seccomp=unconfined"},
+			},
+		},
+	}
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil, metadata...)
+	if err != nil {
+		t.Fatalf("generateComposeOverride failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "privileged: true") {
+		t.Errorf("expected privileged: true, got:\n%s", content)
+	}
+	if !strings.Contains(content, "init: true") {
+		t.Errorf("expected init: true, got:\n%s", content)
+	}
+	if !strings.Contains(content, "SYS_PTRACE") {
+		t.Errorf("expected SYS_PTRACE in cap_add, got:\n%s", content)
+	}
+	if !strings.Contains(content, "NET_ADMIN") {
+		t.Errorf("expected NET_ADMIN in cap_add, got:\n%s", content)
+	}
+	if !strings.Contains(content, "seccomp=unconfined") {
+		t.Errorf("expected seccomp=unconfined in security_opt, got:\n%s", content)
+	}
+}
+
+func TestGenerateComposeOverride_FeatureEntrypointSetsCommandOnly(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	metadata := []*config.ImageMetadata{
+		{
+			ID:         "docker-in-docker",
+			Entrypoint: "/usr/local/share/docker-init.sh",
+		},
+	}
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "crib-test-ws:features", nil, metadata...)
+	if err != nil {
+		t.Fatalf("generateComposeOverride failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+	content := string(data)
+
+	// With feature entrypoints: should NOT override entrypoint, only set command.
+	if strings.Contains(content, "entrypoint:") {
+		t.Errorf("should not override entrypoint when feature has entrypoint, got:\n%s", content)
+	}
+	if !strings.Contains(content, "command:") {
+		t.Errorf("expected command section, got:\n%s", content)
+	}
+	if !strings.Contains(content, "/bin/sh") {
+		t.Errorf("expected /bin/sh in command, got:\n%s", content)
+	}
+}
+
+func TestGenerateComposeOverride_NoFeatureEntrypointSetsEntrypoint(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil)
+	if err != nil {
+		t.Fatalf("generateComposeOverride failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+	content := string(data)
+
+	// Without feature entrypoints: should set entrypoint and command.
+	if !strings.Contains(content, "entrypoint: /bin/sh") {
+		t.Errorf("expected entrypoint: /bin/sh, got:\n%s", content)
+	}
+}
+
+func TestGenerateComposeOverride_FeatureMounts(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	metadata := []*config.ImageMetadata{
+		{
+			NonComposeBase: config.NonComposeBase{
+				Mounts: []config.Mount{
+					{Type: "volume", Source: "dind-var-lib-docker-${devcontainerId}", Target: "/var/lib/docker"},
+				},
+			},
+		},
+	}
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil, metadata...)
+	if err != nil {
+		t.Fatalf("generateComposeOverride failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+	content := string(data)
+
+	// Variable substitution should resolve ${devcontainerId}.
+	if !strings.Contains(content, "dind-var-lib-docker-test-ws:/var/lib/docker") {
+		t.Errorf("expected substituted feature mount, got:\n%s", content)
+	}
+
+	// Named volume should get a top-level declaration.
+	if !strings.Contains(content, "  dind-var-lib-docker-test-ws:\n    name: dind-var-lib-docker-test-ws") {
+		t.Errorf("expected top-level named volume declaration, got:\n%s", content)
+	}
+}
+
+func TestGenerateComposeOverride_FeatureEnv(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	metadata := []*config.ImageMetadata{
+		{
+			NonComposeBase: config.NonComposeBase{
+				ContainerEnv: map[string]string{
+					"DOCKER_HOST": "unix:///var/run/docker.sock",
+					"WS_ID":       "${devcontainerId}",
+				},
+			},
+		},
+	}
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil, metadata...)
+	if err != nil {
+		t.Fatalf("generateComposeOverride failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "DOCKER_HOST:") {
+		t.Errorf("expected DOCKER_HOST in environment, got:\n%s", content)
+	}
+	// Variable substitution should resolve ${devcontainerId} in env values.
+	if !strings.Contains(content, `"test-ws"`) {
+		t.Errorf("expected substituted WS_ID value, got:\n%s", content)
+	}
+}
+
+func TestGenerateComposeOverride_FeatureEnvMergedWithConfigAndPlugin(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+	cfg.ContainerEnv = map[string]string{"APP_ENV": "development"}
+
+	pluginResp := &plugin.PreContainerRunResponse{
+		Env: map[string]string{"HISTFILE": "/home/vscode/.crib_history/.shell_history"},
+	}
+	metadata := []*config.ImageMetadata{
+		{
+			NonComposeBase: config.NonComposeBase{
+				ContainerEnv: map[string]string{"DOCKER_HOST": "unix:///var/run/docker.sock"},
+			},
+		},
+	}
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", pluginResp, metadata...)
+	if err != nil {
+		t.Fatalf("generateComposeOverride failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+	content := string(data)
+
+	// All three env sources should be present.
+	if !strings.Contains(content, "APP_ENV:") {
+		t.Errorf("expected APP_ENV from config, got:\n%s", content)
+	}
+	if !strings.Contains(content, "DOCKER_HOST:") {
+		t.Errorf("expected DOCKER_HOST from feature, got:\n%s", content)
+	}
+	if !strings.Contains(content, "HISTFILE:") {
+		t.Errorf("expected HISTFILE from plugin, got:\n%s", content)
+	}
+}
+
 func TestWritePodmanDownOverride_RootlessPodman(t *testing.T) {
 	origGetuid := getuid
 	t.Cleanup(func() { getuid = origGetuid })
