@@ -18,6 +18,14 @@ jobs:
           cache: true
       - run: make test
       - run: make lint
+      - name: Complexity gate (gocyclo -over 40)
+        run: |
+          out=$(go tool gocyclo -over 40 .)
+          if [ -n "$out" ]; then
+            echo "Functions exceeding complexity threshold of 40:"
+            echo "$out"
+            exit 1
+          fi
 
   e2e-podman:
     name: E2E tests (Podman)

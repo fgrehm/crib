@@ -1,4 +1,4 @@
-.PHONY: build install clean test lint test-integration test-e2e setup-hooks help docs
+.PHONY: build install clean test lint audit test-integration test-e2e setup-hooks help docs
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -21,6 +21,13 @@ test: ## Run unit tests
 
 lint: ## Run linters
 	go tool golangci-lint run
+
+audit: ## Run complexity and dead-code analysis (informational)
+	@echo "=== Cyclomatic complexity (>15) ==="
+	@go tool gocyclo -over 15 . || true
+	@echo ""
+	@echo "=== Dead code ==="
+	@go tool deadcode ./... 2>&1 || true
 
 test-integration: ## Run integration tests (requires Docker or Podman)
 	go test ./internal/... -run Integration -count=1

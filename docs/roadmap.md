@@ -91,6 +91,10 @@ Remaining: scrub PII patterns from subprocess output and verbose logs (not just 
 
 SSH server inside containers via the plugin system, enabling native filesystem performance on macOS and editor-agnostic remote development. See the [RFC](https://github.com/fgrehm/crib/blob/main/docs/rfcs/remote-access.md) for the full design.
 
+### Reduce cyclomatic complexity hotspots
+
+CI gates at gocyclo > 40 (the ratchet that prevents things from getting worse). Several engine functions exceed 15, the practical threshold for maintainability: `upCompose` (38), `syncRemoteUserUID` (29), `generateComposeOverride` (26), `Doctor` (23), `detectConfigChange` (22), `extractTar` (19), `upSingle` (18), `restartRecreateSingle` (18). These should be broken into focused helpers before they become harder to change.
+
 ## Not Planned
 
 These are explicitly out of scope for `crib`'s design philosophy.
