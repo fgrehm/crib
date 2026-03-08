@@ -213,21 +213,29 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 func (e *Engine) upComposeFromStored(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, inv composeInvocation, storedResult *workspace.Result) (*UpResult, error) {
 	e.logger.Debug("compose up from stored result (skipping build)")
 
+	// Check for a valid snapshot to resume from.
+	snapshotImage, hasSnapshot := e.validSnapshot(ctx, ws, cfg)
+
 	// Use the stored feature image name in the override so compose uses
 	// the previously built image instead of the base service image.
+	// If a valid snapshot exists, use it as the override image instead.
 	featureImage := storedResult.ImageName
+	overrideImage := featureImage
+	if hasSnapshot {
+		overrideImage = snapshotImage
+	}
 
 	// Resolve the container user from the compose service so plugins get
 	// the correct remote user for home directory paths.
 	composeUser := e.resolveComposeUser(ctx, cfg, inv.files)
 
 	// Run pre-container-run plugins to get mounts, env, and file copies.
-	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, featureImage, workspaceFolder, composeUser)
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, overrideImage, workspaceFolder, composeUser)
 	if err != nil {
 		return nil, err
 	}
 
-	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, inv.files, featureImage, pluginResp)
+	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, inv.files, overrideImage, pluginResp)
 	if err != nil {
 		return nil, fmt.Errorf("generating compose override: %w", err)
 	}
@@ -252,6 +260,10 @@ func (e *Engine) upComposeFromStored(ctx context.Context, ws *workspace.Workspac
 		workspaceID:     ws.ID,
 		containerID:     container.ID,
 		workspaceFolder: workspaceFolder,
+	}
+
+	if hasSnapshot {
+		return e.finalizeFromSnapshot(ctx, ws, cfg, cc, featureImage, pluginResp, storedResult)
 	}
 	return e.finalizeSetup(ctx, ws, cfg, cc, featureImage, pluginResp, storedResult.HasFeatureEntrypoints)
 }

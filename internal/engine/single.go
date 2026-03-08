@@ -78,6 +78,17 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 		}
 	}
 
+	// No container exists. If this workspace was previously set up (e.g.
+	// after "crib down") and has a valid snapshot, resume from it instead
+	// of rebuilding and re-running all lifecycle hooks.
+	if !opts.Recreate {
+		if storedResult, loadErr := e.store.LoadResult(ws.ID); loadErr == nil && storedResult != nil {
+			if snapshotImage, ok := e.validSnapshot(ctx, ws, cfg); ok {
+				return e.upSingleFromSnapshot(ctx, ws, cfg, workspaceFolder, storedResult, snapshotImage)
+			}
+		}
+	}
+
 	// Build the image.
 	buildRes, err := e.buildImage(ctx, ws, cfg)
 	if err != nil {
@@ -123,6 +134,46 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 		workspaceFolder: workspaceFolder,
 	}
 	return e.finalizeSetup(ctx, ws, cfg, cc, buildRes.imageName, pluginResp, buildRes.hasEntrypoints)
+}
+
+// upSingleFromSnapshot creates a container from a snapshot image and runs
+// only resume-flow lifecycle hooks, skipping the full build and create-time
+// hooks. Used when "up" is called after "down" and a valid snapshot exists.
+func (e *Engine) upSingleFromSnapshot(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, storedResult *workspace.Result, snapshotImage string) (*UpResult, error) {
+	e.logger.Debug("up single from snapshot", "image", snapshotImage)
+
+	hasFeatureEntrypoints := storedResult.HasFeatureEntrypoints
+
+	runOpts, err := e.buildRunOptions(cfg, snapshotImage, ws.Source, workspaceFolder, hasFeatureEntrypoints)
+	if err != nil {
+		return nil, err
+	}
+
+	// Run pre-container-run plugins to inject mounts, env, and extra args.
+	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, snapshotImage, workspaceFolder)
+	if err != nil {
+		return nil, err
+	}
+
+	e.reportProgress("Creating container from snapshot...")
+	if err := e.driver.RunContainer(ctx, ws.ID, runOpts); err != nil {
+		return nil, fmt.Errorf("creating container: %w", err)
+	}
+
+	container, err := e.driver.FindContainer(ctx, ws.ID)
+	if err != nil {
+		return nil, fmt.Errorf("finding new container: %w", err)
+	}
+	if container == nil {
+		return nil, fmt.Errorf("container not found after creation")
+	}
+
+	cc := containerContext{
+		workspaceID:     ws.ID,
+		containerID:     container.ID,
+		workspaceFolder: workspaceFolder,
+	}
+	return e.finalizeFromSnapshot(ctx, ws, cfg, cc, storedResult.ImageName, pluginResp, storedResult)
 }
 
 // buildRunOptions constructs RunOptions from the devcontainer config.
@@ -264,6 +315,51 @@ func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg
 		e.saveResult(ws, cfg, result)
 	}
 	return result, setupErr
+}
+
+// finalizeFromSnapshot runs post-creation steps using a snapshot: copies
+// plugin files, resolves environment from the stored result, and runs only
+// resume-flow lifecycle hooks. Used by the up command when a valid snapshot
+// exists from a previous run (e.g. after "crib down").
+func (e *Engine) finalizeFromSnapshot(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, imageName string, pluginResp *plugin.PreContainerRunResponse, storedResult *workspace.Result) (*UpResult, error) {
+	if pluginResp != nil {
+		e.execPluginCopies(ctx, cc, pluginResp.Copies)
+
+		remoteUser := configRemoteUser(cfg)
+		if remoteUser != "" && remoteUser != "root" {
+			volCC := cc
+			volCC.remoteUser = remoteUser
+			e.chownPluginVolumes(ctx, volCC, pluginResp.Mounts)
+		}
+	}
+
+	cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg)
+
+	// Build env from stored result + plugins (no container probing needed).
+	configEnv := resolveConfigEnvFromStored(cfg, storedResult.RemoteEnv)
+	envb := NewEnvBuilder(configEnv)
+	envb.AddPluginResponse(pluginResp)
+	envb.RestoreFrom(storedResult.RemoteEnv)
+	cfg.RemoteEnv = envb.Build()
+
+	result := &UpResult{
+		ContainerID:           cc.containerID,
+		ImageName:             imageName,
+		WorkspaceFolder:       cc.workspaceFolder,
+		RemoteUser:            cc.remoteUser,
+		Ports:                 portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort)),
+		HasFeatureEntrypoints: storedResult.HasFeatureEntrypoints,
+	}
+
+	// Save early so crib exec/shell work while resume hooks run.
+	e.saveResult(ws, cfg, result)
+
+	// Run only resume-flow hooks (create-time effects are in the snapshot).
+	if err := e.runResumeHooks(ctx, ws, cfg, cc); err != nil {
+		e.logger.Warn("resume hooks failed", "error", err)
+	}
+
+	return result, nil
 }
 
 // chownPluginVolumes changes ownership of plugin volume mounts to the
