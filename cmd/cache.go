@@ -26,6 +26,7 @@ var cacheCmd = &cobra.Command{
 var cacheListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List package cache volumes",
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 

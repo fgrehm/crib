@@ -8,6 +8,7 @@ var downCmd = &cobra.Command{
 	Use:     "down",
 	Aliases: []string{"stop"},
 	Short:   "Stop and remove the current workspace container",
+	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 

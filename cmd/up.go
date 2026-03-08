@@ -12,6 +12,7 @@ var recreateFlag bool
 var upCmd = &cobra.Command{
 	Use:   "up",
 	Short: "Create or start the workspace container",
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 

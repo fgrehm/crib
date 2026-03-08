@@ -19,6 +19,7 @@ are skipped, making restart much faster than a full rebuild.
 
 If image-affecting changes are detected (image, Dockerfile, features, build
 args), restart will ask you to run 'crib rebuild' instead.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 

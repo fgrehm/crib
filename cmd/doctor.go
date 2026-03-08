@@ -11,6 +11,7 @@ var doctorFixFlag bool
 var doctorCmd = &cobra.Command{
 	Use:   "doctor",
 	Short: "Check workspace health and diagnose issues",
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 

@@ -8,6 +8,7 @@ var removeCmd = &cobra.Command{
 	Use:     "remove",
 	Aliases: []string{"rm", "delete"},
 	Short:   "Remove the current workspace container and state",
+	Args:    cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 

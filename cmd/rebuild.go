@@ -10,6 +10,7 @@ import (
 var rebuildCmd = &cobra.Command{
 	Use:   "rebuild",
 	Short: "Rebuild and restart the workspace container",
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 
