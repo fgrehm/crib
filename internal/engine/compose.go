@@ -412,53 +412,14 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		}
 	}
 
-	// Apply feature capabilities (privileged, init, cap_add, security_opt).
-	for _, m := range featureMetadata {
-		if m.Privileged != nil && *m.Privileged {
-			b.WriteString("    privileged: true\n")
-			break
-		}
-	}
-	for _, m := range featureMetadata {
-		if m.Init != nil && *m.Init {
-			b.WriteString("    init: true\n")
-			break
-		}
-	}
-	var capAdds, secOpts []string
-	for _, m := range featureMetadata {
-		capAdds = append(capAdds, m.CapAdd...)
-		secOpts = append(secOpts, m.SecurityOpt...)
-	}
-	if len(capAdds) > 0 {
-		b.WriteString("    cap_add:\n")
-		for _, c := range capAdds {
-			fmt.Fprintf(&b, "      - %s\n", c)
-		}
-	}
-	if len(secOpts) > 0 {
-		b.WriteString("    security_opt:\n")
-		for _, s := range secOpts {
-			fmt.Fprintf(&b, "      - %s\n", s)
-		}
-	}
-
-	// Variable substitution for feature metadata strings.
+	// Apply feature capabilities and collect mounts/env with variable substitution.
 	subCtx := &config.SubstitutionContext{
 		DevContainerID:           ws.ID,
 		LocalWorkspaceFolder:     ws.Source,
 		ContainerWorkspaceFolder: workspaceFolder,
 		Env:                      envMap(),
 	}
-	sub := func(s string) string { return config.SubstituteString(subCtx, s) }
-
-	// Collect feature containerEnv (needs variable substitution).
-	featureEnv := make(map[string]string)
-	for _, m := range featureMetadata {
-		for k, v := range m.ContainerEnv {
-			featureEnv[k] = sub(v)
-		}
-	}
+	featureEnv, featureMounts := writeFeatureOverrides(&b, featureMetadata, subCtx)
 
 	// Container environment (config + plugins + features).
 	hasConfigEnv := len(cfg.ContainerEnv) > 0
@@ -476,16 +437,6 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 			for k, v := range pluginResp.Env {
 				fmt.Fprintf(&b, "      %s: %q\n", k, v)
 			}
-		}
-	}
-
-	// Collect feature mounts (needs variable substitution).
-	var featureMounts []config.Mount
-	for _, m := range featureMetadata {
-		for _, mount := range m.Mounts {
-			mount.Source = sub(mount.Source)
-			mount.Target = sub(mount.Target)
-			featureMounts = append(featureMounts, mount)
 		}
 	}
 
@@ -555,6 +506,59 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	}
 
 	return overridePath, nil
+}
+
+// writeFeatureOverrides writes feature capabilities (privileged, init, cap_add,
+// security_opt) to the compose override YAML and returns collected feature env
+// and mounts with variable substitution applied.
+func writeFeatureOverrides(b *strings.Builder, metadata []*config.ImageMetadata, subCtx *config.SubstitutionContext) (env map[string]string, mounts []config.Mount) {
+	sub := func(s string) string { return config.SubstituteString(subCtx, s) }
+
+	for _, m := range metadata {
+		if m.Privileged != nil && *m.Privileged {
+			b.WriteString("    privileged: true\n")
+			break
+		}
+	}
+	for _, m := range metadata {
+		if m.Init != nil && *m.Init {
+			b.WriteString("    init: true\n")
+			break
+		}
+	}
+	var capAdds, secOpts []string
+	for _, m := range metadata {
+		capAdds = append(capAdds, m.CapAdd...)
+		secOpts = append(secOpts, m.SecurityOpt...)
+	}
+	if len(capAdds) > 0 {
+		b.WriteString("    cap_add:\n")
+		for _, c := range capAdds {
+			fmt.Fprintf(b, "      - %s\n", c)
+		}
+	}
+	if len(secOpts) > 0 {
+		b.WriteString("    security_opt:\n")
+		for _, s := range secOpts {
+			fmt.Fprintf(b, "      - %s\n", s)
+		}
+	}
+
+	env = make(map[string]string)
+	for _, m := range metadata {
+		for k, v := range m.ContainerEnv {
+			env[k] = sub(v)
+		}
+	}
+
+	for _, m := range metadata {
+		for _, mount := range m.Mounts {
+			mount.Source = sub(mount.Source)
+			mount.Target = sub(mount.Target)
+			mounts = append(mounts, mount)
+		}
+	}
+	return env, mounts
 }
 
 // composeDown wraps compose.Down, including a temporary x-podman override when
