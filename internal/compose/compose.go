@@ -183,6 +183,46 @@ func (h *Helper) ListContainers(ctx context.Context, projectName string, files [
 	return parseLines(stdoutBuf.String()), nil
 }
 
+// FindServiceContainerID returns the container ID for a specific service in a
+// compose project. It uses `compose ps --format json` and matches the service
+// label, which works on both docker compose and podman-compose (unlike
+// `compose ps -q <service>` which podman-compose doesn't support).
+// Returns empty string if the service is not found.
+func (h *Helper) FindServiceContainerID(ctx context.Context, projectName string, files []string, service string, extraEnv []string) (string, error) {
+	args := projectArgs(projectName, files)
+	args = append(args, "ps", "--format", "json")
+
+	cmd := exec.CommandContext(ctx, h.baseCommand, append(h.argsPrefix, args...)...)
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
+	}
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%s compose ps: %w: %s", h.baseCommand, err, stderrBuf.String())
+	}
+
+	var containers []struct {
+		// Go's json.Unmarshal does case-insensitive key matching, so "Id"
+		// matches both Podman's "Id" and Docker Compose's "ID".
+		ID     string            `json:"Id"`
+		Labels map[string]string `json:"Labels"`
+	}
+	if err := json.Unmarshal(stdoutBuf.Bytes(), &containers); err != nil {
+		return "", fmt.Errorf("parsing compose ps output: %w", err)
+	}
+
+	for _, c := range containers {
+		if c.Labels[ServiceLabel] == service {
+			return c.ID, nil
+		}
+	}
+	return "", nil
+}
+
 // ServiceStatus holds the status of a single compose service.
 type ServiceStatus struct {
 	Service string

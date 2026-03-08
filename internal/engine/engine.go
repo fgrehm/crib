@@ -33,6 +33,7 @@ type composeInvocation struct {
 	projectName string
 	files       []string
 	env         []string
+	service     string // primary devcontainer service name
 }
 
 // newComposeInvocation constructs a composeInvocation from workspace and config.
@@ -42,6 +43,7 @@ func newComposeInvocation(ws *workspace.Workspace, cfg *config.DevContainerConfi
 		projectName: compose.ProjectName(ws.ID),
 		files:       resolveComposeFiles(cd, cfg.DockerComposeFile),
 		env:         devcontainerEnv(ws.ID, ws.Source, workspaceFolder),
+		service:     cfg.Service,
 	}
 }
 

@@ -673,20 +673,24 @@ func (e *Engine) findComposeContainer(ctx context.Context, workspaceID string, i
 		return container, nil
 	}
 
-	// Fallback to compose ps to handle podman compose -> docker-compose delegation
-	// where labels might not be visible to podman.
+	// Fallback to compose ps --format json to find the service container.
+	// This handles podman compose -> docker-compose delegation where crib
+	// labels might not be visible to podman. We filter by service name to
+	// avoid returning the wrong container (e.g. postgres instead of the
+	// primary dev container). podman-compose doesn't support
+	// `compose ps -q <service>`, so we use JSON output and match the
+	// compose service label instead.
 	e.logger.Debug("FindContainer returned nil, trying compose ps", "stage", stage)
-	containerIDs, err := e.compose.ListContainers(ctx, inv.projectName, inv.files, inv.env)
+	containerID, err := e.compose.FindServiceContainerID(ctx, inv.projectName, inv.files, inv.service, inv.env)
 	if err != nil {
 		return nil, fmt.Errorf("compose container not found %s and ps failed: %w", stage, err)
 	}
-	if len(containerIDs) == 0 {
+	if containerID == "" {
 		return nil, fmt.Errorf("compose container not found %s", stage)
 	}
 
-	// Return container details with ID from compose.
 	return &driver.ContainerDetails{
-		ID: containerIDs[0],
+		ID: containerID,
 	}, nil
 }
 

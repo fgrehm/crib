@@ -1,7 +1,12 @@
 package compose
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -143,5 +148,70 @@ func TestProjectArgs_WithFiles(t *testing.T) {
 		if args[i] != want {
 			t.Errorf("args[%d] = %q, want %q", i, args[i], want)
 		}
+	}
+}
+
+// fakeJSONHelper creates a Helper whose base command is a shell script that
+// prints fixed JSON output (ignoring all arguments). This lets unit tests
+// verify JSON parsing and service matching without a real container runtime.
+func fakeJSONHelper(t *testing.T, jsonOutput string) *Helper {
+	t.Helper()
+	tmpDir := t.TempDir()
+	scriptPath := filepath.Join(tmpDir, "fake-compose")
+	// printf is used instead of echo to avoid shell interpretation of the JSON.
+	script := fmt.Sprintf("#!/bin/sh\nprintf '%%s' '%s'\n", jsonOutput)
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return &Helper{
+		baseCommand: "/bin/sh",
+		argsPrefix:  []string{scriptPath},
+		logger:      slog.Default(),
+	}
+}
+
+func TestFindServiceContainerID_MatchesService(t *testing.T) {
+	h := fakeJSONHelper(t, `[
+		{"Id":"aaa111","Labels":{"com.docker.compose.service":"postgres"}},
+		{"Id":"bbb222","Labels":{"com.docker.compose.service":"rails-app"}},
+		{"Id":"ccc333","Labels":{"com.docker.compose.service":"chrome"}}
+	]`)
+
+	id, err := h.FindServiceContainerID(context.Background(), "myproj", nil, "rails-app", nil)
+	if err != nil {
+		t.Fatalf("FindServiceContainerID: %v", err)
+	}
+	if id != "bbb222" {
+		t.Errorf("got %q, want %q", id, "bbb222")
+	}
+}
+
+func TestFindServiceContainerID_NotFound(t *testing.T) {
+	h := fakeJSONHelper(t, `[
+		{"Id":"aaa111","Labels":{"com.docker.compose.service":"postgres"}}
+	]`)
+
+	id, err := h.FindServiceContainerID(context.Background(), "myproj", nil, "rails-app", nil)
+	if err != nil {
+		t.Fatalf("FindServiceContainerID: %v", err)
+	}
+	if id != "" {
+		t.Errorf("expected empty string for missing service, got %q", id)
+	}
+}
+
+func TestFindServiceContainerID_DockerUppercaseID(t *testing.T) {
+	// Docker Compose uses "ID" (uppercase). Go's json.Unmarshal matches
+	// case-insensitively, so our "Id" tag should match both.
+	h := fakeJSONHelper(t, `[
+		{"ID":"docker123","Labels":{"com.docker.compose.service":"web"}}
+	]`)
+
+	id, err := h.FindServiceContainerID(context.Background(), "myproj", nil, "web", nil)
+	if err != nil {
+		t.Fatalf("FindServiceContainerID: %v", err)
+	}
+	if id != "docker123" {
+		t.Errorf("got %q, want %q", id, "docker123")
 	}
 }

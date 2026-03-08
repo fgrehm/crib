@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/driver"
 	"github.com/fgrehm/crib/internal/workspace"
 )
@@ -61,7 +62,7 @@ func TestDown_ClearsHookMarkers(t *testing.T) {
 
 	ws := &workspace.Workspace{
 		ID:               "test-down-markers",
-		Source:            t.TempDir(),
+		Source:           t.TempDir(),
 		DevContainerPath: ".devcontainer/devcontainer.json",
 	}
 	if err := store.Save(ws); err != nil {
@@ -83,11 +84,11 @@ func TestDown_ClearsHookMarkers(t *testing.T) {
 	}
 
 	e := &Engine{
-		driver:  &mockDriver{},
-		store:   store,
-		logger:  slog.Default(),
-		stdout:  io.Discard,
-		stderr:  io.Discard,
+		driver: &mockDriver{},
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
 	}
 
 	// Down will fail (no container), but should still clear markers.
@@ -106,7 +107,7 @@ func TestRemove_DeletesWorkspaceState(t *testing.T) {
 
 	ws := &workspace.Workspace{
 		ID:               "test-remove-state",
-		Source:            t.TempDir(),
+		Source:           t.TempDir(),
 		DevContainerPath: ".devcontainer/devcontainer.json",
 	}
 	if err := store.Save(ws); err != nil {
@@ -119,11 +120,11 @@ func TestRemove_DeletesWorkspaceState(t *testing.T) {
 	}
 
 	e := &Engine{
-		driver:  &mockDriver{},
-		store:   store,
-		logger:  slog.Default(),
-		stdout:  io.Discard,
-		stderr:  io.Discard,
+		driver: &mockDriver{},
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
 	}
 
 	// Remove will warn about missing container but should delete state.
@@ -216,5 +217,25 @@ func TestEnsureContainerRunning_EmptyState_FindReturnsRunning(t *testing.T) {
 	err := eng.ensureContainerRunning(context.Background(), "ws-1", container)
 	if err != nil {
 		t.Errorf("expected no error after re-inspect finds running container, got: %v", err)
+	}
+}
+
+func TestNewComposeInvocation_IncludesService(t *testing.T) {
+	ws := &workspace.Workspace{
+		ID:               "web",
+		Source:           t.TempDir(),
+		DevContainerPath: ".devcontainer/devcontainer.json",
+	}
+	cfg := &config.DevContainerConfig{
+		ComposeContainer: config.ComposeContainer{
+			Service:           "rails-app",
+			DockerComposeFile: []string{"compose.yaml"},
+		},
+	}
+
+	inv := newComposeInvocation(ws, cfg, ws.Source)
+
+	if inv.service != "rails-app" {
+		t.Errorf("inv.service = %q, want %q", inv.service, "rails-app")
 	}
 }
