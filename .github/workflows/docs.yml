@@ -25,6 +25,12 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: website/package-lock.json
+      - name: Sync changelog to website
+        run: |
+          { printf '---\ntitle: CHANGELOG\ndescription: All notable changes to crib.\n---\n\nAll notable changes to this project will be documented here.\n\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\nand this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n\n'
+            sed -n '/^## \[0/,$p' CHANGELOG.md | \
+              sed 's|^## \[\([0-9][^]]*\)\] - \(.*\)|## [\1](https://github.com/fgrehm/crib/releases/tag/v\1) - \2|'
+          } > website/src/content/docs/reference/changelog.md
       - run: npm ci
         working-directory: website
       - run: npm run build

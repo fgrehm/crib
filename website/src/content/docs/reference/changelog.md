@@ -8,6 +8,86 @@ All notable changes to this project will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0](https://github.com/fgrehm/crib/releases/tag/v0.6.0) - 2026-03-08
+
+### Added
+
+- `crib cache clean --force` / `-f` flag to skip confirmation prompt.
+- DevContainer Feature entrypoints are now applied. Features that declare an
+  `entrypoint` (e.g. docker-in-docker starting `dockerd`) now have their
+  entrypoint baked into the image. Multiple feature entrypoints are chained via
+  a wrapper script. Feature runtime capabilities (`privileged`, `init`,
+  `capAdd`, `securityOpt`, `mounts`, `containerEnv`) are now applied at
+  container creation time for both single-container and compose paths.
+
+### Security
+
+- Reject OCI feature archives containing symlinks that escape the extraction
+  directory (absolute targets or relative traversal). Previously, a malicious
+  feature archive could write to arbitrary host paths via symlinks.
+- CI workflows now use explicit `permissions: contents: read` instead of
+  GitHub's default read-write.
+
+### Changed
+
+- **Breaking**: The `-V` shorthand for `--verbose` has been removed. Use
+  `--verbose` instead. The `-v` shorthand remains reserved for `--version`,
+  matching CLI conventions.
+- CLI now exits with code 2 for usage errors (bad flags, missing arguments)
+  instead of code 1, making it easier to distinguish user mistakes from runtime
+  failures in scripts.
+- Noisy host-specific environment variables (`LS_COLORS`, `DISPLAY`,
+  `WAYLAND_DISPLAY`, `XDG_SESSION_*`, `DBUS_SESSION_BUS_ADDRESS`,
+  `TERM_PROGRAM`, `COLORTERM`, `DESKTOP_SESSION`, etc.) are now filtered from
+  the probed environment. These are meaningless inside containers and cluttered
+  the output of `crib run -- env`. Users can still force any filtered variable
+  via `remoteEnv` in `devcontainer.json`.
+
+### Fixed
+
+- SSH `known_hosts` could not be written inside the container. The SSH plugin
+  created `~/.ssh/` as root but only chowned individual files, leaving the
+  directory root-owned. The container user could not create new files in it.
+- Plugin environment variables (e.g. `BUNDLE_PATH`, `CARGO_HOME`, `HISTFILE`)
+  now survive `crib restart`. Previously, simple restart paths only preserved
+  plugin `PathPrepend` entries but silently dropped plugin `Env` values. The
+  values survived only because they were present in the stored result from a
+  previous `crib up`, but a plugin that changed an env value between restarts
+  would have the old stored value win over the fresh one.
+- `crib delete` now removes named volumes declared in compose files (e.g.
+  database data). Previously, `docker compose down` ran without `--volumes`,
+  leaving orphaned volumes behind.
+- `crib restart` no longer loses software installed by lifecycle hooks (e.g.
+  mise-managed ruby/node) on compose workspaces. The compose override now
+  references the snapshot image, so even if the container is recreated, the
+  hook-installed state is preserved.
+- Compose restart paths (`crib restart`, `crib up` on stopped containers) now
+  preserve the stored `ImageName` in workspace state. Previously, these paths
+  saved an empty `ImageName`, causing subsequent operations to lose track of
+  the feature image.
+- Preserve Docker image PATH entries (e.g. `/usr/local/bundle/bin` in ruby
+  images) that login shells drop during the env probe. Previously, `crib exec`
+  could lose these entries, requiring `bundle exec` or similar wrappers.
+- Plugin PATH additions (e.g. `~/.bundle/bin` for bundler cache) now work with
+  zsh. Previously relied on `/etc/profile.d/` scripts which zsh doesn't source.
+  PATH additions are now injected directly via remoteEnv.
+- `crib cache clean` and `crib cache list` no longer require workspace state to
+  exist. They now work even if `crib up` was never run or the project was
+  deleted.
+- `crib cache clean --all` now prompts for confirmation since it removes volumes
+  from other projects.
+- Sensitive env var values (tokens, keys, passwords) are now redacted in
+  `--debug` output. Previously, values like `GITHUB_TOKEN` appeared in
+  plaintext in exec command logs.
+- `crib restart` and redundant `crib up` no longer lose probed environment
+  (mise, rbenv, nvm PATH entries) or plugin PATH additions. Previously, restart
+  paths that skip env re-probing overwrote the saved `remoteEnv`, so `crib run`
+  could not find tools like `ruby` or `node` after a restart.
+- Plugin dispatch in the already-running container path now passes arguments in
+  the correct order. Previously, the remote user was passed as the image name,
+  causing plugins to see an incorrect image and potentially resolve wrong home
+  directory paths.
+
 ## [0.5.0](https://github.com/fgrehm/crib/releases/tag/v0.5.0) - 2026-03-05
 
 ### Added
@@ -98,7 +178,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Plugin system** with bundled plugin support for `pre-container-run`. Plugins
   can inject mounts, environment variables, extra run args, and file copies into
   containers. Fail-open error handling (one broken plugin doesn't block container
-  creation). See [Plugin Development](/crib/contributing/plugin-development/).
+  creation). See `docs/plugin-development.md`.
 - **coding-agents plugin**: automatically injects Claude Code credentials into
   containers so AI coding tools work without re-authentication. Detects
   `~/.claude/.credentials.json` on the host and copies it into the container.
@@ -120,6 +200,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   For compose workspaces, ports are parsed from `docker compose ps` output.
 - **Plugin customizations**: plugins now receive `customizations.crib` from
   `devcontainer.json`, enabling per-project plugin configuration.
+- Documentation website at [fgrehm.github.io/crib](https://fgrehm.github.io/crib/),
+  with `llms.txt` for AI tool discovery.
 - `-V` / `--verbose` now prints each lifecycle hook command before running it
   (e.g. `  $ npm install`), making it easier to diagnose hook failures.
 - `build.options` from `devcontainer.json` is now passed to `docker build` /
@@ -173,7 +255,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add short aliases: `list` (`ls`), `status` (`ps`), `shell` (`sh`).
 - `rebuild` no longer needs to re-save workspace state after removing the
   container (uses `down` instead of the old `delete`).
-- Display `crib` version at the start of `up`, `down`, `remove`, `rebuild`,
+- Display crib version at the start of `up`, `down`, `remove`, `rebuild`,
   and `restart` commands. Dev builds include commit SHA and build timestamp.
 - Suppress noisy compose stdout (container name listings) during up/down/restart.
   Use `--verbose` / `-V` to see full compose output.
@@ -201,7 +283,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     without rebuilding the image, runs only resume-flow hooks
   - Image-affecting changes (image, Dockerfile, features, build args): reports error
     and suggests `crib rebuild`
+- `RestartContainer` method in container driver interface
+- `Restart` method in compose helper
+- Smart Restart section in README
 - New project logo
+
+### Changed
+
+- Refactor engine package: extract `change.go`, `restart.go` from `engine.go`
+- Deduplicate config parsing (`parseAndSubstitute`) and user resolution (`resolveRemoteUser`)
 
 ## [0.1.0](https://github.com/fgrehm/crib/releases/tag/v0.1.0) - 2026-02-25
 
@@ -209,12 +299,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Core `crib` CLI for managing dev containers
 - Support for Docker and Podman via single OCI driver
+- `.devcontainer` configuration parsing, variable substitution, and merging
 - All three configuration scenarios: image-based, Dockerfile-based, Docker Compose-based
-- DevContainer Features support (OCI, HTTPS, local)
-- All lifecycle hooks with marker-file idempotency
-- `userEnvProbe` support for version managers (mise, rbenv, nvm, etc.)
-- `updateRemoteUserUID` with UID/GID sync and conflict resolution
-- Auto-injection of `--userns=keep-id` for rootless Podman
+- DevContainer Features support with OCI image resolution and ordering
+- Workspace state management in `~/.crib/workspaces/`
 - Implicit workspace resolution from current working directory
 - Commands: `up`, `stop`, `delete`, `status`, `list`, `exec`, `shell`, `rebuild`, `version`
+- All lifecycle hooks: `initializeCommand`, `onCreateCommand`, `updateContentCommand`,
+  `postCreateCommand`, `postStartCommand`, `postAttachCommand`
+- `userEnvProbe` support for probing user environment (mise, rbenv, nvm, etc.)
+- Image metadata parsing (`devcontainer.metadata` label) with spec-compliant merge rules
+- `updateRemoteUserUID` with UID/GID sync and conflict resolution
+- Auto-injection of `--userns=keep-id` / `userns_mode: "keep-id"` for rootless Podman
+- Container user auto-detection via `whoami` for compose containers
+- Early result persistence so `exec`/`shell` work while lifecycle hooks are still running
+- Version info on error output for debugging
+- Container naming with `crib-{workspace-id}` convention
+- Container labeling with `crib.workspace={id}` for discovery
+- Build and test tooling (Makefile, golangci-lint v2, pre-commit hooks)
 - Debug logging via `--debug` flag
