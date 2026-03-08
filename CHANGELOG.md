@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `crib stop` followed by `crib up` now resumes from a snapshot when available,
+  skipping the full image build and running only resume-flow lifecycle hooks
+  (postStartCommand, postAttachCommand). Previously, stopping and starting a
+  workspace re-ran the entire creation flow. Both single-container and compose
+  paths are covered. `crib rebuild` still forces a full rebuild as before.
+- SSH agent socket is now mounted at `/run/ssh-agent.sock` instead of
+  `/tmp/ssh-agent.sock`. Docker-in-Docker features remount `/tmp` as a fresh
+  tmpfs, which hid the bind-mounted socket and broke SSH agent forwarding in
+  DinD containers.
+
 ## [0.6.1] - 2026-03-08
 
 ### Fixed
