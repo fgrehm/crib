@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -241,7 +242,7 @@ func TestFindAndParse(t *testing.T) {
 func TestFindAndParse_NotFound(t *testing.T) {
 	dir := t.TempDir()
 	_, err := FindAndParse(dir)
-	if err != ErrNotFound {
+	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }

@@ -1,7 +1,11 @@
 package main
 
-import "github.com/fgrehm/crib/cmd"
+import (
+	"os"
+
+	"github.com/fgrehm/crib/cmd"
+)
 
 func main() {
-	cmd.Execute()
+	os.Exit(cmd.Execute())
 }

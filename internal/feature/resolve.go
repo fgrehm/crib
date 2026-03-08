@@ -88,11 +88,10 @@ func isOCIRef(ref string) bool {
 	}
 
 	// Extract the first segment (everything before the first '/').
-	firstSlash := strings.Index(ref, "/")
-	if firstSlash == -1 {
+	host, _, ok := strings.Cut(ref, "/")
+	if !ok {
 		return false
 	}
-	host := ref[:firstSlash]
 
 	// A hostname contains a dot (e.g. "ghcr.io") or a colon for a port
 	// (e.g. "localhost:5000"). Plain names like "myfeature" are not OCI refs.

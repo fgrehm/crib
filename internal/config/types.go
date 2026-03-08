@@ -157,7 +157,7 @@ type Mount struct {
 // Returns an error if the target is empty (required for a valid mount).
 func ParseMount(s string) (Mount, error) {
 	m := Mount{}
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		k, v, ok := strings.Cut(part, "=")
 		if !ok {
 			continue

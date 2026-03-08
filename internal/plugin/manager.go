@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"log/slog"
+	"maps"
 )
 
 // Manager holds registered plugins and dispatches events to them.
@@ -53,9 +54,7 @@ func (m *Manager) RunPreContainerRun(ctx context.Context, req *PreContainerRunRe
 		merged.RunArgs = append(merged.RunArgs, resp.RunArgs...)
 		merged.Copies = append(merged.Copies, resp.Copies...)
 		merged.PathPrepend = append(merged.PathPrepend, resp.PathPrepend...)
-		for k, v := range resp.Env {
-			merged.Env[k] = v
-		}
+		maps.Copy(merged.Env, resp.Env)
 	}
 
 	return merged, nil

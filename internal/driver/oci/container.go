@@ -296,9 +296,9 @@ func (ic *inspectContainer) toContainerDetails() driver.ContainerDetails {
 func parseContainerPort(s string) (int, string) {
 	proto := "tcp"
 	portStr := s
-	if i := strings.Index(s, "/"); i >= 0 {
-		portStr = s[:i]
-		proto = s[i+1:]
+	if ps, pr, ok := strings.Cut(s, "/"); ok {
+		portStr = ps
+		proto = pr
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
@@ -310,7 +310,7 @@ func parseContainerPort(s string) (int, string) {
 // parseLines splits output by newlines and removes empty strings.
 func parseLines(s string) []string {
 	var lines []string
-	for _, line := range strings.Split(strings.TrimSpace(s), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(s), "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			lines = append(lines, line)

@@ -108,8 +108,8 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 }
 
-// Execute runs the root command with signal handling.
-func Execute() {
+// Execute runs the root command with signal handling and returns the exit code.
+func Execute() int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -128,8 +128,9 @@ func Execute() {
 		u := newUI()
 		u.Error(err.Error())
 		fmt.Fprintf(os.Stderr, "\ncrib %s (%s)\n", Version, Commit)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // newUI creates a UI that writes to stdout and stderr.

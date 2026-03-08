@@ -1,5 +1,7 @@
 package config
 
+import "maps"
+
 // MergeConfiguration merges a DevContainerConfig with image metadata entries
 // to produce a MergedDevContainerConfig. Metadata entries come from features
 // and the base image. The base config takes priority, then entries are applied
@@ -181,9 +183,7 @@ func mergeMaps[T any, V comparable](entries []T, get func(T) map[string]V) map[s
 		if result == nil {
 			result = make(map[string]V)
 		}
-		for k, v := range m {
-			result[k] = v
-		}
+		maps.Copy(result, m)
 	}
 	return result
 }
@@ -263,12 +263,8 @@ func mergePortsAttributes(base map[string]PortAttribute, entries []*ImageMetadat
 	}
 
 	result := make(map[string]PortAttribute)
-	for k, v := range entryAttrs {
-		result[k] = v
-	}
-	for k, v := range base {
-		result[k] = v
-	}
+	maps.Copy(result, entryAttrs)
+	maps.Copy(result, base)
 	return result
 }
 

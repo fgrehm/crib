@@ -109,7 +109,7 @@ func removeSnapshotImages(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		for _, img := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		for img := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 			if img != "" {
 				_ = exec.Command(rt, "rmi", img).Run()
 			}

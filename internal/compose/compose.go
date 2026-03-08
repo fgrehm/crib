@@ -65,11 +65,6 @@ func NewHelper(runtimeCommand string, logger *slog.Logger) (*Helper, error) {
 	}, nil
 }
 
-// Version returns the detected compose version string.
-func (h *Helper) Version() string {
-	return h.version
-}
-
 // RuntimeCommand returns the base runtime command (e.g. "docker" or "podman").
 func (h *Helper) RuntimeCommand() string {
 	return h.baseCommand
@@ -133,14 +128,6 @@ func (h *Helper) Stop(ctx context.Context, projectName string, files []string, s
 func (h *Helper) Start(ctx context.Context, projectName string, files []string, stdout, stderr io.Writer, extraEnv []string) error {
 	args := projectArgs(projectName, files)
 	args = append(args, "start")
-	return h.Run(ctx, args, nil, stdout, stderr, extraEnv)
-}
-
-// Restart runs `compose restart` for the given project.
-// extraEnv is appended to the subprocess environment for variable substitution.
-func (h *Helper) Restart(ctx context.Context, projectName string, files []string, stdout, stderr io.Writer, extraEnv []string) error {
-	args := projectArgs(projectName, files)
-	args = append(args, "restart")
 	return h.Run(ctx, args, nil, stdout, stderr, extraEnv)
 }
 
@@ -285,7 +272,7 @@ func ProjectName(workspaceID string) string {
 // parseLines splits output by newlines and removes empty strings.
 func parseLines(s string) []string {
 	var lines []string
-	for _, line := range strings.Split(strings.TrimSpace(s), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(s), "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			lines = append(lines, line)
@@ -296,7 +283,7 @@ func parseLines(s string) []string {
 
 // firstLine returns the first non-empty line of s, trimmed of whitespace.
 func firstLine(s string) string {
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if line = strings.TrimSpace(line); line != "" {
 			return line
 		}

@@ -84,7 +84,7 @@ func TestResolve_NotFound(t *testing.T) {
 	dir := t.TempDir()
 
 	_, err := Resolve(dir)
-	if err != ErrNoDevContainer {
+	if !errors.Is(err, ErrNoDevContainer) {
 		t.Errorf("expected ErrNoDevContainer, got %v", err)
 	}
 }

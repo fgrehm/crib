@@ -45,7 +45,7 @@ func loadCribRC() (*cribRC, error) {
 		case "config":
 			rc.Config = strings.TrimSpace(val)
 		case "cache":
-			for _, p := range strings.Split(val, ",") {
+			for p := range strings.SplitSeq(val, ",") {
 				p = strings.TrimSpace(p)
 				if p != "" {
 					rc.Cache = append(rc.Cache, p)

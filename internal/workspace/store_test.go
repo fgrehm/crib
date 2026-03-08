@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 )
@@ -43,7 +44,7 @@ func TestStore_LoadNotFound(t *testing.T) {
 	store := NewStoreAt(t.TempDir())
 
 	_, err := store.Load("nonexistent")
-	if err != ErrWorkspaceNotFound {
+	if !errors.Is(err, ErrWorkspaceNotFound) {
 		t.Errorf("expected ErrWorkspaceNotFound, got %v", err)
 	}
 }

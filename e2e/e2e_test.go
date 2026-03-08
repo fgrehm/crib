@@ -26,9 +26,10 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "building crib: %v\n", err)
 		os.Exit(1)
 	}
-	defer cleanup()
 	cribBin = bin
-	os.Exit(m.Run())
+	code := m.Run()
+	cleanup()
+	os.Exit(code)
 }
 
 // buildCrib compiles the crib binary into a temp directory and returns its
@@ -330,7 +331,7 @@ func TestE2ERebuildNoContainer(t *testing.T) {
 // extractContainerName pulls the container name from `crib up` output.
 // Output line looks like: "  container   crib-abc123"
 func extractContainerName(out string) string {
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "container") {
 			fields := strings.Fields(trimmed)

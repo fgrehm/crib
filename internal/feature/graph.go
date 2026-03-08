@@ -2,6 +2,7 @@ package feature
 
 import (
 	"fmt"
+	"maps"
 	"sort"
 )
 
@@ -79,9 +80,7 @@ func (g *Graph[T]) Sort() ([]T, error) {
 
 	// Copy in-degree map so we don't mutate the graph.
 	inDegree := make(map[string]int, len(g.inDegree))
-	for k, v := range g.inDegree {
-		inDegree[k] = v
-	}
+	maps.Copy(inDegree, g.inDegree)
 
 	// Kahn's algorithm with sorted queue for deterministic output.
 	// The queue uses slice reslicing (O(1) pop) and sorted merge (O(n) insert).

@@ -1,6 +1,10 @@
 package engine
 
-import "github.com/fgrehm/crib/internal/plugin"
+import (
+	"maps"
+
+	"github.com/fgrehm/crib/internal/plugin"
+)
 
 // EnvBuilder accumulates environment variables from multiple sources,
 // each with defined precedence. Layers are merged bottom-up: higher
@@ -67,9 +71,7 @@ func (b *EnvBuilder) AddPluginEnv(env map[string]string) {
 	if b.pluginEnv == nil {
 		b.pluginEnv = make(map[string]string, len(env))
 	}
-	for k, v := range env {
-		b.pluginEnv[k] = v
-	}
+	maps.Copy(b.pluginEnv, env)
 }
 
 // AddPluginPathPrepend appends plugin PathPrepend dirs.
@@ -99,14 +101,10 @@ func (b *EnvBuilder) Build() map[string]string {
 	preserveContainerPATH(result, b.containerPATH)
 
 	// Plugin Env (overrides probed).
-	for k, v := range b.pluginEnv {
-		result[k] = v
-	}
+	maps.Copy(result, b.pluginEnv)
 
 	// Config remoteEnv (overrides everything).
-	for k, v := range b.configEnv {
-		result[k] = v
-	}
+	maps.Copy(result, b.configEnv)
 
 	// Plugin PathPrepend (prepend to whatever PATH we have).
 	prependToPath(result, b.pluginPrepend)

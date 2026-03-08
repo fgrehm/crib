@@ -31,7 +31,7 @@ func TestE2EDoctor(t *testing.T) {
 	// Filter out "dangling-container" warnings since those come from
 	// pre-existing containers on the machine (not managed by our temp cribHome).
 	out = mustRunCrib(t, projectDir, cribHome, "doctor")
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		lower := strings.ToLower(line)
 		if strings.Contains(lower, "warning") && !strings.Contains(lower, "dangling-container") {
 			t.Errorf("doctor after up: unexpected warning: %s", line)

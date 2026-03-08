@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	composehelper "github.com/fgrehm/crib/internal/compose"
@@ -594,10 +595,8 @@ func ensureServiceIncluded(runServices []string, name string) []string {
 	if len(runServices) == 0 {
 		return []string{name}
 	}
-	for _, s := range runServices {
-		if s == name {
-			return runServices
-		}
+	if slices.Contains(runServices, name) {
+		return runServices
 	}
 	return append([]string{name}, runServices...)
 }

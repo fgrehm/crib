@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -80,9 +81,7 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 	// SSH agent forwarding.
 	if m, e := p.agentForwarding(); m != nil {
 		mounts = append(mounts, *m)
-		for k, v := range e {
-			env[k] = v
-		}
+		maps.Copy(env, e)
 	}
 
 	// SSH config file.

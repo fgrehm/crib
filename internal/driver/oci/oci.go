@@ -112,7 +112,7 @@ func detectRuntime() (Runtime, string, error) {
 		return RuntimeDocker, dockerCmd, nil
 	}
 
-	return 0, "", fmt.Errorf("no container runtime found:\n  podman: %v\n  docker: %v", podmanErr, dockerErr)
+	return 0, "", fmt.Errorf("no container runtime found:\n  podman: %w\n  docker: %w", podmanErr, dockerErr)
 }
 
 // findResponsiveRuntime checks if a runtime command exists on PATH and responds to `version`.

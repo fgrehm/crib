@@ -61,7 +61,7 @@ func TestE2EComposeShellHistory(t *testing.T) {
 	// which changes ownership of all files including .devcontainer/*.
 	// On rootful Docker, this makes the files unremovable by the test user,
 	// causing t.TempDir() cleanup to fail the test.
-	parent, err := os.MkdirTemp("", "TestE2EComposeShellHistory-*")
+	parent, err := os.MkdirTemp("", "TestE2EComposeShellHistory-*") //nolint:usetesting // rootful Docker chowns bind mounts, breaking t.TempDir() cleanup
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,4 +128,3 @@ func TestE2EComposeShellHistory(t *testing.T) {
 		t.Fatal("shell-history plugin directory not found on host")
 	}
 }
-

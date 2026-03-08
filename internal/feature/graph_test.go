@@ -216,7 +216,7 @@ func TestGraphSortEmpty(t *testing.T) {
 
 func TestGraphSortDeterministic(t *testing.T) {
 	// Run multiple times to verify determinism.
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		g := NewGraph[string]()
 		g.AddNode("z", "zulu")
 		g.AddNode("m", "mike")

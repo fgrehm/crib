@@ -153,7 +153,6 @@ func dispatchHook(ctx context.Context, hook config.LifecycleHook, executor func(
 	// Object form: all named entries run in parallel.
 	g, gCtx := errgroup.WithContext(ctx)
 	for hookName, cmdParts := range hook {
-		hookName, cmdParts := hookName, cmdParts
 		g.Go(func() error { return executor(gCtx, hookName, cmdParts) })
 	}
 	return g.Wait()

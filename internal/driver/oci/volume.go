@@ -65,7 +65,7 @@ func parseVolumeJSON(raw string) ([]volumeEntry, error) {
 
 	// Fall back to newline-delimited JSON objects (Docker format).
 	var entries []volumeEntry
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue

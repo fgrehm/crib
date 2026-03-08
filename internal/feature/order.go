@@ -139,8 +139,8 @@ func normalizeID(id string) string {
 	}
 
 	// Strip @digest.
-	if idx := strings.Index(id, "@"); idx >= 0 {
-		return id[:idx]
+	if before, _, ok := strings.Cut(id, "@"); ok {
+		return before
 	}
 
 	// Strip :tag.

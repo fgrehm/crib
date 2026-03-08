@@ -13,12 +13,7 @@ func TestLoadCribRC_CacheKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Change to temp dir so loadCribRC finds it.
-	orig, _ := os.Getwd()
-	defer func() { _ = os.Chdir(orig) }()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
+	t.Chdir(dir)
 
 	rc, err := loadCribRC()
 	if err != nil {
@@ -47,11 +42,7 @@ func TestLoadCribRC_BothKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	orig, _ := os.Getwd()
-	defer func() { _ = os.Chdir(orig) }()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
+	t.Chdir(dir)
 
 	rc, err := loadCribRC()
 	if err != nil {

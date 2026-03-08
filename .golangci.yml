@@ -5,13 +5,30 @@ run:
 
 linters:
   enable:
+    - copyloopvar
     - errcheck
+    - errorlint
+    - gocritic
     - govet
+    - ineffassign
+    - intrange
+    - modernize
     - staticcheck
     - unused
-    - ineffassign
+    - usetesting
+  settings:
+    gocritic:
+      disabled-checks:
+        # Flags intentional new-slice-from-append patterns
+        # (e.g. allFiles := append(src[:len(src):len(src)], extra))
+        - appendAssign
   exclusions:
     rules:
       - path: _test\.go
         linters:
           - errcheck
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling

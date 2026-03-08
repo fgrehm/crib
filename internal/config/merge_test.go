@@ -4,8 +4,6 @@ import (
 	"testing"
 )
 
-func boolPtr(b bool) *bool { return &b }
-
 func TestMergeConfiguration_EmptyMetadata(t *testing.T) {
 	config := &DevContainerConfig{
 		ImageContainer: ImageContainer{Image: "ubuntu:22.04"},
@@ -199,8 +197,8 @@ func TestMergeConfiguration_Mounts(t *testing.T) {
 func TestMergeConfiguration_BoolPointers(t *testing.T) {
 	config := &DevContainerConfig{}
 	metadata := []*ImageMetadata{
-		{NonComposeBase: NonComposeBase{Init: boolPtr(true)}},
-		{NonComposeBase: NonComposeBase{Init: boolPtr(false)}},
+		{NonComposeBase: NonComposeBase{Init: new(true)}},
+		{NonComposeBase: NonComposeBase{Init: new(false)}},
 	}
 
 	merged := MergeConfiguration(config, metadata)

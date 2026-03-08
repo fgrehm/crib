@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"maps"
 	"os"
 	"strings"
 )
@@ -10,7 +11,7 @@ import (
 // Values may contain '=' characters; only the first '=' is used as separator.
 func parseEnvLines(output string) map[string]string {
 	env := make(map[string]string)
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		k, v, ok := strings.Cut(line, "=")
 		if !ok || k == "" {
 			continue
@@ -95,9 +96,7 @@ func copyStringMap(m map[string]string) map[string]string {
 		return nil
 	}
 	cp := make(map[string]string, len(m))
-	for k, v := range m {
-		cp[k] = v
-	}
+	maps.Copy(cp, m)
 	return cp
 }
 
@@ -121,7 +120,7 @@ func preserveContainerPATH(env map[string]string, containerPATH string) {
 		seen[d] = true
 	}
 
-	for _, d := range strings.Split(containerPATH, ":") {
+	for d := range strings.SplitSeq(containerPATH, ":") {
 		if d != "" && !seen[d] {
 			dirs = append(dirs, d)
 			seen[d] = true
@@ -141,7 +140,7 @@ func prependToPath(env map[string]string, dirs []string) {
 	current := env["PATH"]
 	existing := make(map[string]bool)
 	if current != "" {
-		for _, d := range strings.Split(current, ":") {
+		for d := range strings.SplitSeq(current, ":") {
 			existing[d] = true
 		}
 	}

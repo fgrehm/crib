@@ -2,6 +2,7 @@ package feature
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -90,10 +91,5 @@ func GenerateDockerfile(features []*FeatureSet, containerUser, remoteUser string
 
 // hasAptCache reports whether /var/cache/apt is among the cache mount targets.
 func hasAptCache(mounts []string) bool {
-	for _, m := range mounts {
-		if m == "/var/cache/apt" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(mounts, "/var/cache/apt")
 }
