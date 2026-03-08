@@ -190,6 +190,35 @@ func TestEnvBuilder_RestoreFrom_PluginEnvOverridesStored(t *testing.T) {
 	}
 }
 
+func TestEnvBuilder_RestoreFrom_ResolvedConfigPreservesStoredPATH(t *testing.T) {
+	// Simulates the restart path: config remoteEnv has been resolved via
+	// resolveConfigEnvFromStored before passing to the builder, so
+	// ${containerEnv:PATH} is expanded using the stored container PATH.
+	stored := map[string]string{
+		"PATH":   "/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		"GOPATH": "/go",
+	}
+	// After resolveConfigEnvFromStored, "${containerEnv:PATH}" becomes
+	// the stored container PATH value.
+	resolvedConfig := map[string]string{
+		"PATH": "/usr/local/go/bin:/go/bin:/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+	}
+
+	envb := NewEnvBuilder(resolvedConfig)
+	envb.RestoreFrom(stored)
+
+	got := envb.Build()
+	if !strings.Contains(got["PATH"], "/usr/local/go/bin") {
+		t.Errorf("PATH missing go bin: %q", got["PATH"])
+	}
+	if strings.Contains(got["PATH"], "${containerEnv") {
+		t.Errorf("PATH has unresolved reference: %q", got["PATH"])
+	}
+	if got["GOPATH"] != "/go" {
+		t.Errorf("GOPATH = %q, want /go", got["GOPATH"])
+	}
+}
+
 func TestEnvBuilder_SkipsSessionVars(t *testing.T) {
 	envb := NewEnvBuilder(nil)
 	envb.SetProbed(map[string]string{

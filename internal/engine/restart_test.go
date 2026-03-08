@@ -995,3 +995,31 @@ func TestRestartSimple_NonCompose_PluginEnvDoesNotOverrideConfig(t *testing.T) {
 		t.Errorf("EDITOR = %q, want nano (config should override plugin)", saved.RemoteEnv["EDITOR"])
 	}
 }
+
+func TestResolveConfigEnvFromStored(t *testing.T) {
+	cfg := &config.DevContainerConfig{
+		DevContainerConfigBase: config.DevContainerConfigBase{
+			RemoteEnv: map[string]string{
+				"PATH":   "/usr/local/go/bin:${containerEnv:PATH}",
+				"EDITOR": "nano",
+			},
+		},
+	}
+	storedEnv := map[string]string{
+		"PATH":   "/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		"GOPATH": "/go",
+	}
+
+	got := resolveConfigEnvFromStored(cfg, storedEnv)
+
+	// PATH should have ${containerEnv:PATH} resolved.
+	wantPath := "/usr/local/go/bin:/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+	if got["PATH"] != wantPath {
+		t.Errorf("PATH = %q, want %q", got["PATH"], wantPath)
+	}
+
+	// Non-containerEnv values should pass through.
+	if got["EDITOR"] != "nano" {
+		t.Errorf("EDITOR = %q, want nano", got["EDITOR"])
+	}
+}

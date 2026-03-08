@@ -174,10 +174,12 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		}
 	}
 
-	// Build the final env using the EnvBuilder. This replaces the old
-	// sequence of applyPathPrepend + mergeStoredRemoteEnv, and also
-	// includes plugin Env vars (previously dropped in restart paths).
-	envb := NewEnvBuilder(cfg.RemoteEnv)
+	// Build the final env using the EnvBuilder. Resolve ${containerEnv:*}
+	// references in cfg.RemoteEnv using the stored env as the container env
+	// source (we can't probe a freshly restarted container). This handles
+	// patterns like PATH: "/usr/local/go/bin:${containerEnv:PATH}".
+	resolvedConfigEnv := resolveConfigEnvFromStored(cfg, storedResult.RemoteEnv)
+	envb := NewEnvBuilder(resolvedConfigEnv)
 	envb.AddPluginResponse(pluginResp)
 	envb.RestoreFrom(storedResult.RemoteEnv)
 	cfg.RemoteEnv = envb.Build()
@@ -271,11 +273,15 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 
 	cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg)
 
-	envb := NewEnvBuilder(cfg.RemoteEnv)
+	// When using a snapshot, resolve ${containerEnv:*} references in
+	// cfg.RemoteEnv using the stored env (we can't probe the container).
+	// When there's no snapshot, setupContainer re-probes and resolves.
+	configEnv := cfg.RemoteEnv
+	if hasSnapshot && storedResult != nil {
+		configEnv = resolveConfigEnvFromStored(cfg, storedResult.RemoteEnv)
+	}
+	envb := NewEnvBuilder(configEnv)
 	envb.AddPluginResponse(pluginResp)
-	// When using a snapshot, restore the stored remoteEnv so probed PATH
-	// entries (mise, rbenv, nvm) survive the restart. setupContainer handles
-	// this when there's no snapshot (full re-probe).
 	if hasSnapshot && storedResult != nil {
 		envb.RestoreFrom(storedResult.RemoteEnv)
 	}
@@ -392,10 +398,14 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 		resultImageName = storedResult.ImageName
 	}
 
-	envb := NewEnvBuilder(cfg.RemoteEnv)
+	// When using a snapshot, resolve ${containerEnv:*} references in
+	// cfg.RemoteEnv using the stored env (we can't probe the container).
+	singleConfigEnv := cfg.RemoteEnv
+	if hasSnapshot && storedResult != nil {
+		singleConfigEnv = resolveConfigEnvFromStored(cfg, storedResult.RemoteEnv)
+	}
+	envb := NewEnvBuilder(singleConfigEnv)
 	envb.AddPluginResponse(pluginResp)
-	// When using a snapshot, restore the stored remoteEnv so probed PATH
-	// entries (mise, rbenv, nvm) survive the restart.
 	if hasSnapshot && storedResult != nil {
 		envb.RestoreFrom(storedResult.RemoteEnv)
 	}
@@ -419,6 +429,24 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 		RemoteUser:      cc.remoteUser,
 		Ports:           ports,
 	}, nil
+}
+
+// resolveConfigEnvFromStored resolves ${containerEnv:*} references in
+// cfg.RemoteEnv using the stored env as the container env source. Used by
+// restart paths that can't probe the container for its native environment.
+func resolveConfigEnvFromStored(cfg *config.DevContainerConfig, storedEnv map[string]string) map[string]string {
+	if len(cfg.RemoteEnv) == 0 {
+		return nil
+	}
+	resolved, err := config.SubstituteContainerEnv(storedEnv, cfg)
+	if err != nil {
+		// Fall back to raw config env if substitution fails.
+		return cfg.RemoteEnv
+	}
+	resolvedEnv := resolved.RemoteEnv
+	// Also resolve bare ${VAR} references (e.g. ${PATH}).
+	resolveBareVarRefs(resolvedEnv, storedEnv)
+	return resolvedEnv
 }
 
 // runRecreateLifecycle decides which hooks to run after a container recreate.
