@@ -91,6 +91,10 @@ Remaining: scrub PII patterns from subprocess output and verbose logs (not just 
 
 SSH server inside containers via the plugin system, enabling native filesystem performance on macOS and editor-agnostic remote development. See the [RFC](https://github.com/fgrehm/crib/blob/main/docs/rfcs/remote-access.md) for the full design.
 
+### Revisit save-path abstraction (ADR 001)
+
+[ADR 001](decisions/001-no-save-path-abstraction.md) decided against abstracting the 6+ save sites across single/compose/restart paths. Since then, each new feature that touches container state (feature entrypoints, feature metadata, `${containerEnv:*}` resolution) has needed manual wiring into every path. The `resolveConfigEnvFromStored` fix is the latest example of a bug class where restart paths miss critical resolution steps that `setupContainer` handles automatically. Consider a `RestartStateResolver` or similar that encapsulates the restore-from-stored + resolve + plugin-merge sequence so new paths can't silently drop state.
+
 ### Reduce cyclomatic complexity hotspots
 
 CI gates at gocyclo > 40 (the ratchet that prevents things from getting worse). Several engine functions exceed 15, the practical threshold for maintainability: `upCompose` (38), `syncRemoteUserUID` (29), `generateComposeOverride` (26), `Doctor` (23), `detectConfigChange` (22), `extractTar` (19), `upSingle` (18), `restartRecreateSingle` (18). These should be broken into focused helpers before they become harder to change.
