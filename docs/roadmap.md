@@ -31,7 +31,7 @@ Add `--json` or `--format json` flag to commands like `status`, `list` for scrip
 
 ### Fully qualified workspace paths
 
-Workspace IDs are currently derived from the project directory name (e.g. `ruby-project`), which can collide when different orgs or parent directories have projects with the same name. Use a hash or full path to guarantee uniqueness.
+Workspace IDs are currently derived from the project directory name (e.g. `ruby-project`), which can collide when different orgs or parent directories have projects with the same name. Use a hash or full path to guarantee uniqueness. This is a breaking change (existing workspaces would need migration), so it should land before v1.0.
 
 ### `--force` flag for destructive commands
 
@@ -67,7 +67,7 @@ Build the image / container without starting it. Useful for CI or pre-warming ca
 
 ### Debug mode env var
 
-Pass `CRIB_DEBUG=1` (or `DEVCONTAINER_BUILD_DEBUG`) into containers during builds and hook execution for easier troubleshooting.
+Pass `CRIB_DEBUG=1` (or `DEVCONTAINER_BUILD_DEBUG`) into containers during builds and hook execution for easier troubleshooting. Pair with build log capture for a complete debugging story.
 
 ### Build log capture
 
@@ -75,7 +75,7 @@ Write all build output to `~/.crib/workspaces/{id}/logs/{timestamp}-build.txt` f
 
 ### Version tracking in workspace state
 
-Record the crib version (semver, commit SHA, build timestamp) in workspace state so we can detect version mismatches and provide upgrade guidance.
+Record the crib version (semver, commit SHA, build timestamp) in workspace state so we can detect version mismatches and provide upgrade guidance. Surface in `crib doctor` when the workspace was created by a different version.
 
 ### Log output scrubbing
 
@@ -83,9 +83,9 @@ Record the crib version (semver, commit SHA, build timestamp) in workspace state
 
 Remaining: scrub PII patterns from subprocess output and verbose logs (not just env var names). Examples: email addresses, phone numbers, IP addresses, filesystem paths containing usernames. These can leak through lifecycle hook output, build logs, and error messages.
 
-### Env var filtering for exec/run
+### ~~Env var filtering for exec/run~~
 
-Skip injecting noisy env vars (e.g. `LS_COLORS`, `LSCOLORS`) that don't serve a purpose inside the container. Could be a configurable allowlist/denylist.
+~~Skip injecting noisy env vars (e.g. `LS_COLORS`, `LSCOLORS`) that don't serve a purpose inside the container. Could be a configurable allowlist/denylist.~~ Done in v0.6.0. Implemented as a hardcoded skip list in `filterProbedEnv` (`internal/engine/env.go`), covering terminal colors, session-specific vars, version manager internals, and security-sensitive vars. A configurable allowlist/denylist can be added later if needed.
 
 ### Remote access plugin (SSH into containers)
 
