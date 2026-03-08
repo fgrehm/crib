@@ -272,7 +272,7 @@ func TestApplyFeatureMetadata(t *testing.T) {
 			},
 		},
 	}
-	applyFeatureMetadata(opts, metadata)
+	applyFeatureMetadata(opts, metadata, nil)
 
 	if !opts.Privileged {
 		t.Error("Privileged should be true")
@@ -291,6 +291,33 @@ func TestApplyFeatureMetadata(t *testing.T) {
 	}
 	if len(opts.Env) != 1 || opts.Env[0] != "FOO=bar" {
 		t.Errorf("Env = %v, want [FOO=bar]", opts.Env)
+	}
+}
+
+func TestApplyFeatureMetadata_Substitution(t *testing.T) {
+	opts := &driver.RunOptions{}
+	metadata := []*config.ImageMetadata{
+		{
+			NonComposeBase: config.NonComposeBase{
+				Mounts: []config.Mount{
+					{Type: "volume", Source: "dind-var-lib-docker-${devcontainerId}", Target: "/var/lib/docker"},
+				},
+				ContainerEnv: map[string]string{"WS": "${devcontainerId}"},
+			},
+		},
+	}
+	subCtx := &config.SubstitutionContext{
+		DevContainerID:           "ws-abc",
+		LocalWorkspaceFolder:     "/host/project",
+		ContainerWorkspaceFolder: "/workspaces/project",
+	}
+	applyFeatureMetadata(opts, metadata, subCtx)
+
+	if len(opts.Mounts) != 1 || opts.Mounts[0].Source != "dind-var-lib-docker-ws-abc" {
+		t.Errorf("Mount source = %q, want %q", opts.Mounts[0].Source, "dind-var-lib-docker-ws-abc")
+	}
+	if len(opts.Env) != 1 || opts.Env[0] != "WS=ws-abc" {
+		t.Errorf("Env = %v, want [WS=ws-abc]", opts.Env)
 	}
 }
 

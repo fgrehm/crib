@@ -443,12 +443,33 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		}
 	}
 
+	// Variable substitution for feature metadata strings.
+	subCtx := &config.SubstitutionContext{
+		DevContainerID:           ws.ID,
+		LocalWorkspaceFolder:     ws.Source,
+		ContainerWorkspaceFolder: workspaceFolder,
+		Env:                      envMap(),
+	}
+	sub := func(s string) string { return config.SubstituteString(subCtx, s) }
+
+	// Collect feature containerEnv (needs variable substitution).
+	featureEnv := make(map[string]string)
+	for _, m := range featureMetadata {
+		for k, v := range m.ContainerEnv {
+			featureEnv[k] = sub(v)
+		}
+	}
+
 	// Container environment (config + plugins + features).
 	hasConfigEnv := len(cfg.ContainerEnv) > 0
 	hasPluginEnv := pluginResp != nil && len(pluginResp.Env) > 0
-	if hasConfigEnv || hasPluginEnv {
+	hasFeatureEnv := len(featureEnv) > 0
+	if hasConfigEnv || hasPluginEnv || hasFeatureEnv {
 		b.WriteString("    environment:\n")
 		for k, v := range cfg.ContainerEnv {
+			fmt.Fprintf(&b, "      %s: %q\n", k, v)
+		}
+		for k, v := range featureEnv {
 			fmt.Fprintf(&b, "      %s: %q\n", k, v)
 		}
 		if hasPluginEnv {
@@ -458,13 +479,27 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		}
 	}
 
-	// Volumes: workspace mount + plugin mounts.
+	// Collect feature mounts (needs variable substitution).
+	var featureMounts []config.Mount
+	for _, m := range featureMetadata {
+		for _, mount := range m.Mounts {
+			mount.Source = sub(mount.Source)
+			mount.Target = sub(mount.Target)
+			featureMounts = append(featureMounts, mount)
+		}
+	}
+
+	// Volumes: workspace mount + plugin mounts + feature mounts.
 	useDefaultWorkspaceMount := cfg.WorkspaceMount == ""
 	hasPluginMounts := pluginResp != nil && len(pluginResp.Mounts) > 0
-	if useDefaultWorkspaceMount || hasPluginMounts {
+	hasFeatureMounts := len(featureMounts) > 0
+	if useDefaultWorkspaceMount || hasPluginMounts || hasFeatureMounts {
 		b.WriteString("    volumes:\n")
 		if useDefaultWorkspaceMount {
 			fmt.Fprintf(&b, "      - %s:%s\n", ws.Source, workspaceFolder)
+		}
+		for _, m := range featureMounts {
+			fmt.Fprintf(&b, "      - %s:%s\n", m.Source, m.Target)
 		}
 		if hasPluginMounts {
 			for _, m := range pluginResp.Mounts {
@@ -483,22 +518,28 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		b.WriteString("  in_pod: false\n")
 	}
 
-	// Top-level volumes: declarations for named volumes (e.g. package cache).
+	// Top-level volumes: declarations for named volumes (e.g. package cache, features).
 	// Without this, compose rejects unknown volume references in the service.
+	namedVolSeen := make(map[string]bool)
+	var namedVolNames []string
+	for _, m := range featureMounts {
+		if m.Type == "volume" && !namedVolSeen[m.Source] {
+			namedVolSeen[m.Source] = true
+			namedVolNames = append(namedVolNames, m.Source)
+		}
+	}
 	if hasPluginMounts {
-		seen := make(map[string]bool)
-		var volumeNames []string
 		for _, m := range pluginResp.Mounts {
-			if m.Type == "volume" && !seen[m.Source] {
-				seen[m.Source] = true
-				volumeNames = append(volumeNames, m.Source)
+			if m.Type == "volume" && !namedVolSeen[m.Source] {
+				namedVolSeen[m.Source] = true
+				namedVolNames = append(namedVolNames, m.Source)
 			}
 		}
-		if len(volumeNames) > 0 {
-			b.WriteString("volumes:\n")
-			for _, name := range volumeNames {
-				fmt.Fprintf(&b, "  %s:\n    name: %s\n", name, name)
-			}
+	}
+	if len(namedVolNames) > 0 {
+		b.WriteString("volumes:\n")
+		for _, name := range namedVolNames {
+			fmt.Fprintf(&b, "  %s:\n    name: %s\n", name, name)
 		}
 	}
 

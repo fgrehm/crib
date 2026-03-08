@@ -346,7 +346,13 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 	if err != nil {
 		return nil, err
 	}
-	applyFeatureMetadata(runOpts, featureMetadata)
+	subCtx := &config.SubstitutionContext{
+		DevContainerID:           ws.ID,
+		LocalWorkspaceFolder:     ws.Source,
+		ContainerWorkspaceFolder: workspaceFolder,
+		Env:                      envMap(),
+	}
+	applyFeatureMetadata(runOpts, featureMetadata, subCtx)
 
 	// Run pre-container-run plugins to inject mounts, env, and extra args.
 	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, imageName, workspaceFolder)

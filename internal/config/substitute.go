@@ -146,6 +146,13 @@ func replaceWithContext(ctx *SubstitutionContext, match, variable string, args [
 	}
 }
 
+// SubstituteString applies variable substitution to a single string value.
+func SubstituteString(ctx *SubstitutionContext, s string) string {
+	return resolveString(s, func(match, variable string, args []string) string {
+		return replaceWithContext(ctx, match, variable, args)
+	})
+}
+
 func lookupEnv(env map[string]string, args []string, match string) string {
 	if len(args) == 0 {
 		return match

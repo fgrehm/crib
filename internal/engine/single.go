@@ -89,7 +89,13 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 	if err != nil {
 		return nil, err
 	}
-	applyFeatureMetadata(runOpts, buildRes.imageMetadata)
+	subCtx := &config.SubstitutionContext{
+		DevContainerID:           ws.ID,
+		LocalWorkspaceFolder:     ws.Source,
+		ContainerWorkspaceFolder: workspaceFolder,
+		Env:                      envMap(),
+	}
+	applyFeatureMetadata(runOpts, buildRes.imageMetadata, subCtx)
 
 	// Run pre-container-run plugins to inject mounts, env, and extra args.
 	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, buildRes.imageName, workspaceFolder)
@@ -201,7 +207,15 @@ func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, proj
 // run options. These are capabilities like privileged, init, capAdd that
 // features declare in devcontainer-feature.json but can only be applied at
 // container creation time (not in the Dockerfile).
-func applyFeatureMetadata(opts *driver.RunOptions, metadata []*config.ImageMetadata) {
+// subCtx is used to substitute variables (e.g. ${devcontainerId}) in mount
+// sources and containerEnv values. If nil, no substitution is performed.
+func applyFeatureMetadata(opts *driver.RunOptions, metadata []*config.ImageMetadata, subCtx *config.SubstitutionContext) {
+	sub := func(s string) string {
+		if subCtx == nil {
+			return s
+		}
+		return config.SubstituteString(subCtx, s)
+	}
 	for _, m := range metadata {
 		if m.Privileged != nil && *m.Privileged {
 			opts.Privileged = true
@@ -211,9 +225,13 @@ func applyFeatureMetadata(opts *driver.RunOptions, metadata []*config.ImageMetad
 		}
 		opts.CapAdd = append(opts.CapAdd, m.CapAdd...)
 		opts.SecurityOpt = append(opts.SecurityOpt, m.SecurityOpt...)
-		opts.Mounts = append(opts.Mounts, m.Mounts...)
+		for _, mount := range m.Mounts {
+			mount.Source = sub(mount.Source)
+			mount.Target = sub(mount.Target)
+			opts.Mounts = append(opts.Mounts, mount)
+		}
 		for k, v := range m.ContainerEnv {
-			opts.Env = append(opts.Env, k+"="+v)
+			opts.Env = append(opts.Env, k+"="+sub(v))
 		}
 	}
 }
