@@ -29,7 +29,7 @@ description: All available crib CLI commands and global flags.
 |------|-------------|
 | `--config`, `-C` | Path to the devcontainer config directory |
 | `--debug` | Enable debug logging |
-| `--verbose`, `-V` | Show full compose output (suppressed by default) |
+| `--verbose` | Show full compose output (suppressed by default) |
 
 ## Commands
 

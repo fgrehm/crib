@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking**: The `-V` shorthand for `--verbose` has been removed. Use
+  `--verbose` instead. The `-v` shorthand remains reserved for `--version`,
+  matching CLI conventions.
+- CLI now exits with code 2 for usage errors (bad flags, missing arguments)
+  instead of code 1, making it easier to distinguish user mistakes from runtime
+  failures in scripts.
 - Noisy host-specific environment variables (`LS_COLORS`, `DISPLAY`,
   `WAYLAND_DISPLAY`, `XDG_SESSION_*`, `DBUS_SESSION_BUS_ADDRESS`,
   `TERM_PROGRAM`, `COLORTERM`, `DESKTOP_SESSION`, etc.) are now filtered from

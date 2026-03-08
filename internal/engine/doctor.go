@@ -115,7 +115,11 @@ func (e *Engine) Doctor(ctx context.Context, fix bool) (*DoctorResult, error) {
 
 	// Check 5: Stale plugin data (workspace has no result but has plugin dirs).
 	if ids == nil {
-		ids, _ = e.store.List()
+		var retryErr error
+		ids, retryErr = e.store.List()
+		if retryErr != nil {
+			e.logger.Debug("failed to re-list workspaces for stale plugin check", "error", retryErr)
+		}
 	}
 	for _, id := range ids {
 		storedResult, _ := e.store.LoadResult(id)

@@ -126,7 +126,10 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 
 		e.reportProgress("Stopping services...")
 		if err := e.compose.Stop(ctx, inv.projectName, allFiles, e.composeStdout(), e.composeStderr(), inv.env); err != nil {
-			e.logger.Warn("failed to stop services", "error", err)
+			// Log and continue: compose start is idempotent, so starting
+			// over a still-running service is safe. Failing hard here would
+			// block restarts when a single service is stuck.
+			e.logger.Warn("failed to stop services, proceeding with start", "error", err)
 		}
 
 		e.reportProgress("Starting services...")

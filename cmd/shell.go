@@ -43,7 +43,7 @@ Working directory is set to the workspace folder if available.`,
 			return fmt.Errorf("finding container: %w", err)
 		}
 		if status.Container == nil {
-			return fmt.Errorf("no container found (run 'crib up' first)")
+			return errNoContainer
 		}
 		container := status.Container
 

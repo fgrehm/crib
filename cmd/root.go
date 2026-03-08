@@ -25,6 +25,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// errNoContainer is returned when a command requires a running container but
+// none exists for the workspace. Used by exec, run, and shell.
+var errNoContainer = fmt.Errorf("no container found (run 'crib up' first)")
+
 var (
 	debugFlag      bool
 	verboseFlag    bool
@@ -86,10 +90,13 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&debugFlag, "debug", false, "enable debug logging")
-	rootCmd.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "V", false, "show detailed output from compose and build commands")
+	rootCmd.PersistentFlags().BoolVar(&verboseFlag, "verbose", false, "show detailed output from compose and build commands")
 	rootCmd.PersistentFlags().StringVarP(&configDirFlag, "config", "C", "", "devcontainer config directory (e.g. .devcontainer-custom)")
 	rootCmd.PersistentFlags().StringVarP(&dirFlag, "dir", "d", "", "project directory to operate on (defaults to current directory)")
 	rootCmd.MarkFlagsMutuallyExclusive("config", "dir")
+	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return &errUsage{err: err}
+	})
 	rootCmd.SetVersionTemplate(fmt.Sprintf("crib version %s\n", Version))
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(statusCmd)
@@ -107,6 +114,19 @@ func init() {
 	rootCmd.AddCommand(cacheCmd)
 	rootCmd.AddCommand(versionCmd)
 }
+
+// Exit codes.
+const (
+	exitOK    = 0
+	exitError = 1
+	exitUsage = 2 // bad flags, unknown subcommand, missing required args
+)
+
+// errUsage wraps an error to signal a usage mistake (exit code 2).
+type errUsage struct{ err error }
+
+func (e *errUsage) Error() string { return e.err.Error() }
+func (e *errUsage) Unwrap() error { return e.err }
 
 // Execute runs the root command with signal handling and returns the exit code.
 func Execute() int {
@@ -128,9 +148,13 @@ func Execute() int {
 		u := newUI()
 		u.Error(err.Error())
 		fmt.Fprintf(os.Stderr, "\ncrib %s (%s)\n", Version, Commit)
-		return 1
+		var ue *errUsage
+		if errors.As(err, &ue) {
+			return exitUsage
+		}
+		return exitError
 	}
-	return 0
+	return exitOK
 }
 
 // newUI creates a UI that writes to stdout and stderr.

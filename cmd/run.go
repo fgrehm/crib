@@ -41,7 +41,7 @@ Use -- to separate crib flags from the container command:
 			return fmt.Errorf("finding container: %w", err)
 		}
 		if status.Container == nil {
-			return fmt.Errorf("no container found (run 'crib up' first)")
+			return errNoContainer
 		}
 		container := status.Container
 

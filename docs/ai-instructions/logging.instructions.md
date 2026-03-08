@@ -20,13 +20,13 @@ applyTo: "internal/**,cmd/**"
 |-----------|----------|---------------|
 | `internal/ui` (stdout) | User: results and errors | always visible; `cmd/` layer only |
 | Engine progress callback | User: operation status | always visible |
-| Engine stdout/stderr writers | User: subprocess output | `-V` / `--verbose` |
+| Engine stdout/stderr writers | User: subprocess output | `--verbose` |
 | `log/slog` (stderr) | Developer diagnostics | `--debug` |
 
 **slog levels**: `Debug` for exec commands and internal decisions; `Warn` for
 non-fatal fallbacks; `Info` for one-time startup events only (runtime/compose
 detection).
 
-**`-V`** passes subprocess stdout through. Does not change the slog level.
+**`--verbose`** passes subprocess stdout through. Does not change the slog level.
 
 **`--debug`** sets slog to Debug and also implies verbose.
