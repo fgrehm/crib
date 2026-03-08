@@ -169,10 +169,26 @@ func (e *Engine) doBuild(ctx context.Context, ws *workspace.Workspace, cfg *conf
 
 	imageName := ocidriver.ImageName(ws.ID, hash)
 
+	// Collect feature metadata regardless of cache hit. Runtime capabilities
+	// (privileged, mounts, entrypoints) must be applied even when the image
+	// is already built.
+	var metadata []*config.ImageMetadata
+	hasEntrypoints := false
+	for _, f := range features {
+		metadata = append(metadata, featureToMetadata(f))
+		if f.Config.Entrypoint != "" {
+			hasEntrypoints = true
+		}
+	}
+
 	// Check if image already exists.
 	if _, inspErr := e.driver.InspectImage(ctx, imageName); inspErr == nil {
 		e.reportProgress("Image cached, skipping build")
-		return &buildResult{imageName: imageName}, nil
+		return &buildResult{
+			imageName:      imageName,
+			imageMetadata:  metadata,
+			hasEntrypoints: hasEntrypoints,
+		}, nil
 	}
 
 	// Build args from config.
@@ -215,16 +231,6 @@ func (e *Engine) doBuild(ctx context.Context, ws *workspace.Workspace, cfg *conf
 	})
 	if err != nil {
 		return nil, fmt.Errorf("building image: %w", err)
-	}
-
-	// Collect image metadata from features for later merging.
-	var metadata []*config.ImageMetadata
-	hasEntrypoints := false
-	for _, f := range features {
-		metadata = append(metadata, featureToMetadata(f))
-		if f.Config.Entrypoint != "" {
-			hasEntrypoints = true
-		}
 	}
 
 	return &buildResult{
