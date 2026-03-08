@@ -184,6 +184,72 @@ func TestGenerateDockerfileCacheMountsAptDisablesDockerClean(t *testing.T) {
 	}
 }
 
+func TestGenerateDockerfileSingleEntrypoint(t *testing.T) {
+	features := []*FeatureSet{
+		{
+			ConfigID: "docker-in-docker",
+			Config: &FeatureConfig{
+				ID:         "docker-in-docker",
+				Entrypoint: "/usr/local/share/docker-init.sh",
+			},
+		},
+	}
+
+	content, _ := GenerateDockerfile(features, "root", "root", nil)
+
+	if !strings.Contains(content, `ENTRYPOINT ["/usr/local/share/docker-init.sh"]`) {
+		t.Errorf("missing single ENTRYPOINT instruction in:\n%s", content)
+	}
+}
+
+func TestGenerateDockerfileMultipleEntrypoints(t *testing.T) {
+	features := []*FeatureSet{
+		{
+			ConfigID: "feature-a",
+			Config: &FeatureConfig{
+				ID:         "feature-a",
+				Entrypoint: "/entry-a.sh",
+			},
+		},
+		{
+			ConfigID: "feature-b",
+			Config: &FeatureConfig{
+				ID:         "feature-b",
+				Entrypoint: "/entry-b.sh",
+			},
+		},
+	}
+
+	content, _ := GenerateDockerfile(features, "root", "root", nil)
+
+	// Later features wrap earlier ones (outermost runs first).
+	if !strings.Contains(content, "crib-entrypoint.sh") {
+		t.Errorf("missing wrapper entrypoint script in:\n%s", content)
+	}
+	// The wrapper should chain: exec /entry-b.sh /entry-a.sh "$@"
+	if !strings.Contains(content, "/entry-b.sh /entry-a.sh") {
+		t.Errorf("expected /entry-b.sh to wrap /entry-a.sh in:\n%s", content)
+	}
+	if !strings.Contains(content, `ENTRYPOINT ["/usr/local/share/crib-entrypoint.sh"]`) {
+		t.Errorf("missing wrapper ENTRYPOINT in:\n%s", content)
+	}
+}
+
+func TestGenerateDockerfileNoEntrypoint(t *testing.T) {
+	features := []*FeatureSet{
+		{
+			ConfigID: "plain",
+			Config:   &FeatureConfig{ID: "plain"},
+		},
+	}
+
+	content, _ := GenerateDockerfile(features, "root", "root", nil)
+
+	if strings.Contains(content, "ENTRYPOINT") {
+		t.Errorf("unexpected ENTRYPOINT for features without entrypoints:\n%s", content)
+	}
+}
+
 func TestGenerateDockerfileNoCacheMountsWithoutProviders(t *testing.T) {
 	features := []*FeatureSet{
 		{

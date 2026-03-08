@@ -19,7 +19,7 @@ func TestBuildRunOptions_Minimal(t *testing.T) {
 	e := &Engine{}
 	cfg := &config.DevContainerConfig{}
 
-	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestBuildRunOptions_OverrideCommandFalse(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.OverrideCommand = &oc
 
-	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestBuildRunOptions_WithContainerUser(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.ContainerUser = "vscode"
 
-	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestBuildRunOptions_WithSecurityOpts(t *testing.T) {
 	cfg.CapAdd = []string{"SYS_PTRACE"}
 	cfg.SecurityOpt = []string{"seccomp=unconfined"}
 
-	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestBuildRunOptions_CustomWorkspaceMount(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.WorkspaceMount = "type=bind,src=/custom/src,dst=/custom/dst"
 
-	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestBuildRunOptions_ContainerEnv(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.ContainerEnv = map[string]string{"FOO": "bar"}
 
-	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestBuildRunOptions_RunArgsPassthrough(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.RunArgs = []string{"--network=host", "--gpus", "all"}
 
-	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestBuildRunOptions_NoRunArgs(t *testing.T) {
 	e := &Engine{}
 	cfg := &config.DevContainerConfig{}
 
-	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestBuildRunOptions_ForwardPorts(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.ForwardPorts = config.StrIntArray{"8080", "9090:3000"}
 
-	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestBuildRunOptions_AppPort(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.AppPort = config.StrIntArray{"3000", "5000:5000"}
 
-	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +224,7 @@ func TestBuildRunOptions_PortsDedup(t *testing.T) {
 	cfg.ForwardPorts = config.StrIntArray{"8080", "3000"}
 	cfg.AppPort = config.StrIntArray{"8080", "5000"}
 
-	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project")
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,6 +238,59 @@ func TestBuildRunOptions_PortsDedup(t *testing.T) {
 		if opts.Ports[i] != want {
 			t.Errorf("Ports[%d] = %q, want %q", i, opts.Ports[i], want)
 		}
+	}
+}
+
+func TestBuildRunOptions_FeatureEntrypoints(t *testing.T) {
+	e := &Engine{}
+	cfg := &config.DevContainerConfig{}
+
+	// With feature entrypoints: should NOT override ENTRYPOINT, CMD is full command.
+	opts, err := e.buildRunOptions(cfg, "alpine:3.20", "/project", "/workspaces/project", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Entrypoint != "" {
+		t.Errorf("Entrypoint = %q, want empty (feature entrypoint baked into image)", opts.Entrypoint)
+	}
+	if len(opts.Cmd) == 0 || opts.Cmd[0] != "/bin/sh" {
+		t.Errorf("Cmd[0] = %q, want /bin/sh (full command for feature entrypoint)", opts.Cmd[0])
+	}
+}
+
+func TestApplyFeatureMetadata(t *testing.T) {
+	opts := &driver.RunOptions{}
+	metadata := []*config.ImageMetadata{
+		{
+			NonComposeBase: config.NonComposeBase{
+				Privileged:   new(true),
+				Init:         new(true),
+				CapAdd:       []string{"SYS_PTRACE"},
+				SecurityOpt:  []string{"seccomp=unconfined"},
+				Mounts:       []config.Mount{{Type: "volume", Source: "data", Target: "/data"}},
+				ContainerEnv: map[string]string{"FOO": "bar"},
+			},
+		},
+	}
+	applyFeatureMetadata(opts, metadata)
+
+	if !opts.Privileged {
+		t.Error("Privileged should be true")
+	}
+	if !opts.Init {
+		t.Error("Init should be true")
+	}
+	if len(opts.CapAdd) != 1 || opts.CapAdd[0] != "SYS_PTRACE" {
+		t.Errorf("CapAdd = %v, want [SYS_PTRACE]", opts.CapAdd)
+	}
+	if len(opts.SecurityOpt) != 1 || opts.SecurityOpt[0] != "seccomp=unconfined" {
+		t.Errorf("SecurityOpt = %v, want [seccomp=unconfined]", opts.SecurityOpt)
+	}
+	if len(opts.Mounts) != 1 || opts.Mounts[0].Target != "/data" {
+		t.Errorf("Mounts = %v, want [{volume data /data}]", opts.Mounts)
+	}
+	if len(opts.Env) != 1 || opts.Env[0] != "FOO=bar" {
+		t.Errorf("Env = %v, want [FOO=bar]", opts.Env)
 	}
 }
 

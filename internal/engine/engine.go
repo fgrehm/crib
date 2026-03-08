@@ -163,6 +163,10 @@ type UpResult struct {
 
 	// Ports lists the published port bindings.
 	Ports []driver.PortBinding
+
+	// HasFeatureEntrypoints is true when the image has feature-declared
+	// entrypoints baked in. Persisted to result.json for restart paths.
+	HasFeatureEntrypoints bool
 }
 
 // Up brings a devcontainer up for the given workspace.
@@ -229,6 +233,7 @@ func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerCon
 	wsResult.WorkspaceFolder = result.WorkspaceFolder
 	wsResult.RemoteEnv = cfg.RemoteEnv
 	wsResult.RemoteUser = result.RemoteUser
+	wsResult.HasFeatureEntrypoints = result.HasFeatureEntrypoints
 
 	if err := e.store.SaveResult(ws.ID, wsResult); err != nil {
 		e.logger.Warn("failed to save workspace result", "error", err)
@@ -418,8 +423,10 @@ func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Work
 		return "", fmt.Errorf("compose down: %w", err)
 	}
 
-	// Generate override and bring services up.
-	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, inv.files, featureImage, pluginResp)
+	// Generate override and bring services up. Resolve feature metadata so
+	// capabilities (privileged, init, entrypoints) are included in the override.
+	fmeta := e.resolveFeatureMetadata(cfg)
+	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, inv.files, featureImage, pluginResp, fmeta...)
 	if err != nil {
 		return "", fmt.Errorf("generating compose override: %w", err)
 	}

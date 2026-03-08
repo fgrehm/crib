@@ -76,6 +76,34 @@ func GenerateDockerfile(features []*FeatureSet, containerUser, remoteUser string
 		b.WriteString("\n")
 	}
 
+	// Feature entrypoints: chain them so each feature's daemon starts
+	// before the container's main command. Each entrypoint script follows
+	// the convention of `exec "$@"` at the end, so chaining works by
+	// passing the next entrypoint as an argument.
+	var entrypoints []string
+	for _, f := range features {
+		if f.Config.Entrypoint != "" {
+			entrypoints = append(entrypoints, f.Config.Entrypoint)
+		}
+	}
+	if len(entrypoints) == 1 {
+		fmt.Fprintf(&b, "ENTRYPOINT [%q]\n", entrypoints[0])
+	} else if len(entrypoints) > 1 {
+		// Later features wrap earlier ones (outermost runs first).
+		// Generate: exec /last.sh /prev.sh ... /first.sh "$@"
+		var chain strings.Builder
+		for i := len(entrypoints) - 1; i >= 0; i-- {
+			if chain.Len() > 0 {
+				chain.WriteByte(' ')
+			}
+			chain.WriteString(entrypoints[i])
+		}
+		script := fmt.Sprintf("#!/bin/sh\\nexec %s \"$@\"\\n", chain.String())
+		fmt.Fprintf(&b, "RUN printf '%s' > /usr/local/share/crib-entrypoint.sh && chmod +x /usr/local/share/crib-entrypoint.sh\n", script)
+		b.WriteString("ENTRYPOINT [\"/usr/local/share/crib-entrypoint.sh\"]\n")
+	}
+	b.WriteString("\n")
+
 	// Restore the original user. The default must match the base image user
 	// so the prebuild hash changes when the user changes.
 	imageUser := containerUser

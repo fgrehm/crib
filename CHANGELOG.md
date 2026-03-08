@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `crib cache clean --force` / `-f` flag to skip confirmation prompt.
+- DevContainer Feature entrypoints are now applied. Features that declare an
+  `entrypoint` (e.g. docker-in-docker starting `dockerd`) now have their
+  entrypoint baked into the image. Multiple feature entrypoints are chained via
+  a wrapper script. Feature runtime capabilities (`privileged`, `init`,
+  `capAdd`, `securityOpt`, `mounts`, `containerEnv`) are now applied at
+  container creation time for both single-container and compose paths.
 
 ### Security
 

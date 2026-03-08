@@ -33,4 +33,9 @@ type Result struct {
 	// SnapshotHookHash is a hash of the create-time hook definitions at the time
 	// the snapshot was taken. If hooks change, the snapshot is stale.
 	SnapshotHookHash string `json:"snapshotHookHash,omitempty"`
+
+	// HasFeatureEntrypoints is true when the image was built with features
+	// that declare entrypoints (e.g. docker-in-docker). Used by restart
+	// paths to know whether to override the container entrypoint.
+	HasFeatureEntrypoints bool `json:"hasFeatureEntrypoints,omitempty"`
 }

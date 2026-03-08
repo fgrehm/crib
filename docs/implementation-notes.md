@@ -146,12 +146,52 @@ over bind-mounted files (the kernel denies it even for root inside the user name
 
 - `internal/engine/setup.go` (`setupContainer`)
 
+### Feature entrypoints and runtime capabilities
+
+DevContainer Features can declare an `entrypoint` in `devcontainer-feature.json`. These
+scripts typically start a daemon and then chain via `exec "$@"` so the container's normal
+command runs after the daemon is ready (e.g. docker-in-docker starts `dockerd`).
+
+Features can also declare runtime capabilities (`privileged`, `init`, `capAdd`,
+`securityOpt`, `mounts`, `containerEnv`) that must be applied at container creation time,
+not during the image build.
+
+`crib` handles these in two separate phases:
+
+**Image build (Dockerfile generation):** `GenerateDockerfile` in `internal/feature/dockerfile.go`
+bakes entrypoints into the image. For a single feature entrypoint, it emits a simple
+`ENTRYPOINT ["/path/to/script"]`. For multiple features, it generates a wrapper script at
+`/usr/local/share/crib-entrypoint.sh` that chains entrypoints in order (later features wrap
+earlier ones): `exec /last.sh /prev.sh ... /first.sh "$@"`.
+
+**Container creation (runtime capabilities):** `applyFeatureMetadata` in `internal/engine/single.go`
+applies `privileged`, `init`, `capAdd`, `securityOpt`, `mounts`, and `containerEnv` from
+feature metadata to `RunOptions`. For compose, `generateComposeOverride` writes these into
+the override YAML.
+
+When features declare entrypoints and `overrideCommand` is true (the default for
+image/Dockerfile containers), only `CMD` is overridden, not `ENTRYPOINT`. This preserves
+the feature entrypoint while still keeping the container alive with a sleep loop. The
+`HasFeatureEntrypoints` flag is persisted in `result.json` so restart paths that don't
+rebuild the image can apply the same logic.
+
+**Files**:
+
+- `internal/feature/dockerfile.go` (`GenerateDockerfile`)
+- `internal/engine/single.go` (`buildRunOptions`, `applyFeatureMetadata`)
+- `internal/engine/compose.go` (`generateComposeOverride`)
+- `internal/engine/build.go` (`buildResult.hasEntrypoints`, `featureToMetadata`)
+- `internal/workspace/result.go` (`HasFeatureEntrypoints`)
+
 ### overrideCommand default differs by scenario
 
 Per the spec, `overrideCommand` defaults to `true` for image/Dockerfile containers and
 `false` for compose containers. `crib`'s compose path handles this in the override YAML
 generation (injecting entrypoint/command only when the flag is explicitly or implicitly true).
 The single container path treats `nil` as `true`.
+
+When features set an `ENTRYPOINT` in the image, `overrideCommand: true` overrides only
+`CMD` (not `ENTRYPOINT`), so the feature daemon starts before the keep-alive command.
 
 **Files**:
 
@@ -262,7 +302,7 @@ or `exec.Command` with no stdin). Docker strictly validates the TTY and errors w
 | Config file discovery | All three search paths |
 | Image/Dockerfile/Compose scenarios | All three paths |
 | Lifecycle hooks | All 6 hooks with marker-file idempotency |
-| DevContainer Features | OCI, HTTPS, local; ordering algorithm; feature lifecycle hooks; compose support |
+| DevContainer Features | OCI, HTTPS, local; ordering algorithm; feature lifecycle hooks; compose support; entrypoints and runtime capabilities (`privileged`, `init`, `capAdd`, `securityOpt`, `mounts`, `containerEnv`) |
 | Variable substitution | All 7 variables including `${localEnv}` and `${containerEnv}` |
 | Image metadata | Parsing `devcontainer.metadata` label, merge rules |
 | `updateRemoteUserUID` | UID/GID sync with conflict resolution |

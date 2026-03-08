@@ -133,12 +133,14 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 
 	// Build feature image if features are configured.
 	var featureImage string
+	var featureBuildRes *buildResult
 	if len(cfg.Features) > 0 {
-		img, err := e.buildComposeFeatures(ctx, ws, cfg, inv)
+		res, err := e.buildComposeFeatures(ctx, ws, cfg, inv)
 		if err != nil {
 			return nil, fmt.Errorf("building compose features: %w", err)
 		}
-		featureImage = img
+		featureImage = res.imageName
+		featureBuildRes = res
 	}
 
 	// Resolve the container user from the compose service so plugins get
@@ -152,7 +154,11 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 	}
 
 	// Generate override compose file for crib-specific configuration.
-	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, inv.files, featureImage, pluginResp)
+	var fmeta []*config.ImageMetadata
+	if featureBuildRes != nil {
+		fmeta = featureBuildRes.imageMetadata
+	}
+	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, inv.files, featureImage, pluginResp, fmeta...)
 	if err != nil {
 		return nil, fmt.Errorf("generating compose override: %w", err)
 	}
@@ -192,12 +198,13 @@ func (e *Engine) upCompose(ctx context.Context, ws *workspace.Workspace, cfg *co
 		return nil, err
 	}
 
+	hasEntrypoints := featureBuildRes != nil && featureBuildRes.hasEntrypoints
 	cc := containerContext{
 		workspaceID:     ws.ID,
 		containerID:     container.ID,
 		workspaceFolder: workspaceFolder,
 	}
-	return e.finalizeSetup(ctx, ws, cfg, cc, featureImage, pluginResp)
+	return e.finalizeSetup(ctx, ws, cfg, cc, featureImage, pluginResp, hasEntrypoints)
 }
 
 // upComposeFromStored handles "crib up" after "crib down" when images are
@@ -246,16 +253,16 @@ func (e *Engine) upComposeFromStored(ctx context.Context, ws *workspace.Workspac
 		containerID:     container.ID,
 		workspaceFolder: workspaceFolder,
 	}
-	return e.finalizeSetup(ctx, ws, cfg, cc, featureImage, pluginResp)
+	return e.finalizeSetup(ctx, ws, cfg, cc, featureImage, pluginResp, storedResult.HasFeatureEntrypoints)
 }
 
 // buildComposeFeatures resolves features, determines the base image, and builds
-// a feature image on top. Returns the feature image name.
-func (e *Engine) buildComposeFeatures(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, inv composeInvocation) (string, error) {
+// a feature image on top.
+func (e *Engine) buildComposeFeatures(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, inv composeInvocation) (*buildResult, error) {
 	serviceName := cfg.Service
 	svcInfo, err := composehelper.GetServiceInfo(ctx, inv.files, serviceName, inv.env)
 	if err != nil {
-		return "", fmt.Errorf("loading service info: %w", err)
+		return nil, fmt.Errorf("loading service info: %w", err)
 	}
 
 	var baseImage string
@@ -263,7 +270,7 @@ func (e *Engine) buildComposeFeatures(ctx context.Context, ws *workspace.Workspa
 		// Build-based service: run compose build first to produce the base image.
 		e.reportProgress("Building service...")
 		if err := e.compose.Build(ctx, inv.projectName, inv.files, []string{serviceName}, e.stdout, e.stderr, inv.env); err != nil {
-			return "", fmt.Errorf("building compose service: %w", err)
+			return nil, fmt.Errorf("building compose service: %w", err)
 		}
 		if svcInfo.Image != "" {
 			// Service has both build and image: the image field is the tag.
@@ -276,16 +283,11 @@ func (e *Engine) buildComposeFeatures(ctx context.Context, ws *workspace.Workspa
 	}
 
 	if baseImage == "" {
-		return "", fmt.Errorf("cannot determine base image for service %q", serviceName)
+		return nil, fmt.Errorf("cannot determine base image for service %q", serviceName)
 	}
 
 	containerUser := e.resolveComposeContainerUser(ctx, cfg, svcInfo.User, baseImage)
-	result, err := e.buildComposeFeatureImage(ctx, ws, cfg, baseImage, containerUser)
-	if err != nil {
-		return "", err
-	}
-
-	return result.imageName, nil
+	return e.buildComposeFeatureImage(ctx, ws, cfg, baseImage, containerUser)
 }
 
 // resolveComposeUser determines the container user for the compose service by
@@ -361,7 +363,11 @@ func (e *Engine) resolveComposeDockerfileInfo(svcInfo *composehelper.ServiceInfo
 // generateComposeOverride creates a temporary compose override file that adds
 // crib-specific labels and configuration to the target service.
 // pluginResp may be nil; when non-nil, plugin mounts and env are included.
-func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, composeFiles []string, featureImage string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
+// generateComposeOverride creates a compose override file with crib-specific
+// configuration (labels, entrypoint, env, mounts, etc.). featureMetadata is
+// optional; when non-nil, feature-declared capabilities (privileged, init,
+// capAdd, entrypoints) are included in the override.
+func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, composeFiles []string, featureImage string, pluginResp *plugin.PreContainerRunResponse, featureMetadata ...*config.ImageMetadata) (string, error) {
 	serviceName := cfg.Service
 
 	// Build the override YAML.
@@ -378,16 +384,66 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		fmt.Fprintf(&b, "    image: %s\n", featureImage)
 	}
 
+	// Check if features declare entrypoints (baked into image ENTRYPOINT).
+	hasFeatureEntrypoints := false
+	for _, m := range featureMetadata {
+		if m.Entrypoint != "" {
+			hasFeatureEntrypoints = true
+			break
+		}
+	}
+
 	// Override entrypoint/command to keep the container alive.
 	overrideCommand := cfg.OverrideCommand == nil || *cfg.OverrideCommand
 	if overrideCommand {
-		b.WriteString("    entrypoint: /bin/sh\n")
-		b.WriteString("    command:\n")
-		b.WriteString("      - -c\n")
-		b.WriteString("      - 'echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity'\n")
+		if hasFeatureEntrypoints {
+			// Feature entrypoints are baked into the image. Don't
+			// override entrypoint; only set command as a full command
+			// so the feature entrypoint can exec into it.
+			b.WriteString("    command:\n")
+			b.WriteString("      - /bin/sh\n")
+			b.WriteString("      - -c\n")
+			b.WriteString("      - 'echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity'\n")
+		} else {
+			b.WriteString("    entrypoint: /bin/sh\n")
+			b.WriteString("    command:\n")
+			b.WriteString("      - -c\n")
+			b.WriteString("      - 'echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity'\n")
+		}
 	}
 
-	// Container environment (config + plugins).
+	// Apply feature capabilities (privileged, init, cap_add, security_opt).
+	for _, m := range featureMetadata {
+		if m.Privileged != nil && *m.Privileged {
+			b.WriteString("    privileged: true\n")
+			break
+		}
+	}
+	for _, m := range featureMetadata {
+		if m.Init != nil && *m.Init {
+			b.WriteString("    init: true\n")
+			break
+		}
+	}
+	var capAdds, secOpts []string
+	for _, m := range featureMetadata {
+		capAdds = append(capAdds, m.CapAdd...)
+		secOpts = append(secOpts, m.SecurityOpt...)
+	}
+	if len(capAdds) > 0 {
+		b.WriteString("    cap_add:\n")
+		for _, c := range capAdds {
+			fmt.Fprintf(&b, "      - %s\n", c)
+		}
+	}
+	if len(secOpts) > 0 {
+		b.WriteString("    security_opt:\n")
+		for _, s := range secOpts {
+			fmt.Fprintf(&b, "      - %s\n", s)
+		}
+	}
+
+	// Container environment (config + plugins + features).
 	hasConfigEnv := len(cfg.ContainerEnv) > 0
 	hasPluginEnv := pluginResp != nil && len(pluginResp.Env) > 0
 	if hasConfigEnv || hasPluginEnv {

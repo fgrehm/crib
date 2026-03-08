@@ -17,8 +17,9 @@ import (
 
 // buildResult holds the outcome of an image build.
 type buildResult struct {
-	imageName     string
-	imageMetadata []*config.ImageMetadata
+	imageName      string
+	imageMetadata  []*config.ImageMetadata
+	hasEntrypoints bool // true if any feature declared an entrypoint
 }
 
 // buildImage handles image building for the single container path.
@@ -218,13 +219,18 @@ func (e *Engine) doBuild(ctx context.Context, ws *workspace.Workspace, cfg *conf
 
 	// Collect image metadata from features for later merging.
 	var metadata []*config.ImageMetadata
+	hasEntrypoints := false
 	for _, f := range features {
 		metadata = append(metadata, featureToMetadata(f))
+		if f.Config.Entrypoint != "" {
+			hasEntrypoints = true
+		}
 	}
 
 	return &buildResult{
-		imageName:     imageName,
-		imageMetadata: metadata,
+		imageName:      imageName,
+		imageMetadata:  metadata,
+		hasEntrypoints: hasEntrypoints,
 	}, nil
 }
 
@@ -323,6 +329,26 @@ func resolveContainerUser(cfg *config.DevContainerConfig) string {
 		return cfg.RemoteUser
 	}
 	return "root"
+}
+
+// resolveFeatureMetadata resolves features from the config and returns their
+// metadata without building. Used by restart/recreate paths that need feature
+// capabilities (privileged, init, entrypoints) without a full image build.
+func (e *Engine) resolveFeatureMetadata(cfg *config.DevContainerConfig) []*config.ImageMetadata {
+	if len(cfg.Features) == 0 {
+		return nil
+	}
+	configDir := filepath.Dir(cfg.Origin)
+	features, err := e.resolveFeatures(cfg, configDir)
+	if err != nil {
+		e.logger.Debug("failed to resolve features for metadata", "error", err)
+		return nil
+	}
+	var metadata []*config.ImageMetadata
+	for _, f := range features {
+		metadata = append(metadata, featureToMetadata(f))
+	}
+	return metadata
 }
 
 // featureToMetadata converts a FeatureSet to an ImageMetadata entry.

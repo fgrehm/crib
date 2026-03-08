@@ -284,11 +284,13 @@ func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Works
 
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
 
+	hasFeatureEntrypoints := storedResult != nil && storedResult.HasFeatureEntrypoints
 	e.saveResult(ws, cfg, &UpResult{
-		ContainerID:     containerID,
-		WorkspaceFolder: workspaceFolder,
-		RemoteUser:      cc.remoteUser,
-		Ports:           ports,
+		ContainerID:           containerID,
+		WorkspaceFolder:       workspaceFolder,
+		RemoteUser:            cc.remoteUser,
+		Ports:                 ports,
+		HasFeatureEntrypoints: hasFeatureEntrypoints,
 	})
 
 	return &RestartResult{
@@ -324,6 +326,11 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 	if imageName == "" && storedResult != nil {
 		imageName = storedResult.ImageName
 	}
+	// Track whether the image has feature entrypoints. Prefer stored result;
+	// fall back to fresh build metadata if we had to rebuild.
+	hasFeatureEntrypoints := storedResult != nil && storedResult.HasFeatureEntrypoints
+	var featureMetadata []*config.ImageMetadata
+
 	if imageName == "" {
 		e.reportProgress("Image name not found in stored result, rebuilding...")
 		buildRes, err := e.buildImage(ctx, ws, cfg)
@@ -331,12 +338,15 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 			return nil, fmt.Errorf("rebuilding image: %w", err)
 		}
 		imageName = buildRes.imageName
+		hasFeatureEntrypoints = buildRes.hasEntrypoints
+		featureMetadata = buildRes.imageMetadata
 	}
 
-	runOpts, err := e.buildRunOptions(cfg, imageName, ws.Source, workspaceFolder)
+	runOpts, err := e.buildRunOptions(cfg, imageName, ws.Source, workspaceFolder, hasFeatureEntrypoints)
 	if err != nil {
 		return nil, err
 	}
+	applyFeatureMetadata(runOpts, featureMetadata)
 
 	// Run pre-container-run plugins to inject mounts, env, and extra args.
 	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, imageName, workspaceFolder)
@@ -389,11 +399,12 @@ func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Worksp
 	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
 
 	e.saveResult(ws, cfg, &UpResult{
-		ContainerID:     container.ID,
-		ImageName:       resultImageName,
-		WorkspaceFolder: workspaceFolder,
-		RemoteUser:      cc.remoteUser,
-		Ports:           ports,
+		ContainerID:           container.ID,
+		ImageName:             resultImageName,
+		WorkspaceFolder:       workspaceFolder,
+		RemoteUser:            cc.remoteUser,
+		Ports:                 ports,
+		HasFeatureEntrypoints: hasFeatureEntrypoints,
 	})
 
 	return &RestartResult{

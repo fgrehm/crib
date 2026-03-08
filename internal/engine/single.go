@@ -20,7 +20,12 @@ import (
 const defaultEntrypoint = "/bin/sh"
 
 // defaultCmd keeps the container alive when overrideCommand is not false.
+// These are arguments to defaultEntrypoint ("/bin/sh").
 var defaultCmd = []string{"-c", "echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity"}
+
+// featureCmd is used when features set an ENTRYPOINT in the image.
+// The feature entrypoint chains via exec "$@", so CMD must be a full command.
+var featureCmd = []string{"/bin/sh", "-c", "echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity"}
 
 // upSingle handles the single container path (image or Dockerfile based).
 func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, opts UpOptions) (*UpResult, error) {
@@ -80,10 +85,11 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 	}
 
 	// Build run options.
-	runOpts, err := e.buildRunOptions(cfg, buildRes.imageName, ws.Source, workspaceFolder)
+	runOpts, err := e.buildRunOptions(cfg, buildRes.imageName, ws.Source, workspaceFolder, buildRes.hasEntrypoints)
 	if err != nil {
 		return nil, err
 	}
+	applyFeatureMetadata(runOpts, buildRes.imageMetadata)
 
 	// Run pre-container-run plugins to inject mounts, env, and extra args.
 	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, buildRes.imageName, workspaceFolder)
@@ -110,11 +116,13 @@ func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *con
 		containerID:     container.ID,
 		workspaceFolder: workspaceFolder,
 	}
-	return e.finalizeSetup(ctx, ws, cfg, cc, buildRes.imageName, pluginResp)
+	return e.finalizeSetup(ctx, ws, cfg, cc, buildRes.imageName, pluginResp, buildRes.hasEntrypoints)
 }
 
 // buildRunOptions constructs RunOptions from the devcontainer config.
-func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, projectRoot, workspaceFolder string) (*driver.RunOptions, error) {
+// hasFeatureEntrypoints indicates the image has feature-declared entrypoints
+// baked in via ENTRYPOINT; when true, overrideCommand only sets CMD.
+func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, projectRoot, workspaceFolder string, hasFeatureEntrypoints bool) (*driver.RunOptions, error) {
 	opts := &driver.RunOptions{
 		Image:  imageName,
 		Labels: make(map[string]string),
@@ -128,8 +136,16 @@ func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, proj
 	// Entrypoint and command.
 	overrideCommand := cfg.OverrideCommand == nil || *cfg.OverrideCommand
 	if overrideCommand {
-		opts.Entrypoint = defaultEntrypoint
-		opts.Cmd = defaultCmd
+		if hasFeatureEntrypoints {
+			// Feature entrypoints are baked into the image as ENTRYPOINT.
+			// They chain via exec "$@", so we only set CMD to keep the
+			// container alive. The entrypoint starts its daemons, then
+			// execs into the sleep loop.
+			opts.Cmd = featureCmd
+		} else {
+			opts.Entrypoint = defaultEntrypoint
+			opts.Cmd = defaultCmd
+		}
 	}
 
 	// Environment variables.
@@ -181,10 +197,31 @@ func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, proj
 	return opts, nil
 }
 
+// applyFeatureMetadata merges feature-declared runtime capabilities into the
+// run options. These are capabilities like privileged, init, capAdd that
+// features declare in devcontainer-feature.json but can only be applied at
+// container creation time (not in the Dockerfile).
+func applyFeatureMetadata(opts *driver.RunOptions, metadata []*config.ImageMetadata) {
+	for _, m := range metadata {
+		if m.Privileged != nil && *m.Privileged {
+			opts.Privileged = true
+		}
+		if m.Init != nil && *m.Init {
+			opts.Init = true
+		}
+		opts.CapAdd = append(opts.CapAdd, m.CapAdd...)
+		opts.SecurityOpt = append(opts.SecurityOpt, m.SecurityOpt...)
+		opts.Mounts = append(opts.Mounts, m.Mounts...)
+		for k, v := range m.ContainerEnv {
+			opts.Env = append(opts.Env, k+"="+v)
+		}
+	}
+}
+
 // finalizeSetup copies plugin files, runs container setup, and persists the
 // result. Both the single-container and compose paths converge here after the
 // container has been created/started.
-func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, imageName string, pluginResp *plugin.PreContainerRunResponse) (*UpResult, error) {
+func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, imageName string, pluginResp *plugin.PreContainerRunResponse, hasFeatureEntrypoints bool) (*UpResult, error) {
 	if pluginResp != nil {
 		e.execPluginCopies(ctx, cc, pluginResp.Copies)
 
@@ -205,6 +242,7 @@ func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg
 	result, setupErr := e.setupAndReturn(ctx, ws, cfg, cc, envb)
 	if result != nil {
 		result.ImageName = imageName
+		result.HasFeatureEntrypoints = hasFeatureEntrypoints
 		e.saveResult(ws, cfg, result)
 	}
 	return result, setupErr
