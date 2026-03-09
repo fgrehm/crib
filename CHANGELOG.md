@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- OCI feature archives containing symbolic links are now rejected outright.
+  Previously, crib rejected symlinks whose static target appeared to escape the
+  extraction directory, but a chain of individually-safe symlinks could still
+  compose into a directory escape: an earlier symlink pointing to the extraction
+  root could be overwritten via the chain, redirecting subsequent file writes
+  outside the extraction directory. Feature archives contain scripts and JSON
+  and have no legitimate need for symlinks.
+
 ## [0.6.2] - 2026-03-09
 
 ### Fixed

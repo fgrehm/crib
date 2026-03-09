@@ -130,23 +130,13 @@ func extractTar(r io.Reader, dir string) error {
 			}
 			_ = f.Close()
 		case tar.TypeSymlink:
-			// Absolute symlink targets dereference to the literal path on
-			// the host filesystem, so they always escape the extraction dir.
-			if filepath.IsAbs(hdr.Linkname) {
-				return fmt.Errorf("tar entry %q has absolute symlink target %q", hdr.Name, hdr.Linkname)
-			}
-			// Relative targets are resolved from the symlink's parent dir.
-			resolved := filepath.Clean(filepath.Join(filepath.Dir(target), hdr.Linkname))
-			if !strings.HasPrefix(resolved, filepath.Clean(dir)+string(os.PathSeparator)) && resolved != filepath.Clean(dir) {
-				return fmt.Errorf("tar entry %q has symlink escaping extraction dir (target %q)", hdr.Name, hdr.Linkname)
-			}
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				return fmt.Errorf("creating parent dir for symlink %s: %w", target, err)
-			}
-			_ = os.Remove(target) // ignore error if target doesn't exist
-			if err := os.Symlink(hdr.Linkname, target); err != nil {
-				return fmt.Errorf("creating symlink %s -> %s: %w", target, hdr.Linkname, err)
-			}
+			// Symbolic links are rejected entirely. A chain of symlinks where
+			// each individual link appears to stay within the extraction dir
+			// can still compose into an escape: an earlier symlink pointing to
+			// the extraction root can later be overwritten via the chain,
+			// redirecting subsequent file writes outside the dir. Feature
+			// archives contain scripts and JSON; they have no need for symlinks.
+			return fmt.Errorf("feature archives must not contain symbolic links (entry %q)", hdr.Name)
 		}
 	}
 	return nil

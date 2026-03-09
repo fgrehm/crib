@@ -107,73 +107,50 @@ func TestExtractTar_PathTraversalNeutralized(t *testing.T) {
 	}
 }
 
-func TestExtractTar_SafeSymlink(t *testing.T) {
-	dir := t.TempDir()
-	buf := createTarBuffer(t, []tarEntry{
-		{name: "real.txt", typeflag: tar.TypeReg, body: "target"},
-		{name: "link.txt", typeflag: tar.TypeSymlink, linkname: "real.txt"},
-	})
-
-	if err := extractTar(buf, dir); err != nil {
-		t.Fatalf("extractTar: %v", err)
+func TestExtractTar_SymlinkRejected(t *testing.T) {
+	cases := []struct {
+		name    string
+		entries []tarEntry
+	}{
+		{
+			name: "safe relative symlink",
+			entries: []tarEntry{
+				{name: "real.txt", typeflag: tar.TypeReg, body: "target"},
+				{name: "link.txt", typeflag: tar.TypeSymlink, linkname: "real.txt"},
+			},
+		},
+		{
+			name: "absolute symlink",
+			entries: []tarEntry{
+				{name: "evil", typeflag: tar.TypeSymlink, linkname: "/etc/passwd"},
+			},
+		},
+		{
+			name: "relative escape symlink",
+			entries: []tarEntry{
+				{name: "sub/evil", typeflag: tar.TypeSymlink, linkname: "../../etc/passwd"},
+			},
+		},
+		{
+			name: "symlink to subdir",
+			entries: []tarEntry{
+				{name: "sub/file.txt", typeflag: tar.TypeReg, body: "data"},
+				{name: "link", typeflag: tar.TypeSymlink, linkname: "sub/file.txt"},
+			},
+		},
 	}
 
-	target, err := os.Readlink(filepath.Join(dir, "link.txt"))
-	if err != nil {
-		t.Fatalf("reading symlink: %v", err)
-	}
-	if target != "real.txt" {
-		t.Errorf("symlink target = %q, want %q", target, "real.txt")
-	}
-}
-
-func TestExtractTar_SymlinkAbsoluteEscape(t *testing.T) {
-	dir := t.TempDir()
-	buf := createTarBuffer(t, []tarEntry{
-		{name: "evil", typeflag: tar.TypeSymlink, linkname: "/etc/passwd"},
-	})
-
-	err := extractTar(buf, dir)
-	if err == nil {
-		t.Fatal("expected error for absolute symlink escape")
-	}
-	if !strings.Contains(err.Error(), "absolute symlink") {
-		t.Errorf("error = %q, want mention of absolute symlink", err)
-	}
-}
-
-func TestExtractTar_SymlinkRelativeEscape(t *testing.T) {
-	dir := t.TempDir()
-	buf := createTarBuffer(t, []tarEntry{
-		{name: "sub/evil", typeflag: tar.TypeSymlink, linkname: "../../etc/passwd"},
-	})
-
-	err := extractTar(buf, dir)
-	if err == nil {
-		t.Fatal("expected error for relative symlink escape")
-	}
-	if !strings.Contains(err.Error(), "symlink escaping") {
-		t.Errorf("error = %q, want mention of symlink escaping", err)
-	}
-}
-
-func TestExtractTar_SymlinkToSubdir(t *testing.T) {
-	dir := t.TempDir()
-	buf := createTarBuffer(t, []tarEntry{
-		{name: "sub/file.txt", typeflag: tar.TypeReg, body: "data"},
-		{name: "link", typeflag: tar.TypeSymlink, linkname: "sub/file.txt"},
-	})
-
-	if err := extractTar(buf, dir); err != nil {
-		t.Fatalf("extractTar: %v", err)
-	}
-
-	// Symlink within dir should be created.
-	target, err := os.Readlink(filepath.Join(dir, "link"))
-	if err != nil {
-		t.Fatalf("reading symlink: %v", err)
-	}
-	if target != "sub/file.txt" {
-		t.Errorf("symlink target = %q, want %q", target, "sub/file.txt")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			buf := createTarBuffer(t, tc.entries)
+			err := extractTar(buf, dir)
+			if err == nil {
+				t.Fatal("expected error for archive containing symlink")
+			}
+			if !strings.Contains(err.Error(), "must not contain symbolic links") {
+				t.Errorf("error = %q, want mention of symbolic links", err)
+			}
+		})
 	}
 }
