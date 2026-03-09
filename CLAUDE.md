@@ -76,4 +76,5 @@ Run a single test: `go test ./internal/config/ -short -run TestParseFull`
 2. Move `CHANGELOG.md` `[Unreleased]` entries into `[X.Y.Z] - YYYY-MM-DD`.
 3. Update `VERSION` file.
 4. Commit: `chore: release vX.Y.Z`.
-5. Tag, update stable, push: `git tag vX.Y.Z && git branch -f stable vX.Y.Z && git push origin main vX.Y.Z stable`
+5. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`
+   CI updates the `stable` branch automatically after the tag is pushed.

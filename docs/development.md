@@ -6,7 +6,7 @@ description: Building, testing, and contributing to crib.
 ## Branching
 
 - All work happens on `main`. No long-lived feature branches.
-- Releases are tagged (e.g. `v0.3.0`) and the `stable` branch is updated to match.
+- Releases are tagged (e.g. `v0.3.0`). CI updates `stable` to match automatically after the tag is pushed.
 - `README.md` on `stable` is the source of truth for released functionality.
 - `README.md` on `main` may describe unreleased work.
 
