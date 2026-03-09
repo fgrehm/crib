@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-03-09
+
 ### Security
 
 - OCI feature archives containing symbolic links are now rejected outright.
