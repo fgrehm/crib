@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fgrehm/crib/internal/driver"
 	"github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/plugin/shellhistory"
@@ -29,6 +30,20 @@ func newTestEngine(t *testing.T) (*Engine, *oci.OCIDriver, *workspace.Store) {
 
 	// compose helper is optional for these tests.
 	return New(d, nil, store, slog.Default()), d, store
+}
+
+// cleanupWorkspaceImages removes all labeled images for a workspace during
+// test teardown. Prevents crib-test-* images from accumulating on disk.
+func cleanupWorkspaceImages(t *testing.T, d driver.Driver, wsID string) {
+	t.Helper()
+	ctx := context.Background()
+	images, err := d.ListImages(ctx, oci.WorkspaceLabel(wsID))
+	if err != nil {
+		return
+	}
+	for _, img := range images {
+		_ = d.RemoveImage(ctx, img.Reference)
+	}
 }
 
 func TestIntegrationUpImageBased(t *testing.T) {
@@ -70,6 +85,7 @@ func TestIntegrationUpImageBased(t *testing.T) {
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	// Up.
@@ -180,6 +196,7 @@ func TestIntegrationUpWithLifecycleHooks(t *testing.T) {
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	result, err := e.Up(ctx, ws, UpOptions{})
@@ -239,6 +256,7 @@ func TestIntegrationUpWithInitializeCommand(t *testing.T) {
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	_, err := e.Up(ctx, ws, UpOptions{})
@@ -286,6 +304,7 @@ func TestIntegrationUpWithRecreate(t *testing.T) {
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	// First up.
@@ -377,6 +396,7 @@ USER dev
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	result, err := e.Up(ctx, ws, UpOptions{})
@@ -476,6 +496,7 @@ func TestIntegrationUpWithPlugins(t *testing.T) {
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	result, err := e.Up(ctx, ws, UpOptions{})
@@ -534,6 +555,7 @@ func TestIntegrationLogs(t *testing.T) {
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	if _, err := e.Up(ctx, ws, UpOptions{}); err != nil {
@@ -601,7 +623,7 @@ func TestIntegrationSnapshot(t *testing.T) {
 	_ = d.RemoveImage(ctx, snapshotName)
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
-		_ = d.RemoveImage(ctx, snapshotName)
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	// Up should create the container and commit a snapshot.

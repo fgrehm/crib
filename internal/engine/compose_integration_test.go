@@ -66,18 +66,19 @@ func writeComposeDevcontainer(t *testing.T, projectDir, wsID string) *workspace.
 
 	return &workspace.Workspace{
 		ID:               wsID,
-		Source:            projectDir,
+		Source:           projectDir,
 		DevContainerPath: ".devcontainer/devcontainer.json",
 		CreatedAt:        time.Now(),
 		LastUsedAt:       time.Now(),
 	}
 }
 
-// cleanupCompose tears down any containers/networks for the workspace.
-func cleanupCompose(t *testing.T, e *Engine, ws *workspace.Workspace) {
+// cleanupCompose tears down containers/networks and removes labeled images.
+func cleanupCompose(t *testing.T, e *Engine, d *oci.OCIDriver, ws *workspace.Workspace) {
 	t.Helper()
 	ctx := context.Background()
 	_ = e.Down(ctx, ws)
+	cleanupWorkspaceImages(t, d, ws.ID)
 }
 
 // TestIntegrationComposeDownUpSkipsBuild verifies that after a down + up cycle,
@@ -88,14 +89,14 @@ func TestIntegrationComposeDownUpSkipsBuild(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, _, store := newTestEngineWithCompose(t)
+	e, d, store := newTestEngineWithCompose(t)
 
 	projectDir := t.TempDir()
 	wsID := "test-compose-down-up"
 	ws := writeComposeDevcontainer(t, projectDir, wsID)
 
-	t.Cleanup(func() { cleanupCompose(t, e, ws) })
-	cleanupCompose(t, e, ws)
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
 
 	// Initial Up — full creation path.
 	result1, err := e.Up(ctx, ws, UpOptions{})
@@ -160,7 +161,7 @@ func TestIntegrationComposeRestartWithStoppedDeps(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, _, _ := newTestEngineWithCompose(t)
+	e, d, _ := newTestEngineWithCompose(t)
 
 	projectDir := t.TempDir()
 	wsID := "test-compose-restart-deps"
@@ -198,14 +199,14 @@ func TestIntegrationComposeRestartWithStoppedDeps(t *testing.T) {
 
 	ws := &workspace.Workspace{
 		ID:               wsID,
-		Source:            projectDir,
+		Source:           projectDir,
 		DevContainerPath: ".devcontainer/devcontainer.json",
 		CreatedAt:        time.Now(),
 		LastUsedAt:       time.Now(),
 	}
 
-	t.Cleanup(func() { cleanupCompose(t, e, ws) })
-	cleanupCompose(t, e, ws)
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
 
 	// Initial Up.
 	result, err := e.Up(ctx, ws, UpOptions{})
@@ -247,14 +248,14 @@ func TestIntegrationComposeDownClearsMarkers(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, _, store := newTestEngineWithCompose(t)
+	e, d, store := newTestEngineWithCompose(t)
 
 	projectDir := t.TempDir()
 	wsID := "test-compose-markers"
 	ws := writeComposeDevcontainer(t, projectDir, wsID)
 
-	t.Cleanup(func() { cleanupCompose(t, e, ws) })
-	cleanupCompose(t, e, ws)
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
 
 	// Initial Up.
 	if _, err := e.Up(ctx, ws, UpOptions{}); err != nil {
@@ -292,7 +293,7 @@ func TestIntegrationComposeRecreateRebuildsImage(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, _, store := newTestEngineWithCompose(t)
+	e, d, store := newTestEngineWithCompose(t)
 
 	projectDir := t.TempDir()
 	wsID := "test-compose-recreate-rebuild"
@@ -330,14 +331,14 @@ func TestIntegrationComposeRecreateRebuildsImage(t *testing.T) {
 
 	ws := &workspace.Workspace{
 		ID:               wsID,
-		Source:            projectDir,
+		Source:           projectDir,
 		DevContainerPath: ".devcontainer/devcontainer.json",
 		CreatedAt:        time.Now(),
 		LastUsedAt:       time.Now(),
 	}
 
-	t.Cleanup(func() { cleanupCompose(t, e, ws) })
-	cleanupCompose(t, e, ws)
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
 
 	// Initial Up — builds image with v1.
 	result1, err := e.Up(ctx, ws, UpOptions{})
@@ -396,14 +397,14 @@ func TestIntegrationComposeImageNamePersisted(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	e, _, store := newTestEngineWithCompose(t)
+	e, d, store := newTestEngineWithCompose(t)
 
 	projectDir := t.TempDir()
 	wsID := "test-compose-imagename"
 	ws := writeComposeDevcontainer(t, projectDir, wsID)
 
-	t.Cleanup(func() { cleanupCompose(t, e, ws) })
-	cleanupCompose(t, e, ws)
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
 
 	if _, err := e.Up(ctx, ws, UpOptions{}); err != nil {
 		t.Fatalf("Up: %v", err)

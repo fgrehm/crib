@@ -51,6 +51,7 @@ func TestIntegrationRestartSimple(t *testing.T) {
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	// Initial Up — runs all hooks.
@@ -147,6 +148,7 @@ func TestIntegrationRestartSafeChange(t *testing.T) {
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	// Initial Up.
@@ -257,6 +259,7 @@ func TestIntegrationRestartNeedsRebuild(t *testing.T) {
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	// Initial Up.
@@ -369,6 +372,7 @@ func TestIntegrationRestartMountChange(t *testing.T) {
 	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
 	t.Cleanup(func() {
 		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
 	})
 
 	// Initial Up without the extra mount.
