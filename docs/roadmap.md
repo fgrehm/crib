@@ -29,13 +29,13 @@ Currently plugin mounts land at ad-hoc paths (`~/.crib_history/`, `/tmp/ssh-agen
 
 Add `--json` or `--format json` flag to commands like `status`, `list` for scripting and tooling integration. The internal data structures already support this.
 
-### Fully qualified workspace paths
+### ~~Fully qualified workspace paths~~
 
-Workspace IDs are currently derived from the project directory name (e.g. `ruby-project`), which can collide when different orgs or parent directories have projects with the same name. Use a hash or full path to guarantee uniqueness. This is a breaking change (existing workspaces would need migration), so it should land before v1.0.
+~~Workspace IDs are currently derived from the project directory name (e.g. `ruby-project`), which can collide when different orgs or parent directories have projects with the same name. Use a hash or full path to guarantee uniqueness. This is a breaking change (existing workspaces would need migration), so it should land before v1.0.~~ Done. Workspace IDs now use `{slug}-{7-char-sha256}` of the absolute project path.
 
-### `--force` flag for destructive commands
+### ~~`--force` flag for destructive commands~~
 
-Add a `--force` / `-f` flag to commands like `remove`, `rebuild`, and `restart` to skip confirmation prompts. Useful for scripting and CI.
+~~Add a `--force` / `-f` flag to commands like `remove`, `rebuild`, and `restart` to skip confirmation prompts. Useful for scripting and CI.~~ Done. `crib remove` and `crib prune` have `--force` / `-f`.
 
 ### Colored log output
 
@@ -53,9 +53,13 @@ Show a spinner or progress bar during `docker commit` and other long-running ope
 
 Accept an explicit workspace name argument so these commands work outside the project directory. Also useful for managing multiple workspaces from a central location.
 
-### `crib nuke` / `crib prune`
+### ~~`crib prune`~~
 
-Clean all crib state, containers, volumes, and images in one shot. Useful for full reset or uninstall.
+~~Clean all crib state, containers, volumes, and images in one shot. Useful for full reset or uninstall.~~ Done. `crib prune` removes stale and orphan workspace images, with dry-run preview and `--all` for global scope.
+
+### Compose-built image cleanup
+
+`crib remove` and `crib prune` don't clean up images produced by `docker compose build` for services that have a `build:` section but no DevContainer Features. These images are unnamed by crib (compose names them `{project}-{service}` on Docker, `{project}_{service}` on Podman) and carry no `crib.workspace` label. Cleaning them up requires either tracking the compose image name in `result.json` at build time, or deriving it from the stored config at remove time (accounting for runtime differences and explicit `image:` overrides in the compose file).
 
 ### Enhanced `crib list`
 
