@@ -14,6 +14,7 @@ import (
 	"github.com/fgrehm/crib/internal/compose"
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/driver"
+	ocidriver "github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
@@ -426,6 +427,45 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 	return e.driver.DeleteContainer(ctx, ws.ID, container.ID)
 }
 
+// RemovePreview describes what Remove() will delete.
+type RemovePreview struct {
+	ContainerID string   // empty if no container found
+	Images      []string // image references that will be removed
+}
+
+// PreviewRemove returns what Remove() would delete without actually removing anything.
+func (e *Engine) PreviewRemove(ctx context.Context, ws *workspace.Workspace) *RemovePreview {
+	preview := &RemovePreview{}
+
+	if container, err := e.driver.FindContainer(ctx, ws.ID); err == nil && container != nil {
+		preview.ContainerID = container.ID
+	}
+
+	if result, err := e.store.LoadResult(ws.ID); err == nil && result != nil {
+		if result.SnapshotImage != "" {
+			preview.Images = append(preview.Images, result.SnapshotImage)
+		}
+		if result.ImageName != "" && strings.HasPrefix(result.ImageName, "crib-") {
+			preview.Images = append(preview.Images, result.ImageName)
+		}
+	}
+
+	label := ocidriver.WorkspaceLabel(ws.ID)
+	if images, err := e.driver.ListImages(ctx, label); err == nil {
+		seen := make(map[string]bool)
+		for _, img := range preview.Images {
+			seen[img] = true
+		}
+		for _, img := range images {
+			if !seen[img.Reference] {
+				preview.Images = append(preview.Images, img.Reference)
+			}
+		}
+	}
+
+	return preview
+}
+
 // Remove stops and removes the container, then deletes all workspace state.
 func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
 	e.logger.Debug("remove", "workspace", ws.ID)
@@ -455,6 +495,9 @@ func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
 			e.logger.Warn("failed to remove container", "error", err)
 		}
 	}
+
+	// Clean up workspace images (best-effort).
+	e.cleanupWorkspaceImages(ctx, ws.ID)
 
 	return e.store.Delete(ws.ID)
 }
@@ -493,6 +536,32 @@ func (e *Engine) Status(ctx context.Context, ws *workspace.Workspace) (*StatusRe
 	}
 
 	return result, nil
+}
+
+// cleanupWorkspaceImages removes the build image and any remaining labeled
+// images for a workspace. Best-effort: failures are logged, not returned.
+func (e *Engine) cleanupWorkspaceImages(ctx context.Context, wsID string) {
+	// Remove the active build image if it's crib-built.
+	if result, err := e.store.LoadResult(wsID); err == nil && result != nil {
+		if result.ImageName != "" && strings.HasPrefix(result.ImageName, "crib-") {
+			if err := e.driver.RemoveImage(ctx, result.ImageName); err != nil {
+				e.logger.Debug("failed to remove build image", "image", result.ImageName, "error", err)
+			}
+		}
+	}
+
+	// Sweep any remaining labeled images (stale builds, etc).
+	label := ocidriver.WorkspaceLabel(wsID)
+	images, err := e.driver.ListImages(ctx, label)
+	if err != nil {
+		e.logger.Debug("failed to list workspace images for cleanup", "error", err)
+		return
+	}
+	for _, img := range images {
+		if err := e.driver.RemoveImage(ctx, img.Reference); err != nil {
+			e.logger.Debug("failed to remove workspace image", "image", img.Reference, "error", err)
+		}
+	}
 }
 
 // --- shared helpers ---

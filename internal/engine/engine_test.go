@@ -220,6 +220,109 @@ func TestEnsureContainerRunning_EmptyState_FindReturnsRunning(t *testing.T) {
 	}
 }
 
+// removeMockDriver extends mockDriver to track image removal and listing.
+type removeMockDriver struct {
+	mockDriver
+	removedImages []string
+	images        []driver.ImageInfo
+}
+
+func (m *removeMockDriver) RemoveImage(ctx context.Context, imageName string) error {
+	m.removedImages = append(m.removedImages, imageName)
+	return nil
+}
+
+func (m *removeMockDriver) ListImages(ctx context.Context, label string) ([]driver.ImageInfo, error) {
+	return m.images, nil
+}
+
+func TestRemove_CleansUpBuildAndLabeledImages(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+
+	ws := &workspace.Workspace{
+		ID:               "test-ws",
+		Source:           t.TempDir(),
+		DevContainerPath: ".devcontainer/devcontainer.json",
+	}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveResult(ws.ID, &workspace.Result{
+		ImageName:     "crib-test-ws:crib-abc",
+		SnapshotImage: "crib-test-ws:snapshot",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	md := &removeMockDriver{
+		images: []driver.ImageInfo{
+			{Reference: "crib-test-ws:crib-old", ID: "sha256:stale", Size: 100, WorkspaceID: "test-ws"},
+		},
+	}
+	eng := &Engine{
+		driver: md,
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+	}
+
+	if err := eng.Remove(context.Background(), ws); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	// Should have removed: snapshot, build image, and the stale labeled image.
+	want := map[string]bool{
+		"crib-test-ws:snapshot": true,
+		"crib-test-ws:crib-abc": true,
+		"crib-test-ws:crib-old": true,
+	}
+	for _, img := range md.removedImages {
+		delete(want, img)
+	}
+	if len(want) > 0 {
+		t.Errorf("expected images not removed: %v (removed: %v)", want, md.removedImages)
+	}
+}
+
+func TestRemove_SkipsBaseImages(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+
+	ws := &workspace.Workspace{
+		ID:               "test-ws",
+		Source:           t.TempDir(),
+		DevContainerPath: ".devcontainer/devcontainer.json",
+	}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveResult(ws.ID, &workspace.Result{
+		ImageName: "ubuntu:22.04",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	md := &removeMockDriver{}
+	eng := &Engine{
+		driver: md,
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+	}
+
+	if err := eng.Remove(context.Background(), ws); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	// Should not remove the base image (ubuntu:22.04).
+	for _, img := range md.removedImages {
+		if img == "ubuntu:22.04" {
+			t.Errorf("should not have removed base image %s", img)
+		}
+	}
+}
+
 func TestNewComposeInvocation_IncludesService(t *testing.T) {
 	ws := &workspace.Workspace{
 		ID:               "web",
