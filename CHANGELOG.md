@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-10
+
 ### Added
 
 - `crib prune` command removes stale and orphan workspace images. Shows a dry-run
@@ -26,8 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Breaking**: Workspace IDs now include a 7-character hash of the absolute
   project path: `{slug}-{hash}` (e.g. `my-app-a1b2c3d`). Workspaces created
-  before this change will not be recognized. Run `crib up` in each project to
-  create a new workspace with the updated ID.
+  before this change will not be recognized. Run `crib remove` (if still
+  accessible) or delete `~/.crib/workspaces/` manually, then run `crib up` in
+  each project to create a new workspace with the updated ID.
 
 ## [0.6.3] - 2026-03-09
 
