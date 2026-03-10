@@ -409,6 +409,33 @@ func TestGenerateComposeOverride_OmitsImageWhenEmpty(t *testing.T) {
 	}
 }
 
+func TestGenerateComposeOverride_IncludesBuildLabels(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil)
+	if err != nil {
+		t.Fatalf("generateComposeOverride failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+	content := string(data)
+
+	// Should include build.labels for compose-built images.
+	if !strings.Contains(content, "build:") {
+		t.Errorf("expected build section, got:\n%s", content)
+	}
+	if !strings.Contains(content, "crib.workspace: \"test-ws\"") {
+		t.Errorf("expected workspace label in build.labels, got:\n%s", content)
+	}
+}
+
 func TestResolveComposeUser_ConfigUserTakesPrecedence(t *testing.T) {
 	eng := &Engine{
 		logger: slog.Default(),

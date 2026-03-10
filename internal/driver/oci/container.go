@@ -230,8 +230,14 @@ func (d *OCIDriver) ListContainers(ctx context.Context) ([]driver.ContainerDetai
 }
 
 // CommitContainer creates an image from a container's changes.
-func (d *OCIDriver) CommitContainer(ctx context.Context, _, containerID, imageName string) error {
-	_, err := d.helper.Output(ctx, "commit", containerID, imageName)
+// changes are passed as --change flags (e.g. "LABEL key=value").
+func (d *OCIDriver) CommitContainer(ctx context.Context, _, containerID, imageName string, changes []string) error {
+	args := []string{"commit"}
+	for _, c := range changes {
+		args = append(args, "--change", c)
+	}
+	args = append(args, containerID, imageName)
+	_, err := d.helper.Output(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("committing container %s as %s: %w", containerID, imageName, err)
 	}

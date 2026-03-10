@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/fgrehm/crib/internal/config"
+	ocidriver "github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
@@ -51,7 +52,10 @@ func (e *Engine) commitSnapshot(ctx context.Context, ws *workspace.Workspace, cf
 	imageName := snapshotImageName(ws.ID)
 	e.logger.Debug("committing snapshot", "image", imageName, "container", containerID)
 
-	if err := e.driver.CommitContainer(ctx, ws.ID, containerID, imageName); err != nil {
+	changes := []string{
+		fmt.Sprintf("LABEL %s=%s", ocidriver.LabelWorkspace, ws.ID),
+	}
+	if err := e.driver.CommitContainer(ctx, ws.ID, containerID, imageName, changes); err != nil {
 		e.logger.Warn("failed to commit snapshot", "error", err)
 		return
 	}

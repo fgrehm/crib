@@ -97,6 +97,16 @@ func (d *OCIDriver) buildBuildArgs(imageName string, opts *driver.BuildOptions, 
 		args = append(args, "--cache-from", c)
 	}
 
+	// Labels (sorted for determinism).
+	labelKeys := make([]string, 0, len(opts.Labels))
+	for k := range opts.Labels {
+		labelKeys = append(labelKeys, k)
+	}
+	sort.Strings(labelKeys)
+	for _, k := range labelKeys {
+		args = append(args, "--label", k+"="+opts.Labels[k])
+	}
+
 	// Extra options from build.options (before context).
 	args = append(args, opts.Options...)
 

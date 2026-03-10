@@ -54,10 +54,15 @@ type Driver interface {
 	ListContainers(ctx context.Context) ([]ContainerDetails, error)
 
 	// CommitContainer creates an image from a container's changes.
-	CommitContainer(ctx context.Context, workspaceID, containerID, imageName string) error
+	// changes are passed as --change flags (e.g. "LABEL key=value").
+	CommitContainer(ctx context.Context, workspaceID, containerID, imageName string, changes []string) error
 
 	// RemoveImage removes a container image.
 	RemoveImage(ctx context.Context, imageName string) error
+
+	// ListImages returns images matching the given label filter.
+	// Use "crib.workspace" for all crib images, or "crib.workspace=wsID" for a specific workspace.
+	ListImages(ctx context.Context, label string) ([]ImageInfo, error)
 
 	// ListVolumes returns volumes whose names match the given filter prefix.
 	ListVolumes(ctx context.Context, nameFilter string) ([]VolumeInfo, error)

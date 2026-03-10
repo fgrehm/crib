@@ -91,10 +91,11 @@ func TestSnapshotImageName(t *testing.T) {
 // snapshotMockDriver tracks commit and remove calls.
 type snapshotMockDriver struct {
 	mockDriver
-	committed    map[string]string // containerID -> imageName
-	removed      []string          // image names removed
-	imageExists  map[string]bool   // images that exist
-	findResult   *driver.ContainerDetails
+	committed   map[string]string // containerID -> imageName
+	removed     []string          // image names removed
+	imageExists map[string]bool   // images that exist
+	findResult  *driver.ContainerDetails
+	lastChanges []string // changes passed to last CommitContainer call
 }
 
 func newSnapshotMockDriver() *snapshotMockDriver {
@@ -104,9 +105,10 @@ func newSnapshotMockDriver() *snapshotMockDriver {
 	}
 }
 
-func (m *snapshotMockDriver) CommitContainer(_ context.Context, _, containerID, imageName string) error {
+func (m *snapshotMockDriver) CommitContainer(_ context.Context, _, containerID, imageName string, changes []string) error {
 	m.committed[containerID] = imageName
 	m.imageExists[imageName] = true
+	m.lastChanges = changes
 	return nil
 }
 
@@ -171,6 +173,46 @@ func TestCommitSnapshot_SavesMetadata(t *testing.T) {
 	}
 	if result.SnapshotHookHash == "" {
 		t.Error("SnapshotHookHash should not be empty")
+	}
+}
+
+func TestCommitSnapshot_IncludesWorkspaceLabel(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-label", Source: "/tmp/test"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ubuntu:22.04"
+	cfg.OnCreateCommand = config.LifecycleHook{"": {"echo hi"}}
+
+	mergedJSON, _ := json.Marshal(cfg)
+	if err := store.SaveResult(ws.ID, &workspace.Result{
+		ContainerID:  "container-1",
+		MergedConfig: mergedJSON,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := newSnapshotMockDriver()
+	eng := &Engine{
+		driver: mockDrv,
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+	}
+
+	eng.commitSnapshot(context.Background(), ws, cfg, "container-1")
+
+	// Verify --change label was passed.
+	if len(mockDrv.lastChanges) != 1 {
+		t.Fatalf("expected 1 change, got %d", len(mockDrv.lastChanges))
+	}
+	want := "LABEL crib.workspace=ws-label"
+	if mockDrv.lastChanges[0] != want {
+		t.Errorf("change = %q, want %q", mockDrv.lastChanges[0], want)
 	}
 }
 

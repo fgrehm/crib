@@ -236,8 +236,13 @@ func (m *restartMockDriver) TargetArchitecture(_ context.Context) (string, error
 func (m *restartMockDriver) ListContainers(_ context.Context) ([]driver.ContainerDetails, error) {
 	return nil, nil
 }
-func (m *restartMockDriver) CommitContainer(_ context.Context, _, _, _ string) error { return nil }
-func (m *restartMockDriver) RemoveImage(_ context.Context, _ string) error           { return nil }
+func (m *restartMockDriver) CommitContainer(_ context.Context, _, _, _ string, _ []string) error {
+	return nil
+}
+func (m *restartMockDriver) RemoveImage(_ context.Context, _ string) error { return nil }
+func (m *restartMockDriver) ListImages(_ context.Context, _ string) ([]driver.ImageInfo, error) {
+	return nil, nil
+}
 func (m *restartMockDriver) ListVolumes(_ context.Context, _ string) ([]driver.VolumeInfo, error) {
 	return nil, nil
 }

@@ -86,6 +86,14 @@ type VolumeInfo struct {
 	Size string // human-readable, best-effort (may be empty)
 }
 
+// ImageInfo describes a crib-managed image discovered by label.
+type ImageInfo struct {
+	Reference   string // repo:tag (e.g. "crib-myws:crib-abc123")
+	ID          string // image ID
+	Size        int64  // image size in bytes
+	WorkspaceID string // value of crib.workspace label
+}
+
 // BuildOptions holds parameters for building a container image.
 type BuildOptions struct {
 	PrebuildHash string
@@ -95,7 +103,8 @@ type BuildOptions struct {
 	Args         map[string]string
 	Target       string
 	CacheFrom    []string
-	Options      []string // Extra CLI flags from build.options
+	Labels       map[string]string // Image labels (e.g. crib.workspace=wsID)
+	Options      []string          // Extra CLI flags from build.options
 	Stdout       io.Writer
 	Stderr       io.Writer
 }

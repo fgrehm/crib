@@ -225,6 +225,7 @@ func (e *Engine) doBuild(ctx context.Context, ws *workspace.Workspace, cfg *conf
 		Args:         buildArgs,
 		Target:       buildTarget,
 		CacheFrom:    cacheFrom,
+		Labels:       map[string]string{ocidriver.LabelWorkspace: ws.ID},
 		Options:      buildOptions,
 		Stdout:       e.stdout,
 		Stderr:       e.stderr,

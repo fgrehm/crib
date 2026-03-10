@@ -112,6 +112,52 @@ func TestBuildBuildArgs_WithOptions(t *testing.T) {
 	}
 }
 
+func TestBuildBuildArgs_WithLabels(t *testing.T) {
+	d := newTestDockerDriver()
+
+	opts := &driver.BuildOptions{
+		Context: "/ctx",
+		Labels:  map[string]string{"crib.workspace": "my-ws"},
+	}
+
+	args := d.buildBuildArgs("img:latest", opts, false)
+	got := strings.Join(args, " ")
+
+	assertContains(t, got, "--label crib.workspace=my-ws")
+
+	// Labels should come before the context.
+	labelIdx := strings.Index(got, "--label")
+	ctxIdx := strings.LastIndex(got, "/ctx")
+	if labelIdx > ctxIdx {
+		t.Errorf("labels should come before context: label at %d, ctx at %d", labelIdx, ctxIdx)
+	}
+}
+
+func TestBuildBuildArgs_MultipleLabels(t *testing.T) {
+	d := newTestDockerDriver()
+
+	opts := &driver.BuildOptions{
+		Context: ".",
+		Labels: map[string]string{
+			"crib.workspace": "ws-1",
+			"another.label":  "value",
+		},
+	}
+
+	args := d.buildBuildArgs("img:latest", opts, false)
+	got := strings.Join(args, " ")
+
+	assertContains(t, got, "--label another.label=value")
+	assertContains(t, got, "--label crib.workspace=ws-1")
+
+	// Labels should be sorted for determinism.
+	aIdx := strings.Index(got, "another.label")
+	cIdx := strings.Index(got, "crib.workspace")
+	if aIdx > cIdx {
+		t.Errorf("labels should be sorted: another at %d, crib at %d", aIdx, cIdx)
+	}
+}
+
 func TestBuildBuildArgs_NoBuildArgsNoTarget(t *testing.T) {
 	d := newTestDockerDriver()
 

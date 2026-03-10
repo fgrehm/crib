@@ -94,13 +94,16 @@ func (m *snapshotUpMockDriver) TargetArchitecture(_ context.Context) (string, er
 func (m *snapshotUpMockDriver) ListContainers(_ context.Context) ([]driver.ContainerDetails, error) {
 	return nil, nil
 }
-func (m *snapshotUpMockDriver) CommitContainer(_ context.Context, _, _, _ string) error {
+func (m *snapshotUpMockDriver) CommitContainer(_ context.Context, _, _, _ string, _ []string) error {
 	m.mu.Lock()
 	m.commitCalls++
 	m.mu.Unlock()
 	return nil
 }
 func (m *snapshotUpMockDriver) RemoveImage(_ context.Context, _ string) error { return nil }
+func (m *snapshotUpMockDriver) ListImages(_ context.Context, _ string) ([]driver.ImageInfo, error) {
+	return nil, nil
+}
 func (m *snapshotUpMockDriver) ListVolumes(_ context.Context, _ string) ([]driver.VolumeInfo, error) {
 	return nil, nil
 }

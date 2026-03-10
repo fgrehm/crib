@@ -101,7 +101,7 @@ func (m *mockDriver) ListContainers(ctx context.Context) ([]driver.ContainerDeta
 	return nil, nil
 }
 
-func (m *mockDriver) CommitContainer(ctx context.Context, workspaceID, containerID, imageName string) error {
+func (m *mockDriver) CommitContainer(ctx context.Context, workspaceID, containerID, imageName string, changes []string) error {
 	return nil
 }
 
@@ -122,6 +122,10 @@ func (m *mockDriver) TargetArchitecture(ctx context.Context) (string, error) {
 }
 
 func (m *mockDriver) ListVolumes(ctx context.Context, nameFilter string) ([]driver.VolumeInfo, error) {
+	return nil, nil
+}
+
+func (m *mockDriver) ListImages(ctx context.Context, label string) ([]driver.ImageInfo, error) {
 	return nil, nil
 }
 
