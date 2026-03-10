@@ -300,6 +300,43 @@ or `exec.Command` with no stdin). Docker strictly validates the TTY and errors w
 
 - `cmd/exec.go` (`stdinIsTerminal`)
 
+### Image lifecycle management
+
+`crib` labels all images it builds or commits with `crib.workspace={wsID}` (the same
+label key used for containers). This enables discovery via `docker images --filter
+label=crib.workspace` without relying on name-pattern heuristics.
+
+| Image type | How the label is applied |
+|------------|------------------------|
+| Build image (`crib-{wsID}:{hash}`) | `--label` flag on `docker build` / `podman build` |
+| Snapshot image (`crib-{wsID}:snapshot`) | `--change "LABEL ..."` on `docker commit` / `podman commit` |
+| Compose feature image | `build.labels` in the generated compose override YAML |
+
+Images are cleaned up automatically at three points:
+
+1. **During build:** when the prebuild hash changes, the previous build image is removed
+   before saving the new result. Base images (those not prefixed `crib-`) are never touched.
+2. **On `crib remove`:** all labeled images for the workspace are swept via `ListImages`,
+   plus the active build image from `result.json`.
+3. **On `crib prune`:** stale images (labeled but not referenced by `result.json`) and
+   orphan images (workspace no longer exists in `~/.crib/workspaces/`) are removed.
+   Supports `--all` (global) and dry-run preview with sizes.
+
+All removals are best-effort: failures are logged and skipped so a single in-use image
+doesn't block cleanup of the rest.
+
+Existing unlabeled images from before this change are not discovered by label-based
+cleanup. Clean them up manually with `docker rmi $(docker images --filter
+reference='crib-*' -q)`.
+
+**Files**:
+
+- `internal/driver/oci/image.go` (`ListImages`, `BuildOptions.Labels`, `CommitContainer`)
+- `internal/engine/build.go` (`cleanupPreviousBuildImage`)
+- `internal/engine/engine.go` (`cleanupWorkspaceImages`, `PreviewRemove`)
+- `internal/engine/prune.go` (`PruneImages`)
+- `cmd/prune.go` (`crib prune`)
+
 ## Spec Compliance
 
 ### Fully Implemented
