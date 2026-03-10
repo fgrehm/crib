@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `crib prune` command removes stale and orphan workspace images. Shows a dry-run
+  preview with sizes before prompting for confirmation. `--all` includes orphan
+  images from workspaces that no longer exist. `--force` / `-f` skips the prompt.
+- `crib remove` now shows a preview of what will be deleted (container ID, images,
+  state directory) and prompts for confirmation. Use `--force` / `-f` to skip.
+- All crib-managed images are now labeled with `crib.workspace={wsID}`, enabling
+  label-based discovery without name-pattern heuristics. Applied via `--label` on
+  `docker build` and `--change "LABEL ..."` on `docker commit` (snapshots).
+- Build images are automatically removed when a new build replaces them (hash
+  change). The old image is deleted after the new one is successfully built.
+- `crib remove` now deletes all labeled images for the workspace in addition to
+  the container and workspace state.
+
+### Changed
+
+- **Breaking**: Workspace IDs now include a 7-character hash of the absolute
+  project path: `{slug}-{hash}` (e.g. `my-app-a1b2c3d`). Workspaces created
+  before this change will not be recognized. Run `crib up` in each project to
+  create a new workspace with the updated ID.
+
 ## [0.6.3] - 2026-03-09
 
 ### Security
