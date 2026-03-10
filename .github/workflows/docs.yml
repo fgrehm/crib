@@ -1,8 +1,10 @@
 name: Deploy docs
 
 on:
+  release:
+    types: [published]
   push:
-    branches: [stable, docs-site, next]
+    branches: [docs-site, next]
   workflow_dispatch:
 
 permissions:
