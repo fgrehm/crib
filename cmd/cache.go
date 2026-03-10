@@ -210,7 +210,7 @@ func inferWorkspaceID() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("resolving config dir: %w", err)
 		}
-		return workspace.Slugify(filepath.Base(filepath.Dir(absDir))), nil
+		return workspace.GenerateID(filepath.Dir(absDir)), nil
 	case dirFlag != "":
 		rr, err := workspace.Resolve(dirFlag)
 		if err == nil {
@@ -223,7 +223,7 @@ func inferWorkspaceID() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("resolving dir: %w", err)
 		}
-		return workspace.Slugify(filepath.Base(absDir)), nil
+		return workspace.GenerateID(absDir), nil
 	default:
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -236,7 +236,7 @@ func inferWorkspaceID() (string, error) {
 		if !errors.Is(err, workspace.ErrNoDevContainer) {
 			return "", err
 		}
-		return workspace.Slugify(filepath.Base(cwd)), nil
+		return workspace.GenerateID(cwd), nil
 	}
 }
 

@@ -55,7 +55,7 @@ func Resolve(startDir string) (*ResolveResult, error) {
 				ProjectRoot:        dir,
 				ConfigPath:         configPath,
 				RelativeConfigPath: relPath,
-				WorkspaceID:        Slugify(filepath.Base(dir)),
+				WorkspaceID:        GenerateID(dir),
 			}, nil
 		}
 
@@ -94,13 +94,31 @@ func ResolveConfigDir(configDir string) (*ResolveResult, error) {
 		ProjectRoot:        projectRoot,
 		ConfigPath:         configPath,
 		RelativeConfigPath: relPath,
-		WorkspaceID:        Slugify(filepath.Base(projectRoot)),
+		WorkspaceID:        GenerateID(projectRoot),
 	}, nil
 }
 
 var nonAlphanumeric = regexp.MustCompile(`[^a-z0-9-]+`)
 
-// Slugify converts a project directory name into a valid workspace ID.
+// GenerateID creates a workspace ID from the project root's absolute path.
+// Format: {slugified-basename}-{7-char-sha256-of-full-path}.
+// The hash suffix guarantees uniqueness across directories with the same name.
+func GenerateID(projectRoot string) string {
+	slug := Slugify(filepath.Base(projectRoot))
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(projectRoot)))[:7]
+
+	const maxLen = 48
+	const hashSuffixLen = 8 // "-" + 7 hex chars
+	maxSlugLen := maxLen - hashSuffixLen
+	if len(slug) > maxSlugLen {
+		slug = slug[:maxSlugLen]
+		slug = strings.TrimRight(slug, "-")
+	}
+
+	return slug + "-" + hash
+}
+
+// Slugify converts a project directory name into a valid slug.
 // Rules: lowercase, replace non-alphanumeric with hyphens, trim hyphens,
 // truncate to 48 chars with hash suffix if longer.
 func Slugify(name string) string {
