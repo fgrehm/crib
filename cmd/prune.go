@@ -1,10 +1,8 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/fgrehm/crib/internal/engine"
 	"github.com/spf13/cobra"
@@ -63,14 +61,11 @@ Use --all to prune images across all workspaces (including orphans).`,
 		fmt.Fprintf(os.Stderr, "\n%d image(s), %s total\n", len(preview.Removed), formatBytes(totalSize))
 
 		if !pruneForceFlag {
-			if !stdinIsTerminal() {
-				return fmt.Errorf("pruning requires confirmation; use --force to skip (stdin is not a terminal)")
+			confirmed, err := confirmPrompt("pruning requires confirmation")
+			if err != nil {
+				return err
 			}
-			fmt.Fprint(os.Stderr, "Remove? [y/N] ")
-			reader := bufio.NewReader(os.Stdin)
-			answer, _ := reader.ReadString('\n')
-			answer = strings.TrimSpace(strings.ToLower(answer))
-			if answer != "y" && answer != "yes" {
+			if !confirmed {
 				u.Dim("Aborted")
 				return nil
 			}

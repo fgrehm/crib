@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/charmbracelet/x/term"
@@ -118,4 +120,17 @@ func init() {
 // reports /dev/null as a character device.
 func stdinIsTerminal() bool {
 	return term.IsTerminal(os.Stdin.Fd())
+}
+
+// confirmPrompt shows a y/N prompt and returns true if the user confirms.
+// Returns an error if stdin is not a terminal (non-interactive context).
+func confirmPrompt(nonInteractiveMsg string) (bool, error) {
+	if !stdinIsTerminal() {
+		return false, fmt.Errorf("%s; use --force to skip (stdin is not a terminal)", nonInteractiveMsg)
+	}
+	fmt.Fprint(os.Stderr, "Continue? [y/N] ")
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	return answer == "y" || answer == "yes", nil
 }

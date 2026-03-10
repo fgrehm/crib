@@ -541,25 +541,26 @@ func (e *Engine) Status(ctx context.Context, ws *workspace.Workspace) (*StatusRe
 // cleanupWorkspaceImages removes the build image and any remaining labeled
 // images for a workspace. Best-effort: failures are logged, not returned.
 func (e *Engine) cleanupWorkspaceImages(ctx context.Context, wsID string) {
-	// Remove the active build image if it's crib-built.
-	if result, err := e.store.LoadResult(wsID); err == nil && result != nil {
-		if result.ImageName != "" && strings.HasPrefix(result.ImageName, "crib-") {
-			if err := e.driver.RemoveImage(ctx, result.ImageName); err != nil {
-				e.logger.Debug("failed to remove build image", "image", result.ImageName, "error", err)
-			}
+	// Collect images to remove: labeled images + unlabeled build image (legacy).
+	seen := make(map[string]bool)
+
+	label := ocidriver.WorkspaceLabel(wsID)
+	if images, err := e.driver.ListImages(ctx, label); err == nil {
+		for _, img := range images {
+			seen[img.Reference] = true
 		}
 	}
 
-	// Sweep any remaining labeled images (stale builds, etc).
-	label := ocidriver.WorkspaceLabel(wsID)
-	images, err := e.driver.ListImages(ctx, label)
-	if err != nil {
-		e.logger.Debug("failed to list workspace images for cleanup", "error", err)
-		return
+	// Also target the stored build image in case it predates labeling.
+	if result, err := e.store.LoadResult(wsID); err == nil && result != nil {
+		if result.ImageName != "" && strings.HasPrefix(result.ImageName, "crib-") {
+			seen[result.ImageName] = true
+		}
 	}
-	for _, img := range images {
-		if err := e.driver.RemoveImage(ctx, img.Reference); err != nil {
-			e.logger.Debug("failed to remove workspace image", "image", img.Reference, "error", err)
+
+	for ref := range seen {
+		if err := e.driver.RemoveImage(ctx, ref); err != nil {
+			e.logger.Debug("failed to remove workspace image", "image", ref, "error", err)
 		}
 	}
 }

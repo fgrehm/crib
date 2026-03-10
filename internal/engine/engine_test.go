@@ -220,22 +220,6 @@ func TestEnsureContainerRunning_EmptyState_FindReturnsRunning(t *testing.T) {
 	}
 }
 
-// removeMockDriver extends mockDriver to track image removal and listing.
-type removeMockDriver struct {
-	mockDriver
-	removedImages []string
-	images        []driver.ImageInfo
-}
-
-func (m *removeMockDriver) RemoveImage(ctx context.Context, imageName string) error {
-	m.removedImages = append(m.removedImages, imageName)
-	return nil
-}
-
-func (m *removeMockDriver) ListImages(ctx context.Context, label string) ([]driver.ImageInfo, error) {
-	return m.images, nil
-}
-
 func TestRemove_CleansUpBuildAndLabeledImages(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 
@@ -254,7 +238,7 @@ func TestRemove_CleansUpBuildAndLabeledImages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	md := &removeMockDriver{
+	md := &imageTrackingDriver{
 		images: []driver.ImageInfo{
 			{Reference: "crib-test-ws:crib-old", ID: "sha256:stale", Size: 100, WorkspaceID: "test-ws"},
 		},
@@ -302,7 +286,7 @@ func TestRemove_SkipsBaseImages(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	md := &removeMockDriver{}
+	md := &imageTrackingDriver{}
 	eng := &Engine{
 		driver: md,
 		store:  store,

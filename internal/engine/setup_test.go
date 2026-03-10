@@ -133,6 +133,45 @@ func (m *mockDriver) RemoveVolume(ctx context.Context, name string) error {
 	return nil
 }
 
+// imageTrackingDriver extends mockDriver to track RemoveImage and ListImages
+// calls. Used by build, remove, and prune tests.
+type imageTrackingDriver struct {
+	mockDriver
+	removedImages []string
+	removeErr     error              // single error for all removals
+	removeErrs    map[string]error   // per-image errors (overrides removeErr)
+	images        []driver.ImageInfo // images returned by ListImages
+	listErr       error
+}
+
+func (m *imageTrackingDriver) RemoveImage(ctx context.Context, imageName string) error {
+	m.removedImages = append(m.removedImages, imageName)
+	if m.removeErrs != nil {
+		if err, ok := m.removeErrs[imageName]; ok {
+			return err
+		}
+	}
+	return m.removeErr
+}
+
+func (m *imageTrackingDriver) ListImages(ctx context.Context, label string) ([]driver.ImageInfo, error) {
+	if m.listErr != nil {
+		return nil, m.listErr
+	}
+	// Simulate label filtering: if label contains "=", filter by workspace ID.
+	var filtered []driver.ImageInfo
+	for _, img := range m.images {
+		if strings.Contains(label, "=") {
+			wsID := strings.SplitN(label, "=", 2)[1]
+			if img.WorkspaceID != wsID {
+				continue
+			}
+		}
+		filtered = append(filtered, img)
+	}
+	return filtered, nil
+}
+
 func TestParseEnvLines(t *testing.T) {
 	tests := []struct {
 		name  string

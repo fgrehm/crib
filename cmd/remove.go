@@ -1,10 +1,8 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -36,21 +34,22 @@ var removeCmd = &cobra.Command{
 
 			fmt.Fprintf(os.Stderr, "Will remove workspace %q:\n", ws.ID)
 			if preview.ContainerID != "" {
-				fmt.Fprintf(os.Stderr, "  container: %s\n", preview.ContainerID[:12])
+				cid := preview.ContainerID
+				if len(cid) > 12 {
+					cid = cid[:12]
+				}
+				fmt.Fprintf(os.Stderr, "  container: %s\n", cid)
 			}
 			for _, img := range preview.Images {
 				fmt.Fprintf(os.Stderr, "  image: %s\n", img)
 			}
 			fmt.Fprintf(os.Stderr, "  state: ~/.crib/workspaces/%s/\n", ws.ID)
 
-			if !stdinIsTerminal() {
-				return fmt.Errorf("removal requires confirmation; use --force to skip (stdin is not a terminal)")
+			confirmed, err := confirmPrompt("removal requires confirmation")
+			if err != nil {
+				return err
 			}
-			fmt.Fprint(os.Stderr, "Continue? [y/N] ")
-			reader := bufio.NewReader(os.Stdin)
-			answer, _ := reader.ReadString('\n')
-			answer = strings.TrimSpace(strings.ToLower(answer))
-			if answer != "y" && answer != "yes" {
+			if !confirmed {
 				u.Dim("Aborted")
 				return nil
 			}

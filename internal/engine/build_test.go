@@ -125,21 +125,9 @@ func TestResolveFeatureMetadata_NoFeatures(t *testing.T) {
 	}
 }
 
-// buildMockDriver extends mockDriver to track RemoveImage calls.
-type buildMockDriver struct {
-	mockDriver
-	removedImages []string
-	removeErr     error
-}
-
-func (m *buildMockDriver) RemoveImage(ctx context.Context, imageName string) error {
-	m.removedImages = append(m.removedImages, imageName)
-	return m.removeErr
-}
-
 func TestCleanupPreviousBuildImage_NewHashReplacesOld(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
-	md := &buildMockDriver{}
+	md := &imageTrackingDriver{}
 	eng := &Engine{driver: md, store: store, logger: slog.Default()}
 
 	oldImage := "crib-myws:crib-oldhash"
@@ -156,7 +144,7 @@ func TestCleanupPreviousBuildImage_NewHashReplacesOld(t *testing.T) {
 
 func TestCleanupPreviousBuildImage_CacheHit_NoRemoval(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
-	md := &buildMockDriver{}
+	md := &imageTrackingDriver{}
 	eng := &Engine{driver: md, store: store, logger: slog.Default()}
 
 	sameImage := "crib-myws:crib-samehash"
@@ -173,7 +161,7 @@ func TestCleanupPreviousBuildImage_CacheHit_NoRemoval(t *testing.T) {
 
 func TestCleanupPreviousBuildImage_BaseImage_NotRemoved(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
-	md := &buildMockDriver{}
+	md := &imageTrackingDriver{}
 	eng := &Engine{driver: md, store: store, logger: slog.Default()}
 
 	if err := store.SaveResult("myws", &workspace.Result{ImageName: "ubuntu:22.04"}); err != nil {
@@ -189,7 +177,7 @@ func TestCleanupPreviousBuildImage_BaseImage_NotRemoved(t *testing.T) {
 
 func TestCleanupPreviousBuildImage_RemoveFailure_NoError(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
-	md := &buildMockDriver{removeErr: fmt.Errorf("image in use")}
+	md := &imageTrackingDriver{removeErr: fmt.Errorf("image in use")}
 	eng := &Engine{driver: md, store: store, logger: slog.Default()}
 
 	oldImage := "crib-myws:crib-oldhash"
@@ -207,7 +195,7 @@ func TestCleanupPreviousBuildImage_RemoveFailure_NoError(t *testing.T) {
 
 func TestCleanupPreviousBuildImage_FirstBuild_NoRemoval(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
-	md := &buildMockDriver{}
+	md := &imageTrackingDriver{}
 	eng := &Engine{driver: md, store: store, logger: slog.Default()}
 
 	// No stored result exists.

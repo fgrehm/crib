@@ -4,49 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/driver"
 	"github.com/fgrehm/crib/internal/workspace"
 )
-
-// pruneMockDriver tracks ListImages and RemoveImage calls.
-type pruneMockDriver struct {
-	mockDriver
-	images        []driver.ImageInfo
-	listErr       error
-	removedImages []string
-	removeErrs    map[string]error
-}
-
-func (m *pruneMockDriver) ListImages(ctx context.Context, label string) ([]driver.ImageInfo, error) {
-	if m.listErr != nil {
-		return nil, m.listErr
-	}
-	// Simulate label filtering: if label contains "=", filter by workspace ID.
-	var filtered []driver.ImageInfo
-	for _, img := range m.images {
-		if strings.Contains(label, "=") {
-			wsID := strings.SplitN(label, "=", 2)[1]
-			if img.WorkspaceID != wsID {
-				continue
-			}
-		}
-		filtered = append(filtered, img)
-	}
-	return filtered, nil
-}
-
-func (m *pruneMockDriver) RemoveImage(ctx context.Context, imageName string) error {
-	m.removedImages = append(m.removedImages, imageName)
-	if m.removeErrs != nil {
-		if err, ok := m.removeErrs[imageName]; ok {
-			return err
-		}
-	}
-	return nil
-}
 
 func TestPruneImages_StaleRemoved_ActiveKept(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
@@ -62,7 +24,7 @@ func TestPruneImages_StaleRemoved_ActiveKept(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	md := &pruneMockDriver{
+	md := &imageTrackingDriver{
 		images: []driver.ImageInfo{
 			{Reference: "crib-myws:crib-abc1234", ID: "sha256:active", Size: 100, WorkspaceID: "myws"},
 			{Reference: "crib-myws:snapshot", ID: "sha256:snap", Size: 200, WorkspaceID: "myws"},
@@ -96,7 +58,7 @@ func TestPruneImages_OrphanImagesRemoved(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	// No workspace saved for "gone-ws" -- it's orphaned.
 
-	md := &pruneMockDriver{
+	md := &imageTrackingDriver{
 		images: []driver.ImageInfo{
 			{Reference: "crib-gone-ws:crib-abc", ID: "sha256:orphan1", Size: 500, WorkspaceID: "gone-ws"},
 			{Reference: "crib-gone-ws:snapshot", ID: "sha256:orphan2", Size: 600, WorkspaceID: "gone-ws"},
@@ -132,7 +94,7 @@ func TestPruneImages_WorkspaceFilter(t *testing.T) {
 		}
 	}
 
-	md := &pruneMockDriver{
+	md := &imageTrackingDriver{
 		images: []driver.ImageInfo{
 			{Reference: "crib-ws1:crib-active", ID: "sha256:a1", Size: 100, WorkspaceID: "ws1"},
 			{Reference: "crib-ws1:crib-stale", ID: "sha256:s1", Size: 200, WorkspaceID: "ws1"},
@@ -165,7 +127,7 @@ func TestPruneImages_DryRun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	md := &pruneMockDriver{
+	md := &imageTrackingDriver{
 		images: []driver.ImageInfo{
 			{Reference: "crib-myws:crib-active", ID: "sha256:a", Size: 100, WorkspaceID: "myws"},
 			{Reference: "crib-myws:crib-stale", ID: "sha256:s", Size: 200, WorkspaceID: "myws"},
@@ -196,7 +158,7 @@ func TestPruneImages_RemoveFailure_Continues(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	md := &pruneMockDriver{
+	md := &imageTrackingDriver{
 		images: []driver.ImageInfo{
 			{Reference: "crib-myws:crib-active", ID: "sha256:a", Size: 100, WorkspaceID: "myws"},
 			{Reference: "crib-myws:crib-stale1", ID: "sha256:s1", Size: 200, WorkspaceID: "myws"},
