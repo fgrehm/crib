@@ -24,18 +24,23 @@ You can override this with `--dir` (start the search from a different directory)
 
 ## Naming
 
-The workspace ID is derived from the project directory name:
+The workspace ID combines the project directory name with a short hash of the absolute path:
 
-- Lowercased
-- Non-alphanumeric characters replaced with hyphens
-- Very long names truncated with a hash suffix for uniqueness
+```
+{slug}-{7-char-hash}
+```
 
-The container is named `crib-{workspace-id}` and labeled `crib.workspace={workspace-id}`, so `docker ps` output stays readable:
+- The slug is the directory name, lowercased with non-alphanumeric characters replaced by hyphens.
+- The hash is the first 7 characters of the SHA-256 of the absolute project path.
+
+This guarantees uniqueness even when two different directories have the same name (e.g. `~/work/myapp` and `~/personal/myapp`).
+
+The container is named `crib-{workspace-id}` and labeled `crib.workspace={workspace-id}`:
 
 ```
 CONTAINER ID   IMAGE          NAMES
-a1b2c3d4e5f6   node:20        crib-myapp
-f6e5d4c3b2a1   python:3.12    crib-data-pipeline
+a1b2c3d4e5f6   node:20        crib-myapp-a1b2c3d
+f6e5d4c3b2a1   python:3.12    crib-data-pipeline-f6e5d4c
 ```
 
 ## State
@@ -59,9 +64,9 @@ Each workspace stores its state in `~/.crib/workspaces/{id}/`:
 | `crib down` | Stops the container. Clears hook markers so all hooks re-run on next `up`. |
 | `crib restart` | Restarts or recreates the container depending on what changed. |
 | `crib rebuild` | Full rebuild: tears down the container, clears hooks, rebuilds the image, starts fresh. |
-| `crib remove` | Stops the container and deletes the entire workspace state directory. |
+| `crib remove` | Stops the container, removes all workspace images, and deletes the workspace state directory. |
 
-`crib down` preserves workspace state. The container is gone, but `crib up` will recreate it and re-run all lifecycle hooks. `crib remove` is a full cleanup, deleting both the container and all stored state.
+`crib down` preserves workspace state. The container is gone, but `crib up` will recreate it and re-run all lifecycle hooks. `crib remove` is a full cleanup: container, images, and state.
 
 ## Listing workspaces
 
@@ -69,9 +74,9 @@ Each workspace stores its state in `~/.crib/workspaces/{id}/`:
 
 ```bash
 $ crib list
-WORKSPACE         SOURCE
-myapp             /home/user/projects/myapp
-data-pipeline     /home/user/projects/data-pipeline
+WORKSPACE                  SOURCE
+myapp-a1b2c3d              /home/user/projects/myapp
+data-pipeline-f6e5d4c      /home/user/projects/data-pipeline
 ```
 
 ## Per-project configuration

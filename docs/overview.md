@@ -15,7 +15,7 @@ Linux is the primary platform. [macOS and Windows work too](/crib/guides/macos-w
 - **No agent injection.** All container setup happens via `docker exec` from the host. Nothing gets installed inside your container that you didn't ask for.
 - **No SSH, no providers, no IDE integration.** `crib` is a CLI tool. It starts containers. What you do inside them is your business.
 - **Docker and Podman as first-class runtimes.** Auto-detected, configurable via `CRIB_RUNTIME`.
-- **Human-readable naming.** Containers show up as `crib-myproject` in `docker ps`, not opaque hashes.
+- **Human-readable naming.** Containers show up as `crib-myproject-a1b2c3d` in `docker ps`, not opaque hashes. The short suffix makes workspace IDs unique across different directories with the same name.
 
 ## Why
 

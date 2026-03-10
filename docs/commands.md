@@ -19,6 +19,7 @@ description: All available crib CLI commands and global flags.
 | `doctor` | | Check workspace health and diagnose issues |
 | `cache list` | | List package cache volumes |
 | `cache clean` | | Remove package cache volumes |
+| `prune` | | Remove stale and orphan workspace images |
 | `list` | `ls` | List all workspaces |
 | `status` | `ps` | Show workspace container status |
 | `version` | | Show version information |
@@ -43,7 +44,13 @@ Stop and remove the workspace container. This clears lifecycle hook markers, so 
 
 ### `crib remove`
 
-Remove the workspace container and all stored state from `~/.crib/workspaces/`. Use this to fully clean up a workspace.
+Remove the workspace container, all associated images, and stored state. Shows a preview of what will be deleted and prompts for confirmation before proceeding.
+
+```bash
+crib remove              # preview + confirm
+crib remove --force      # skip confirmation (useful in scripts)
+crib remove -f           # shorthand
+```
 
 ### `crib shell`
 
@@ -115,6 +122,19 @@ Remove cache volumes. Without arguments, removes all cache volumes for the curre
 crib cache clean             # remove all for current workspace
 crib cache clean npm go      # remove specific providers only
 crib cache clean --all       # remove all crib cache volumes
+```
+
+### `crib prune`
+
+Remove stale and orphan workspace images. Shows a dry-run preview with sizes before prompting for confirmation.
+
+- **Stale**: labeled images for an active workspace that are no longer the active build image or snapshot.
+- **Orphan**: labeled images for a workspace that no longer exists in `~/.crib/workspaces/`.
+
+```bash
+crib prune               # stale images for current workspace + confirm
+crib prune --all         # all workspaces including orphans
+crib prune --force       # skip confirmation
 ```
 
 ### `crib rebuild`
