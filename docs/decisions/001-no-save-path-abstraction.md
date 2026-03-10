@@ -1,6 +1,6 @@
 # ADR 001: No abstraction layer for dual-path plugin dispatch
 
-**Status:** Accepted
+**Status:** Superseded (by engine backend abstraction, see `docs/rfcs/engine-backend-abstraction.md`)
 **Date:** 2026-03-07
 
 ## Context

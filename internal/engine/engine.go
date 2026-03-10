@@ -226,10 +226,12 @@ func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions
 
 // upExisting handles the case where a container already exists.
 func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, b containerBackend, container *driver.ContainerDetails) (*UpResult, error) {
-	// Load stored result for image name.
+	// Load stored result for image name and feature entrypoints.
 	var storedImageName string
+	var storedHasEntrypoints bool
 	if stored, err := e.store.LoadResult(ws.ID); err == nil && stored != nil {
 		storedImageName = stored.ImageName
+		storedHasEntrypoints = stored.HasFeatureEntrypoints
 	}
 
 	// Dispatch plugins.
@@ -237,6 +239,7 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, storedImageName, workspaceFolder, pluginUser)
 	if err != nil {
 		e.logger.Warn("plugin dispatch failed for existing container", "error", err)
+		pluginResp = nil
 	}
 
 	cc := containerContext{
@@ -257,9 +260,10 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 	}
 
 	return e.finalize(ctx, ws, cfg, finalizeOpts{
-		cc:         cc,
-		imageName:  storedImageName,
-		pluginResp: pluginResp,
+		cc:             cc,
+		imageName:      storedImageName,
+		hasEntrypoints: storedHasEntrypoints,
+		pluginResp:     pluginResp,
 	})
 }
 
@@ -555,49 +559,6 @@ func (e *Engine) resolveRemoteUser(ctx context.Context, cc containerContext, cfg
 // configDir returns the directory containing the devcontainer config file.
 func configDir(ws *workspace.Workspace) string {
 	return filepath.Dir(filepath.Join(ws.Source, ws.DevContainerPath))
-}
-
-// recreateComposeServices tears down and recreates compose services for the
-// given workspace. It generates a compose override, brings services up, and
-// returns the primary service container ID. featureImage is the image name to
-// override the primary service with (empty string to skip the override).
-// pluginResp may be nil; when non-nil, plugin mounts and env are included in
-// the compose override.
-//
-// TODO: Remove after restart rewrite (Step 6). Only used by restartRecreateCompose.
-func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder, featureImage string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
-	inv := newComposeInvocation(ws, cfg, workspaceFolder)
-
-	// Down removes old containers so Up creates new ones with updated config.
-	if err := e.composeDown(ctx, inv, false); err != nil {
-		return "", fmt.Errorf("compose down: %w", err)
-	}
-
-	// Generate override and bring services up. Resolve feature metadata so
-	// capabilities (privileged, init, entrypoints) are included in the override.
-	fmeta := e.resolveFeatureMetadata(cfg)
-	overridePath, err := e.generateComposeOverride(ws, cfg, workspaceFolder, inv.files, featureImage, pluginResp, fmeta...)
-	if err != nil {
-		return "", fmt.Errorf("generating compose override: %w", err)
-	}
-
-	allFiles := append(inv.files[:len(inv.files):len(inv.files)], overridePath)
-	services := ensureServiceIncluded(cfg.RunServices, cfg.Service)
-
-	e.reportProgress("Starting services...")
-	if err := e.compose.Up(ctx, inv.projectName, allFiles, services, e.composeStdout(), e.composeStderr(), inv.env); err != nil {
-		return "", fmt.Errorf("compose up: %w", err)
-	}
-
-	container, err := e.findComposeContainer(ctx, ws.ID, inv, "after recreate")
-	if err != nil {
-		return "", err
-	}
-	if err := e.ensureContainerRunning(ctx, ws.ID, container); err != nil {
-		return "", err
-	}
-
-	return container.ID, nil
 }
 
 // resolveComposeFiles resolves compose file paths relative to configDir.

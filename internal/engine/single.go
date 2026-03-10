@@ -226,6 +226,12 @@ func resolveWorkspaceFolder(cfg *config.DevContainerConfig, projectRoot string) 
 // plugin manager. Returns the plugin response (nil if no plugins configured).
 // Used by both single-container and compose paths.
 //
+// Error handling policy varies by caller:
+//   - Fresh creation paths (upCreate, upFromImage, restartRecreate) treat errors
+//     as fatal because the container hasn't been wired with plugin mounts/env yet.
+//   - Resume paths (upExisting, restartSimple) treat errors as non-fatal (warn +
+//     nil pluginResp) because the container already has its mounts from creation.
+//
 // remoteUser overrides the user from cfg when non-empty. Compose callers pass
 // the user resolved from the service/image so plugins get the correct home
 // directory even when devcontainer.json doesn't set remoteUser/containerUser.
@@ -264,29 +270,6 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 	if err != nil {
 		return nil, fmt.Errorf("running pre-container-run plugins: %w", err)
 	}
-
-	return resp, nil
-}
-
-// runPreContainerRunPlugins dispatches the pre-container-run event to the
-// plugin manager and merges the response into the run options. Returns the
-// merged response so the caller can process file copies after container creation.
-//
-// TODO: Remove after restart rewrite (Step 6). Only used by restartRecreateSingle.
-func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, runOpts *driver.RunOptions, imageName, workspaceFolder string) (*plugin.PreContainerRunResponse, error) {
-	resp, err := e.dispatchPlugins(ctx, ws, cfg, imageName, workspaceFolder, "")
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil {
-		return nil, nil
-	}
-
-	runOpts.Mounts = append(runOpts.Mounts, resp.Mounts...)
-	for k, v := range resp.Env {
-		runOpts.Env = append(runOpts.Env, k+"="+v)
-	}
-	runOpts.ExtraArgs = append(runOpts.ExtraArgs, resp.RunArgs...)
 
 	return resp, nil
 }

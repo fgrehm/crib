@@ -163,8 +163,20 @@ func TestDetectConfigChange_ComposeServiceChanged(t *testing.T) {
 	}
 }
 
+func mustLoadResult(t *testing.T, store *workspace.Store, wsID string) *workspace.Result {
+	t.Helper()
+	r, err := store.LoadResult(wsID)
+	if err != nil {
+		t.Fatalf("loading result for %s: %v", wsID, err)
+	}
+	if r == nil {
+		t.Fatalf("no result found for %s", wsID)
+	}
+	return r
+}
+
 // restartMockDriver extends mockDriver with stateful behavior needed for
-// the restartRecreateSingle flow (container appears after RunContainer).
+// the restartRecreate flow (container appears after RunContainer).
 type restartMockDriver struct {
 	mu            sync.Mutex
 	execCalls     []mockExecCall
@@ -273,14 +285,17 @@ func TestRestartRecreateSingle_RunsPlugins(t *testing.T) {
 	cfg.Image = "ubuntu:22.04"
 	cfg.RemoteUser = "vscode"
 
-	storedResult := &workspace.Result{
+	if err := store.SaveResult(ws.ID, &workspace.Result{
 		ContainerID: "old-container",
 		ImageName:   "ubuntu:22.04",
+	}); err != nil {
+		t.Fatal(err)
 	}
 
-	result, err := eng.restartRecreateSingle(context.Background(), ws, cfg, "/workspaces/project", storedResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	result, err := eng.restartRecreate(context.Background(), ws, cfg, "/workspaces/project", b, mustLoadResult(t, store, ws.ID))
 	if err != nil {
-		t.Fatalf("restartRecreateSingle: %v", err)
+		t.Fatalf("restartRecreate: %v", err)
 	}
 
 	if result.ContainerID != "new-container" {
@@ -354,14 +369,17 @@ func TestRestartRecreateSingle_NoPlugins(t *testing.T) {
 	cfg.Image = "ubuntu:22.04"
 	cfg.RemoteUser = "vscode"
 
-	storedResult := &workspace.Result{
+	if err := store.SaveResult(ws.ID, &workspace.Result{
 		ContainerID: "old-container",
 		ImageName:   "ubuntu:22.04",
+	}); err != nil {
+		t.Fatal(err)
 	}
 
-	result, err := eng.restartRecreateSingle(context.Background(), ws, cfg, "/workspaces/project", storedResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	result, err := eng.restartRecreate(context.Background(), ws, cfg, "/workspaces/project", b, mustLoadResult(t, store, ws.ID))
 	if err != nil {
-		t.Fatalf("restartRecreateSingle: %v", err)
+		t.Fatalf("restartRecreate: %v", err)
 	}
 
 	if result.ContainerID != "new-container" {
@@ -463,7 +481,8 @@ func TestRestartSimple_NonCompose_UsesStoredRemoteUser(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.Image = "ubuntu:22.04"
 
-	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", b, initialResult)
 	if err != nil {
 		t.Fatalf("restartSimple: %v", err)
 	}
@@ -513,7 +532,8 @@ func TestRestartSimple_NonCompose_PreservesImageName(t *testing.T) {
 	cfg.Image = "ubuntu:22.04"
 	cfg.RemoteUser = "vscode"
 
-	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", b, initialResult)
 	if err != nil {
 		t.Fatalf("restartSimple: %v", err)
 	}
@@ -574,7 +594,8 @@ func TestRestartSimple_NonCompose_PreservesPathPrepend(t *testing.T) {
 	cfg.Image = "ruby:3.2"
 	cfg.RemoteUser = "vscode"
 
-	result, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	result, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", b, initialResult)
 	if err != nil {
 		t.Fatalf("restartSimple: %v", err)
 	}
@@ -658,7 +679,8 @@ func TestRestartSimple_NonCompose_PreservesProbedEnv(t *testing.T) {
 	cfg.Image = "ruby:3.2"
 	cfg.RemoteUser = "vscode"
 
-	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", b, initialResult)
 	if err != nil {
 		t.Fatalf("restartSimple: %v", err)
 	}
@@ -692,7 +714,7 @@ func TestRestartSimple_NonCompose_PreservesProbedEnv(t *testing.T) {
 }
 
 func TestRestartRecreateSingle_WithSnapshot_PreservesProbedEnv(t *testing.T) {
-	// When restartRecreateSingle uses a snapshot (hasSnapshot=true), it
+	// When restartRecreate uses a snapshot (hasSnapshot=true), it
 	// skips setupContainer. The probed env from the stored result must
 	// survive via mergeStoredRemoteEnv.
 
@@ -741,9 +763,10 @@ func TestRestartRecreateSingle_WithSnapshot_PreservesProbedEnv(t *testing.T) {
 	cfg.Image = "ruby:3.2"
 	cfg.RemoteUser = "vscode"
 
-	result, err := eng.restartRecreateSingle(context.Background(), ws, cfg, "/workspaces/project", storedResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	result, err := eng.restartRecreate(context.Background(), ws, cfg, "/workspaces/project", b, mustLoadResult(t, store, ws.ID))
 	if err != nil {
-		t.Fatalf("restartRecreateSingle: %v", err)
+		t.Fatalf("restartRecreate: %v", err)
 	}
 	if result.ContainerID == "" {
 		t.Fatal("expected non-empty ContainerID")
@@ -814,7 +837,8 @@ func TestRestartSimple_NonCompose_ConfigEnvOverridesStored(t *testing.T) {
 	// User overrides EDITOR in devcontainer.json.
 	cfg.RemoteEnv = map[string]string{"EDITOR": "nano"}
 
-	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", b, initialResult)
 	if err != nil {
 		t.Fatalf("restartSimple: %v", err)
 	}
@@ -895,7 +919,8 @@ func TestRestartSimple_NonCompose_PluginEnvMerged(t *testing.T) {
 	cfg.Image = "ruby:3.2"
 	cfg.RemoteUser = "vscode"
 
-	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", b, initialResult)
 	if err != nil {
 		t.Fatalf("restartSimple: %v", err)
 	}
@@ -980,7 +1005,8 @@ func TestRestartSimple_NonCompose_PluginEnvDoesNotOverrideConfig(t *testing.T) {
 	cfg.RemoteUser = "vscode"
 	cfg.RemoteEnv = map[string]string{"EDITOR": "nano"}
 
-	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", initialResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.restartSimple(context.Background(), ws, cfg, "/workspaces/project", b, initialResult)
 	if err != nil {
 		t.Fatalf("restartSimple: %v", err)
 	}
@@ -997,7 +1023,7 @@ func TestRestartSimple_NonCompose_PluginEnvDoesNotOverrideConfig(t *testing.T) {
 }
 
 func TestRestartRecreateSingle_PreservesFeatureEntrypoints(t *testing.T) {
-	// When restartRecreateSingle uses a stored result with HasFeatureEntrypoints,
+	// When restartRecreate uses a stored result with HasFeatureEntrypoints,
 	// the recreated container should keep that flag so entrypoint/cmd are set
 	// correctly and the flag is persisted for subsequent restarts.
 	store := workspace.NewStoreAt(t.TempDir())
@@ -1031,9 +1057,10 @@ func TestRestartRecreateSingle_PreservesFeatureEntrypoints(t *testing.T) {
 	cfg.Image = "ubuntu:22.04"
 	cfg.RemoteUser = "vscode"
 
-	_, err := eng.restartRecreateSingle(context.Background(), ws, cfg, "/workspaces/project", storedResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.restartRecreate(context.Background(), ws, cfg, "/workspaces/project", b, mustLoadResult(t, store, ws.ID))
 	if err != nil {
-		t.Fatalf("restartRecreateSingle: %v", err)
+		t.Fatalf("restartRecreate: %v", err)
 	}
 
 	// Verify RunContainer was called with feature entrypoint handling.
@@ -1062,7 +1089,7 @@ func TestRestartRecreateSingle_PreservesFeatureEntrypoints(t *testing.T) {
 }
 
 func TestRestartRecreateSingle_ResolvedConfigEnv(t *testing.T) {
-	// When restartRecreateSingle has a snapshot, ${containerEnv:PATH} in
+	// When restartRecreate has a snapshot, ${containerEnv:PATH} in
 	// cfg.RemoteEnv should be resolved using the stored env.
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-recreate-envres", Source: "/home/user/project"}
@@ -1103,9 +1130,10 @@ func TestRestartRecreateSingle_ResolvedConfigEnv(t *testing.T) {
 		"PATH": "/usr/local/go/bin:${containerEnv:PATH}",
 	}
 
-	_, err := eng.restartRecreateSingle(context.Background(), ws, cfg, "/workspaces/project", storedResult)
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.restartRecreate(context.Background(), ws, cfg, "/workspaces/project", b, mustLoadResult(t, store, ws.ID))
 	if err != nil {
-		t.Fatalf("restartRecreateSingle: %v", err)
+		t.Fatalf("restartRecreate: %v", err)
 	}
 
 	saved, err := store.LoadResult(ws.ID)

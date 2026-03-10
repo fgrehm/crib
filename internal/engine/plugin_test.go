@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/fgrehm/crib/internal/config"
-	"github.com/fgrehm/crib/internal/driver"
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
@@ -28,72 +27,8 @@ func (p *testPlugin) PreContainerRun(_ context.Context, req *plugin.PreContainer
 	return p.resp, nil
 }
 
-func TestRunPreContainerRunPlugins_MergesIntoRunOpts(t *testing.T) {
-	store := workspace.NewStoreAt(t.TempDir())
-	ws := &workspace.Workspace{ID: "ws-1", Source: "/home/user/project"}
-	if err := store.Save(ws); err != nil {
-		t.Fatal(err)
-	}
-
-	mgr := plugin.NewManager(slog.Default())
-	mgr.Register(&testPlugin{
-		resp: &plugin.PreContainerRunResponse{
-			Mounts:  []config.Mount{{Type: "bind", Source: "/host/a", Target: "/container/a"}},
-			Env:     map[string]string{"PLUGIN_VAR": "hello"},
-			RunArgs: []string{"--network=host"},
-		},
-	})
-
-	eng := &Engine{
-		store:       store,
-		plugins:     mgr,
-		runtimeName: "docker",
-		logger:      slog.Default(),
-	}
-
-	cfg := &config.DevContainerConfig{}
-	cfg.RemoteUser = "vscode"
-
-	runOpts := &driver.RunOptions{
-		Image:  "ubuntu:22.04",
-		Env:    []string{"EXISTING=yes"},
-		Mounts: []config.Mount{{Type: "bind", Source: "/src", Target: "/dst"}},
-	}
-
-	resp, err := eng.runPreContainerRunPlugins(context.Background(), ws, cfg, runOpts, "ubuntu:22.04", "/workspaces/project")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Mounts should be appended.
-	if len(runOpts.Mounts) != 2 {
-		t.Fatalf("expected 2 mounts, got %d", len(runOpts.Mounts))
-	}
-	if runOpts.Mounts[1].Source != "/host/a" {
-		t.Errorf("expected appended mount source /host/a, got %s", runOpts.Mounts[1].Source)
-	}
-
-	// Env should be appended.
-	found := false
-	for _, e := range runOpts.Env {
-		if e == "PLUGIN_VAR=hello" {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected PLUGIN_VAR=hello in env, got %v", runOpts.Env)
-	}
-
-	// ExtraArgs should be appended.
-	if len(runOpts.ExtraArgs) != 1 || runOpts.ExtraArgs[0] != "--network=host" {
-		t.Errorf("expected ExtraArgs [--network=host], got %v", runOpts.ExtraArgs)
-	}
-
-	// No copies, so resp should have empty copies.
-	if len(resp.Copies) != 0 {
-		t.Errorf("expected 0 copies, got %d", len(resp.Copies))
-	}
-}
+// TestRunPreContainerRunPlugins_MergesIntoRunOpts is now covered by
+// TestSingleBackend_CreateContainer_MergesPluginResponse in backend_single_test.go.
 
 func TestDispatchPlugins_ReturnsResponseWithoutMerging(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
@@ -157,147 +92,9 @@ func TestDispatchPlugins_NilManager(t *testing.T) {
 	}
 }
 
-func TestRunPreContainerRunPlugins_NilManager(t *testing.T) {
-	eng := &Engine{
-		logger: slog.Default(),
-	}
-
-	ws := &workspace.Workspace{ID: "ws-1"}
-	cfg := &config.DevContainerConfig{}
-	runOpts := &driver.RunOptions{}
-
-	resp, err := eng.runPreContainerRunPlugins(context.Background(), ws, cfg, runOpts, "img", "/workspaces/project")
-	if err != nil {
-		t.Fatalf("unexpected error with nil plugins: %v", err)
-	}
-
-	// RunOpts should be unchanged.
-	if len(runOpts.Mounts) != 0 || len(runOpts.Env) != 0 || len(runOpts.ExtraArgs) != 0 {
-		t.Errorf("runOpts should be unchanged when plugins is nil")
-	}
-	if resp != nil {
-		t.Errorf("expected nil response when plugins is nil")
-	}
-}
-
-func TestRunPreContainerRunPlugins_RemoteUserFallback(t *testing.T) {
-	store := workspace.NewStoreAt(t.TempDir())
-	ws := &workspace.Workspace{ID: "ws-1", Source: "/home/user/project"}
-	if err := store.Save(ws); err != nil {
-		t.Fatal(err)
-	}
-
-	tp := &testPlugin{resp: &plugin.PreContainerRunResponse{}}
-	mgr := plugin.NewManager(slog.Default())
-	mgr.Register(tp)
-
-	eng := &Engine{
-		store:       store,
-		plugins:     mgr,
-		runtimeName: "docker",
-		logger:      slog.Default(),
-	}
-
-	// When RemoteUser is empty, ContainerUser should be used.
-	cfg := &config.DevContainerConfig{}
-	cfg.ContainerUser = "devuser"
-	runOpts := &driver.RunOptions{}
-
-	if _, err := eng.runPreContainerRunPlugins(context.Background(), ws, cfg, runOpts, "img", "/workspaces/project"); err != nil {
-		t.Fatal(err)
-	}
-	if tp.req.RemoteUser != "devuser" {
-		t.Errorf("expected RemoteUser=devuser (from ContainerUser fallback), got %s", tp.req.RemoteUser)
-	}
-
-	// When both are empty, RemoteUser should be empty.
-	cfg.ContainerUser = ""
-	cfg.RemoteUser = ""
-	if _, err := eng.runPreContainerRunPlugins(context.Background(), ws, cfg, runOpts, "img", "/workspaces/project"); err != nil {
-		t.Fatal(err)
-	}
-	if tp.req.RemoteUser != "" {
-		t.Errorf("expected empty RemoteUser when both are empty, got %s", tp.req.RemoteUser)
-	}
-}
-
-func TestRunPreContainerRunPlugins_CustomizationsPassthrough(t *testing.T) {
-	store := workspace.NewStoreAt(t.TempDir())
-	ws := &workspace.Workspace{ID: "ws-1", Source: "/home/user/project"}
-	if err := store.Save(ws); err != nil {
-		t.Fatal(err)
-	}
-
-	tp := &testPlugin{resp: &plugin.PreContainerRunResponse{}}
-	mgr := plugin.NewManager(slog.Default())
-	mgr.Register(tp)
-
-	eng := &Engine{
-		store:       store,
-		plugins:     mgr,
-		runtimeName: "docker",
-		logger:      slog.Default(),
-	}
-
-	cfg := &config.DevContainerConfig{}
-	cfg.Customizations = map[string]any{
-		"crib": map[string]any{
-			"coding-agents": map[string]any{
-				"credentials": "workspace",
-			},
-		},
-	}
-	runOpts := &driver.RunOptions{}
-
-	if _, err := eng.runPreContainerRunPlugins(context.Background(), ws, cfg, runOpts, "img", "/workspaces/project"); err != nil {
-		t.Fatal(err)
-	}
-
-	if tp.req.Customizations == nil {
-		t.Fatal("expected Customizations to be set")
-	}
-	caConfig, ok := tp.req.Customizations["coding-agents"]
-	if !ok {
-		t.Fatal("expected coding-agents key in Customizations")
-	}
-	m, ok := caConfig.(map[string]any)
-	if !ok {
-		t.Fatal("expected coding-agents to be a map")
-	}
-	if m["credentials"] != "workspace" {
-		t.Errorf("expected credentials=workspace, got %v", m["credentials"])
-	}
-}
-
-func TestRunPreContainerRunPlugins_NilCustomizations(t *testing.T) {
-	store := workspace.NewStoreAt(t.TempDir())
-	ws := &workspace.Workspace{ID: "ws-1", Source: "/home/user/project"}
-	if err := store.Save(ws); err != nil {
-		t.Fatal(err)
-	}
-
-	tp := &testPlugin{resp: &plugin.PreContainerRunResponse{}}
-	mgr := plugin.NewManager(slog.Default())
-	mgr.Register(tp)
-
-	eng := &Engine{
-		store:       store,
-		plugins:     mgr,
-		runtimeName: "docker",
-		logger:      slog.Default(),
-	}
-
-	cfg := &config.DevContainerConfig{}
-	runOpts := &driver.RunOptions{}
-
-	if _, err := eng.runPreContainerRunPlugins(context.Background(), ws, cfg, runOpts, "img", "/workspaces/project"); err != nil {
-		t.Fatal(err)
-	}
-
-	if tp.req.Customizations != nil {
-		t.Errorf("expected nil Customizations when config has none, got %v", tp.req.Customizations)
-	}
-}
+// TestRunPreContainerRunPlugins_* tests are now covered by:
+// - TestSingleBackend_CreateContainer_* in backend_single_test.go (merge behavior)
+// - TestDispatchPlugins_* in this file (dispatch behavior: nil manager, explicit user override)
 
 func TestExecPluginCopies(t *testing.T) {
 	// Create a staging file on "host".

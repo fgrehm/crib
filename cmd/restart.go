@@ -42,6 +42,11 @@ args), restart will ask you to run 'crib rebuild' instead.`,
 
 		result, err := eng.Restart(cmd.Context(), ws)
 		if err != nil {
+			if result != nil {
+				// Container is usable despite hook failure.
+				u.Keyval("container", "crib-"+ws.ID)
+				u.Keyval("workspace", result.WorkspaceFolder)
+			}
 			return err
 		}
 

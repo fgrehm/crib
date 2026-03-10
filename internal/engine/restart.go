@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/driver"
-	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
@@ -57,6 +55,16 @@ func (e *Engine) Restart(ctx context.Context, ws *workspace.Workspace) (*Restart
 		return nil, err
 	}
 
+	// Compose guards (mirrors Up).
+	if len(cfg.DockerComposeFile) > 0 {
+		if e.compose == nil {
+			return nil, fmt.Errorf("compose is not available (install docker compose or podman compose)")
+		}
+		if cfg.Service == "" {
+			return nil, fmt.Errorf("dockerComposeFile is set but service is not specified")
+		}
+	}
+
 	// Detect what changed.
 	var storedCfg config.DevContainerConfig
 	if err := json.Unmarshal(storedResult.MergedConfig, &storedCfg); err != nil {
@@ -65,370 +73,172 @@ func (e *Engine) Restart(ctx context.Context, ws *workspace.Workspace) (*Restart
 
 	change := detectConfigChange(&storedCfg, cfg)
 
+	b := e.newBackend(ws, cfg, workspaceFolder)
+
 	switch change {
 	case changeNeedsRebuild:
 		return nil, fmt.Errorf("config changes require a full rebuild (image, Dockerfile, or features changed); run 'crib rebuild' instead")
 
 	case changeSafe:
 		e.reportProgress("Config changes detected, recreating container...")
-		result, err := e.restartWithRecreate(ctx, ws, cfg, workspaceFolder)
-		if err != nil {
-			return nil, err
+		result, err := e.restartRecreate(ctx, ws, cfg, workspaceFolder, b, storedResult)
+		if result != nil {
+			result.Recreated = true
 		}
-		result.Recreated = true
-		return result, nil
+		return result, err
 
 	default:
 		// No changes -- simple restart.
 		e.reportProgress("Restarting container...")
-		return e.restartSimple(ctx, ws, cfg, workspaceFolder, storedResult)
+		return e.restartSimple(ctx, ws, cfg, workspaceFolder, b, storedResult)
 	}
 }
 
 // restartSimple performs a simple container restart without recreation.
-func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, storedResult *workspace.Result) (*RestartResult, error) {
-	// For compose workspaces, use compose stop + start instead of compose
-	// restart. compose restart only restarts already-running containers and
-	// fails when dependency services are stopped. stop + start handles all
-	// services (including dependencies) without recreating containers.
-	var containerID string
-	var pluginResp *plugin.PreContainerRunResponse
-	if len(cfg.DockerComposeFile) > 0 {
-		if e.compose == nil {
-			return nil, fmt.Errorf("compose is not available")
-		}
-		inv := newComposeInvocation(ws, cfg, workspaceFolder)
-
-		// Dispatch plugins for file re-injection, Env, and PathPrepend.
-		composeUser := e.resolveComposeUser(ctx, cfg, inv.files)
-		resp, err := e.dispatchPlugins(ctx, ws, cfg, storedResult.ImageName, workspaceFolder, composeUser)
-		if err != nil {
-			return nil, err
-		}
-		pluginResp = resp
-
-		// Regenerate the override so it stays current for the next
-		// compose up (e.g. after crib down + crib up).
-		overrideImage := storedResult.ImageName
-		if img, ok := e.validSnapshot(ctx, ws, cfg); ok {
-			overrideImage = img
-		}
-		if _, err := e.generateComposeOverride(ws, cfg, workspaceFolder, inv.files, overrideImage, pluginResp); err != nil {
-			e.logger.Warn("failed to regenerate compose override", "error", err)
-		}
-
-		// Use compose stop + start instead of compose up. compose up
-		// recreates containers (podman-compose always does this), losing
-		// anything installed by lifecycle hooks. stop + start only
-		// operates on existing containers without recreation.
-		overridePath := filepath.Join(e.store.WorkspaceDir(ws.ID), "compose-override.yml")
-		allFiles := append(inv.files[:len(inv.files):len(inv.files)], overridePath)
-
-		e.reportProgress("Stopping services...")
-		if err := e.compose.Stop(ctx, inv.projectName, allFiles, e.composeStdout(), e.composeStderr(), inv.env); err != nil {
-			// Log and continue: compose start is idempotent, so starting
-			// over a still-running service is safe. Failing hard here would
-			// block restarts when a single service is stuck.
-			e.logger.Warn("failed to stop services, proceeding with start", "error", err)
-		}
-
-		e.reportProgress("Starting services...")
-		if err := e.compose.Start(ctx, inv.projectName, allFiles, e.composeStdout(), e.composeStderr(), inv.env); err != nil {
-			return nil, fmt.Errorf("starting compose services: %w", err)
-		}
-
-		container, err := e.driver.FindContainer(ctx, ws.ID)
-		if err != nil {
-			return nil, fmt.Errorf("finding container after restart: %w", err)
-		}
-		if container == nil {
-			return nil, fmt.Errorf("no container found for workspace %s after restart", ws.ID)
-		}
-		containerID = container.ID
-
-		// Re-inject plugin files (SSH keys, credentials) which may have
-		// changed on the host since the last up/restart.
-		if pluginResp != nil {
-			e.execPluginCopies(ctx, containerContext{workspaceID: ws.ID, containerID: containerID}, pluginResp.Copies)
-		}
-	} else {
-		// Non-compose: restart the individual container.
-		container, err := e.driver.FindContainer(ctx, ws.ID)
-		if err != nil {
-			return nil, fmt.Errorf("finding container: %w", err)
-		}
-		if container == nil {
-			return nil, fmt.Errorf("no container found for workspace %s", ws.ID)
-		}
-		if err := e.driver.RestartContainer(ctx, ws.ID, container.ID); err != nil {
-			return nil, fmt.Errorf("restarting container: %w", err)
-		}
-		containerID = container.ID
-
-		// Dispatch plugins to get Env and PathPrepend so the saved
-		// RemoteEnv includes plugin env vars across restarts.
-		if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, storedResult.RemoteUser); err != nil {
-			e.logger.Warn("plugin dispatch failed", "error", err)
-		} else {
-			pluginResp = resp
-		}
-	}
-
-	// Build the final env using the EnvBuilder. Resolve ${containerEnv:*}
-	// references in cfg.RemoteEnv using the stored env as the container env
-	// source (we can't probe a freshly restarted container). This handles
-	// patterns like PATH: "/usr/local/go/bin:${containerEnv:PATH}".
-	resolvedConfigEnv := resolveConfigEnvFromStored(cfg, storedResult.RemoteEnv)
-	envb := NewEnvBuilder(resolvedConfigEnv)
-	envb.AddPluginResponse(pluginResp)
-	envb.RestoreFrom(storedResult.RemoteEnv)
-	cfg.RemoteEnv = envb.Build()
-
-	// Run resume-flow hooks.
-	remoteUser := storedResult.RemoteUser
-	cc := containerContext{
-		workspaceID:     ws.ID,
-		containerID:     containerID,
-		remoteUser:      remoteUser,
-		workspaceFolder: workspaceFolder,
-	}
-	if err := e.runResumeHooks(ctx, ws, cfg, cc); err != nil {
-		e.logger.Warn("resume hooks failed", "error", err)
-	}
-
-	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
-
-	// Update timestamps, preserving the stored feature image name.
-	e.saveResult(ws, cfg, &UpResult{
-		ContainerID:     containerID,
-		ImageName:       storedResult.ImageName,
-		WorkspaceFolder: workspaceFolder,
-		RemoteUser:      remoteUser,
-		Ports:           ports,
-	})
-
-	return &RestartResult{
-		ContainerID:     containerID,
-		WorkspaceFolder: workspaceFolder,
-		RemoteUser:      remoteUser,
-		Ports:           ports,
-	}, nil
-}
-
-// restartWithRecreate stops the container, recreates it with the new config,
-// and runs resume-flow hooks (not the full creation lifecycle).
-func (e *Engine) restartWithRecreate(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string) (*RestartResult, error) {
-	// Capture stored result before Down clears hook markers and potentially
-	// makes it harder to recover image names for Dockerfile-based workspaces.
-	storedResult, _ := e.store.LoadResult(ws.ID)
-
-	// Remove existing container first.
-	if err := e.Down(ctx, ws); err != nil {
-		e.logger.Warn("failed to remove container before recreate", "error", err)
-	}
-
-	// For compose: down + up (picks up volume/env/port changes).
-	if len(cfg.DockerComposeFile) > 0 {
-		return e.restartRecreateCompose(ctx, ws, cfg, workspaceFolder, storedResult)
-	}
-
-	return e.restartRecreateSingle(ctx, ws, cfg, workspaceFolder, storedResult)
-}
-
-// restartRecreateCompose handles the compose path for restartWithRecreate.
-func (e *Engine) restartRecreateCompose(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, storedResult *workspace.Result) (*RestartResult, error) {
-	if e.compose == nil {
-		return nil, fmt.Errorf("compose is not available")
-	}
-
-	// Check for a valid snapshot image to use instead of the base image.
-	snapshotImage, hasSnapshot := e.validSnapshot(ctx, ws, cfg)
-
-	// Resolve the container user from the compose service so plugins get
-	// the correct remote user for home directory paths.
-	inv := newComposeInvocation(ws, cfg, workspaceFolder)
-	composeUser := e.resolveComposeUser(ctx, cfg, inv.files)
-
-	// Run pre-container-run plugins to get mounts, env, and file copies.
-	featureImage := snapshotImage // pass snapshot as override image
-	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, featureImage, workspaceFolder, composeUser)
-	if err != nil {
-		return nil, err
-	}
-
-	containerID, err := e.recreateComposeServices(ctx, ws, cfg, workspaceFolder, featureImage, pluginResp)
-	if err != nil {
-		return nil, err
-	}
-
-	// Copy plugin files into the container.
-	cc := containerContext{
-		workspaceID:     ws.ID,
-		containerID:     containerID,
-		workspaceFolder: workspaceFolder,
-	}
-	if pluginResp != nil {
-		e.execPluginCopies(ctx, cc, pluginResp.Copies)
-	}
-
-	cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg)
-
-	// When using a snapshot, resolve ${containerEnv:*} references in
-	// cfg.RemoteEnv using the stored env (we can't probe the container).
-	// When there's no snapshot, setupContainer re-probes and resolves.
-	configEnv := cfg.RemoteEnv
-	if hasSnapshot && storedResult != nil {
-		configEnv = resolveConfigEnvFromStored(cfg, storedResult.RemoteEnv)
-	}
-	envb := NewEnvBuilder(configEnv)
-	envb.AddPluginResponse(pluginResp)
-	if hasSnapshot && storedResult != nil {
-		envb.RestoreFrom(storedResult.RemoteEnv)
-	}
-
-	e.runRecreateLifecycle(ctx, ws, cfg, cc, hasSnapshot, envb)
-
-	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
-
-	hasFeatureEntrypoints := storedResult != nil && storedResult.HasFeatureEntrypoints
-	e.saveResult(ws, cfg, &UpResult{
-		ContainerID:           containerID,
-		WorkspaceFolder:       workspaceFolder,
-		RemoteUser:            cc.remoteUser,
-		Ports:                 ports,
-		HasFeatureEntrypoints: hasFeatureEntrypoints,
-	})
-
-	return &RestartResult{
-		ContainerID:     containerID,
-		WorkspaceFolder: workspaceFolder,
-		RemoteUser:      cc.remoteUser,
-		Ports:           ports,
-	}, nil
-}
-
-// restartRecreateSingle handles the single-container path for restartWithRecreate.
-func (e *Engine) restartRecreateSingle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, storedResult *workspace.Result) (*RestartResult, error) {
-	// Check for a valid snapshot image.
-	snapshotImage, hasSnapshot := e.validSnapshot(ctx, ws, cfg)
-
-	// Delete old container.
+// Uses the backend for container restart and finalize for post-restart steps.
+func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, b containerBackend, storedResult *workspace.Result) (*RestartResult, error) {
+	// Find the existing container.
 	container, err := e.driver.FindContainer(ctx, ws.ID)
 	if err != nil {
 		return nil, fmt.Errorf("finding container: %w", err)
 	}
-	if container != nil {
-		if err := e.driver.DeleteContainer(ctx, ws.ID, container.ID); err != nil {
-			return nil, fmt.Errorf("deleting container: %w", err)
-		}
-	}
-
-	// Determine the image name. Use snapshot if valid, otherwise fall back
-	// to stored result or rebuild.
-	imageName := snapshotImage
-	if imageName == "" {
-		imageName = cfg.Image
-	}
-	if imageName == "" && storedResult != nil {
-		imageName = storedResult.ImageName
-	}
-	// Track whether the image has feature entrypoints. Prefer stored result;
-	// fall back to fresh build metadata if we had to rebuild.
-	hasFeatureEntrypoints := storedResult != nil && storedResult.HasFeatureEntrypoints
-	var featureMetadata []*config.ImageMetadata
-
-	if imageName == "" {
-		e.reportProgress("Image name not found in stored result, rebuilding...")
-		buildRes, err := e.buildImage(ctx, ws, cfg)
-		if err != nil {
-			return nil, fmt.Errorf("rebuilding image: %w", err)
-		}
-		imageName = buildRes.imageName
-		hasFeatureEntrypoints = buildRes.hasEntrypoints
-		featureMetadata = buildRes.imageMetadata
-	}
-
-	runOpts, err := e.buildRunOptions(cfg, imageName, ws.Source, workspaceFolder, hasFeatureEntrypoints)
-	if err != nil {
-		return nil, err
-	}
-	subCtx := &config.SubstitutionContext{
-		DevContainerID:           ws.ID,
-		LocalWorkspaceFolder:     ws.Source,
-		ContainerWorkspaceFolder: workspaceFolder,
-		Env:                      envMap(),
-	}
-	applyFeatureMetadata(runOpts, featureMetadata, subCtx)
-
-	// Run pre-container-run plugins to inject mounts, env, and extra args.
-	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, imageName, workspaceFolder)
-	if err != nil {
-		return nil, err
-	}
-
-	e.reportProgress("Creating container...")
-	if err := e.driver.RunContainer(ctx, ws.ID, runOpts); err != nil {
-		return nil, fmt.Errorf("creating container: %w", err)
-	}
-
-	container, err = e.driver.FindContainer(ctx, ws.ID)
-	if err != nil {
-		return nil, fmt.Errorf("finding new container: %w", err)
-	}
 	if container == nil {
-		return nil, fmt.Errorf("container not found after recreation")
+		return nil, fmt.Errorf("no container found for workspace %s", ws.ID)
+	}
+
+	// Dispatch plugins.
+	pluginUser := b.pluginUser(ctx)
+	if pluginUser == "" {
+		// For non-compose, use stored remote user for plugin dispatch.
+		pluginUser = storedResult.RemoteUser
+	}
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, storedResult.ImageName, workspaceFolder, pluginUser)
+	if err != nil {
+		e.logger.Warn("plugin dispatch failed, continuing without plugins", "error", err)
+		pluginResp = nil
+	}
+
+	// Restart the container.
+	newID, err := b.restart(ctx, container.ID, pluginResp)
+	if err != nil {
+		return nil, err
 	}
 
 	cc := containerContext{
 		workspaceID:     ws.ID,
-		containerID:     container.ID,
+		containerID:     newID,
+		remoteUser:      storedResult.RemoteUser, // pre-set to skip whoami
 		workspaceFolder: workspaceFolder,
 	}
 
-	// Copy plugin files into the container.
-	if pluginResp != nil {
-		e.execPluginCopies(ctx, cc, pluginResp.Copies)
-	}
-
-	cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg)
-
-	// Preserve the original image name for result storage (not the snapshot).
-	resultImageName := ""
-	if storedResult != nil {
-		resultImageName = storedResult.ImageName
-	}
-
-	// When using a snapshot, resolve ${containerEnv:*} references in
-	// cfg.RemoteEnv using the stored env (we can't probe the container).
-	singleConfigEnv := cfg.RemoteEnv
-	if hasSnapshot && storedResult != nil {
-		singleConfigEnv = resolveConfigEnvFromStored(cfg, storedResult.RemoteEnv)
-	}
-	envb := NewEnvBuilder(singleConfigEnv)
-	envb.AddPluginResponse(pluginResp)
-	if hasSnapshot && storedResult != nil {
-		envb.RestoreFrom(storedResult.RemoteEnv)
-	}
-
-	e.runRecreateLifecycle(ctx, ws, cfg, cc, hasSnapshot, envb)
-
-	ports := portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
-
-	e.saveResult(ws, cfg, &UpResult{
-		ContainerID:           container.ID,
-		ImageName:             resultImageName,
-		WorkspaceFolder:       workspaceFolder,
-		RemoteUser:            cc.remoteUser,
-		Ports:                 ports,
-		HasFeatureEntrypoints: hasFeatureEntrypoints,
+	result, err := e.finalize(ctx, ws, cfg, finalizeOpts{
+		cc:              cc,
+		imageName:       storedResult.ImageName,
+		hasEntrypoints:  storedResult.HasFeatureEntrypoints,
+		pluginResp:      pluginResp,
+		storedResult:    storedResult,
+		fromSnapshot:    true,
+		skipVolumeChown: true,
 	})
+	if err != nil {
+		return nil, err
+	}
 
-	return &RestartResult{
-		ContainerID:     container.ID,
-		WorkspaceFolder: workspaceFolder,
-		RemoteUser:      cc.remoteUser,
-		Ports:           ports,
-	}, nil
+	rr := toRestartResult(result)
+	return rr, nil
+}
+
+// restartRecreate stops the container, recreates it with the new config,
+// and runs lifecycle hooks via finalize.
+func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, b containerBackend, storedResult *workspace.Result) (*RestartResult, error) {
+
+	// Remove existing container.
+	if err := e.Down(ctx, ws); err != nil {
+		e.logger.Warn("failed to remove container before recreate", "error", err)
+	}
+
+	// Check for a valid snapshot.
+	snapshotImage, hasSnapshot := e.validSnapshot(ctx, ws, cfg)
+
+	// Determine the image to use.
+	var imageName string
+	var hasEntrypoints bool
+	var metadata []*config.ImageMetadata
+
+	// storedResult is guaranteed non-nil (Restart validates before calling).
+	switch {
+	case hasSnapshot:
+		imageName = snapshotImage
+		hasEntrypoints = storedResult.HasFeatureEntrypoints
+	case storedResult.ImageName != "":
+		imageName = storedResult.ImageName
+		hasEntrypoints = storedResult.HasFeatureEntrypoints
+	case cfg.Image != "":
+		imageName = cfg.Image
+	}
+
+	// If no image available, rebuild.
+	if imageName == "" && len(cfg.DockerComposeFile) == 0 {
+		e.reportProgress("No cached image found, rebuilding...")
+	}
+	if imageName == "" {
+		buildRes, err := b.buildImage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("rebuilding image: %w", err)
+		}
+		imageName = buildRes.imageName
+		hasEntrypoints = buildRes.hasEntrypoints
+		metadata = buildRes.imageMetadata
+	}
+
+	// Dispatch plugins.
+	pluginUser := b.pluginUser(ctx)
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, imageName, workspaceFolder, pluginUser)
+	if err != nil {
+		return nil, err
+	}
+
+	containerID, err := b.createContainer(ctx, createOpts{
+		imageName:      imageName,
+		hasEntrypoints: hasEntrypoints,
+		metadata:       metadata,
+		pluginResp:     pluginResp,
+		skipBuild:      hasSnapshot || b.canResumeFromStored() || (storedResult != nil && storedResult.ImageName != ""),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	cc := containerContext{
+		workspaceID:     ws.ID,
+		containerID:     containerID,
+		workspaceFolder: workspaceFolder,
+	}
+
+	// Preserve original image name (not snapshot) for result.
+	resultImageName := storedResult.ImageName
+	if resultImageName == "" {
+		resultImageName = imageName
+	}
+
+	upResult, err := e.finalize(ctx, ws, cfg, finalizeOpts{
+		cc:             cc,
+		imageName:      resultImageName,
+		hasEntrypoints: hasEntrypoints,
+		pluginResp:     pluginResp,
+		storedResult:   storedResult,
+		fromSnapshot:   hasSnapshot,
+	})
+	if err != nil {
+		if upResult != nil {
+			rr := toRestartResult(upResult)
+			return rr, err
+		}
+		return nil, err
+	}
+
+	rr := toRestartResult(upResult)
+	return rr, nil
 }
 
 // resolveConfigEnvFromStored resolves ${containerEnv:*} references in
@@ -447,26 +257,6 @@ func resolveConfigEnvFromStored(cfg *config.DevContainerConfig, storedEnv map[st
 	// Also resolve bare ${VAR} references (e.g. ${PATH}).
 	resolveBareVarRefs(resolvedEnv, storedEnv)
 	return resolvedEnv
-}
-
-// runRecreateLifecycle decides which hooks to run after a container recreate.
-// When a valid snapshot exists, only resume hooks run (create-time effects are
-// already baked in). Otherwise, full setup runs and a new snapshot is committed.
-func (e *Engine) runRecreateLifecycle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, hasSnapshot bool, envb *EnvBuilder) {
-	if hasSnapshot {
-		cfg.RemoteEnv = envb.Build()
-		if err := e.runResumeHooks(ctx, ws, cfg, cc); err != nil {
-			e.logger.Warn("resume hooks failed", "error", err)
-		}
-	} else {
-		e.reportProgress("No snapshot available, running full setup...")
-		finalEnv, err := e.setupContainer(ctx, ws, cfg, cc, envb)
-		cfg.RemoteEnv = finalEnv
-		if err != nil {
-			e.logger.Warn("setup failed", "error", err)
-		}
-		e.commitSnapshot(ctx, ws, cfg, cc.containerID)
-	}
 }
 
 // runResumeHooks executes only the resume-flow lifecycle hooks

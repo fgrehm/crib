@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/fgrehm/crib/internal/config"
-	"github.com/fgrehm/crib/internal/workspace"
 )
 
 func TestComposeBackend_CanResumeFromStored_ReturnsTrue(t *testing.T) {
@@ -80,33 +79,5 @@ func TestComposeBackend_PluginUser_NoConfigUser_ReturnsEmpty(t *testing.T) {
 	}
 }
 
-func TestComposeBackend_DeleteExisting_RequiresCompose(t *testing.T) {
-	// deleteExisting calls composeDown which uses e.compose.
-	// Without compose, it should error.
-	store := workspace.NewStoreAt(t.TempDir())
-	eng := &Engine{
-		logger:  slog.Default(),
-		compose: nil,
-		store:   store,
-	}
-
-	ws := &workspace.Workspace{ID: "ws-compose-del", Source: "/home/user/project"}
-
-	b := &composeBackend{
-		e:   eng,
-		ws:  ws,
-		cfg: &config.DevContainerConfig{},
-		inv: composeInvocation{files: []string{}},
-	}
-
-	// compose is nil, so composeDown will panic or fail. Since compose.Down
-	// is called directly, we expect a nil pointer dereference. This is
-	// expected behavior (compose should always be set for compose backends).
-	// We test this to verify the delegation path.
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic when compose is nil")
-		}
-	}()
-	_ = b.deleteExisting(context.Background())
-}
+// compose nil guard for deleteExisting is handled structurally:
+// Up() and Restart() validate compose availability before creating the backend.

@@ -2,9 +2,9 @@ package engine
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/fgrehm/crib/internal/config"
-	"github.com/fgrehm/crib/internal/driver"
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
@@ -12,8 +12,8 @@ import (
 // finalizeOpts configures the finalize method.
 type finalizeOpts struct {
 	cc              containerContext
-	imageName       string                         // original (not snapshot) for result
-	hasEntrypoints  bool                           // feature entrypoints baked into image
+	imageName       string                          // original (not snapshot) for result
+	hasEntrypoints  bool                            // feature entrypoints baked into image
 	pluginResp      *plugin.PreContainerRunResponse // may be nil
 	storedResult    *workspace.Result               // non-nil for snapshot/stored resume
 	fromSnapshot    bool                            // true = restore env + resume hooks
@@ -24,8 +24,10 @@ type finalizeOpts struct {
 // chown, user resolution, env building, result saving, and lifecycle hooks.
 // All flows (up, restart, recreate) converge here.
 //
-// Returns an UpResult and an error. On lifecycle hook failure, both are
-// returned so callers can still use the result (the container is usable).
+// On fresh setup, lifecycle hook failures return both a result and a non-nil
+// error so callers can still use the container. On snapshot/stored resume,
+// resume hook failures are logged but not propagated (the container is
+// already usable from the snapshot).
 func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, opts finalizeOpts) (*UpResult, error) {
 	cc := opts.cc
 
@@ -48,23 +50,7 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 		cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg)
 	}
 
-	// 3. Build env and run lifecycle.
-	if opts.fromSnapshot {
-		return e.finalizeFromSnapshotPath(ctx, ws, cfg, cc, opts)
-	}
-	return e.finalizeFreshPath(ctx, ws, cfg, cc, opts)
-}
-
-// finalizeFromSnapshotPath handles the snapshot/stored resume path.
-// Restores env from stored result, saves, and runs resume hooks only.
-func (e *Engine) finalizeFromSnapshotPath(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, opts finalizeOpts) (*UpResult, error) {
-	// Build env from stored result + plugins (no container probing needed).
-	configEnv := resolveConfigEnvFromStored(cfg, opts.storedResult.RemoteEnv)
-	envb := NewEnvBuilder(configEnv)
-	envb.AddPluginResponse(opts.pluginResp)
-	envb.RestoreFrom(opts.storedResult.RemoteEnv)
-	cfg.RemoteEnv = envb.Build()
-
+	// 3. Build result (shared across both paths).
 	result := &UpResult{
 		ContainerID:           cc.containerID,
 		ImageName:             opts.imageName,
@@ -73,6 +59,27 @@ func (e *Engine) finalizeFromSnapshotPath(ctx context.Context, ws *workspace.Wor
 		Ports:                 portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort)),
 		HasFeatureEntrypoints: opts.hasEntrypoints,
 	}
+
+	// 4. Build env and run lifecycle.
+	if opts.fromSnapshot {
+		return e.finalizeFromSnapshotPath(ctx, ws, cfg, cc, opts, result)
+	}
+	return e.finalizeFreshPath(ctx, ws, cfg, cc, opts, result)
+}
+
+// finalizeFromSnapshotPath handles the snapshot/stored resume path.
+// Restores env from stored result, saves, and runs resume hooks only.
+func (e *Engine) finalizeFromSnapshotPath(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, opts finalizeOpts, result *UpResult) (*UpResult, error) {
+	if opts.storedResult == nil {
+		return nil, fmt.Errorf("internal: storedResult is nil for snapshot/stored resume path")
+	}
+
+	// Build env from stored result + plugins (no container probing needed).
+	configEnv := resolveConfigEnvFromStored(cfg, opts.storedResult.RemoteEnv)
+	envb := NewEnvBuilder(configEnv)
+	envb.AddPluginResponse(opts.pluginResp)
+	envb.RestoreFrom(opts.storedResult.RemoteEnv)
+	cfg.RemoteEnv = envb.Build()
 
 	// Early save so crib exec/shell work while resume hooks run.
 	e.saveResult(ws, cfg, result)
@@ -87,18 +94,9 @@ func (e *Engine) finalizeFromSnapshotPath(ctx context.Context, ws *workspace.Wor
 
 // finalizeFreshPath handles the fresh setup path.
 // Runs full setup (env probe, UID sync, lifecycle hooks), commits snapshot.
-func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, opts finalizeOpts) (*UpResult, error) {
+func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, opts finalizeOpts, result *UpResult) (*UpResult, error) {
 	envb := NewEnvBuilder(cfg.RemoteEnv)
 	envb.AddPluginResponse(opts.pluginResp)
-
-	result := &UpResult{
-		ContainerID:           cc.containerID,
-		ImageName:             opts.imageName,
-		WorkspaceFolder:       cc.workspaceFolder,
-		RemoteUser:            cc.remoteUser,
-		Ports:                 portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort)),
-		HasFeatureEntrypoints: opts.hasEntrypoints,
-	}
 
 	// Early save so crib exec/shell work while setup runs.
 	e.saveResult(ws, cfg, result)
@@ -107,7 +105,10 @@ func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace,
 	finalEnv, err := e.setupContainer(ctx, ws, cfg, cc, envb)
 	cfg.RemoteEnv = finalEnv
 	if err != nil {
-		return result, err
+		// Persist probed env even on hook failure so crib exec/shell
+		// have the correct PATH (mise, rbenv, nvm entries).
+		e.saveResult(ws, cfg, result)
+		return result, fmt.Errorf("container setup: %w", err)
 	}
 
 	// After create-time hooks complete, commit a snapshot.
@@ -127,9 +128,4 @@ func toRestartResult(up *UpResult) *RestartResult {
 		RemoteUser:      up.RemoteUser,
 		Ports:           up.Ports,
 	}
-}
-
-// portSpecToBindingsHelper is a convenience for getting port bindings from config.
-func portBindingsFromConfig(cfg *config.DevContainerConfig) []driver.PortBinding {
-	return portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort))
 }

@@ -24,36 +24,14 @@ func (b *composeBackend) pluginUser(ctx context.Context) string {
 }
 
 func (b *composeBackend) start(ctx context.Context, containerID string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
-	// Determine the override image: use stored feature image or snapshot.
-	var overrideImage string
-	if stored, err := b.e.store.LoadResult(b.ws.ID); err == nil && stored != nil {
-		overrideImage = stored.ImageName
-	}
-	if img, ok := b.e.validSnapshot(ctx, b.ws, b.cfg); ok {
-		overrideImage = img
-	}
-
-	if _, err := b.e.generateComposeOverride(b.ws, b.cfg, b.workspaceFolder, b.inv.files, overrideImage, pluginResp); err != nil {
-		b.e.logger.Warn("failed to regenerate compose override", "error", err)
-	}
-
-	overridePath := filepath.Join(b.e.store.WorkspaceDir(b.ws.ID), "compose-override.yml")
-	allFiles := append(b.inv.files[:len(b.inv.files):len(b.inv.files)], overridePath)
+	allFiles := b.prepareOverride(ctx, pluginResp)
 
 	b.e.reportProgress("Starting services...")
 	if err := b.e.compose.Start(ctx, b.inv.projectName, allFiles, b.e.composeStdout(), b.e.composeStderr(), b.inv.env); err != nil {
 		return "", fmt.Errorf("starting compose services: %w", err)
 	}
 
-	container, err := b.e.findComposeContainer(ctx, b.ws.ID, b.inv, "after start")
-	if err != nil {
-		return "", err
-	}
-	if err := b.e.ensureContainerRunning(ctx, b.ws.ID, container); err != nil {
-		return "", err
-	}
-
-	return container.ID, nil
+	return b.findRunningContainer(ctx, "after start")
 }
 
 func (b *composeBackend) buildImage(ctx context.Context) (*buildResult, error) {
@@ -105,15 +83,7 @@ func (b *composeBackend) createContainer(ctx context.Context, opts createOpts) (
 		return "", fmt.Errorf("starting compose services: %w", err)
 	}
 
-	container, err := b.e.findComposeContainer(ctx, b.ws.ID, b.inv, "after up")
-	if err != nil {
-		return "", err
-	}
-	if err := b.e.ensureContainerRunning(ctx, b.ws.ID, container); err != nil {
-		return "", err
-	}
-
-	return container.ID, nil
+	return b.findRunningContainer(ctx, "after up")
 }
 
 func (b *composeBackend) deleteExisting(ctx context.Context) error {
@@ -121,21 +91,7 @@ func (b *composeBackend) deleteExisting(ctx context.Context) error {
 }
 
 func (b *composeBackend) restart(ctx context.Context, containerID string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
-	// Regenerate the override so it stays current.
-	overrideImage := ""
-	if stored, err := b.e.store.LoadResult(b.ws.ID); err == nil && stored != nil {
-		overrideImage = stored.ImageName
-	}
-	if img, ok := b.e.validSnapshot(ctx, b.ws, b.cfg); ok {
-		overrideImage = img
-	}
-
-	if _, err := b.e.generateComposeOverride(b.ws, b.cfg, b.workspaceFolder, b.inv.files, overrideImage, pluginResp); err != nil {
-		b.e.logger.Warn("failed to regenerate compose override", "error", err)
-	}
-
-	overridePath := filepath.Join(b.e.store.WorkspaceDir(b.ws.ID), "compose-override.yml")
-	allFiles := append(b.inv.files[:len(b.inv.files):len(b.inv.files)], overridePath)
+	allFiles := b.prepareOverride(ctx, pluginResp)
 
 	b.e.reportProgress("Stopping services...")
 	if err := b.e.compose.Stop(ctx, b.inv.projectName, allFiles, b.e.composeStdout(), b.e.composeStderr(), b.inv.env); err != nil {
@@ -147,14 +103,45 @@ func (b *composeBackend) restart(ctx context.Context, containerID string, plugin
 		return "", fmt.Errorf("starting compose services: %w", err)
 	}
 
-	container, err := b.e.findComposeContainer(ctx, b.ws.ID, b.inv, "after restart")
-	if err != nil {
-		return "", err
-	}
-
-	return container.ID, nil
+	return b.findRunningContainer(ctx, "after restart")
 }
 
 func (b *composeBackend) canResumeFromStored() bool {
 	return true
+}
+
+// prepareOverride resolves the override image, regenerates the compose override
+// file, and returns the full compose file list including the override.
+// Used by start() and restart() where override generation failures are
+// non-fatal (the stale override file on disk is used as fallback).
+func (b *composeBackend) prepareOverride(ctx context.Context, pluginResp *plugin.PreContainerRunResponse) []string {
+	overrideImage := ""
+	if stored, err := b.e.store.LoadResult(b.ws.ID); err == nil && stored != nil {
+		overrideImage = stored.ImageName
+	}
+	if img, ok := b.e.validSnapshot(ctx, b.ws, b.cfg); ok {
+		overrideImage = img
+	}
+
+	fmeta := b.e.resolveFeatureMetadata(b.cfg)
+
+	if _, err := b.e.generateComposeOverride(b.ws, b.cfg, b.workspaceFolder, b.inv.files, overrideImage, pluginResp, fmeta...); err != nil {
+		b.e.logger.Warn("failed to regenerate compose override", "error", err)
+	}
+
+	overridePath := filepath.Join(b.e.store.WorkspaceDir(b.ws.ID), "compose-override.yml")
+	return append(b.inv.files[:len(b.inv.files):len(b.inv.files)], overridePath)
+}
+
+// findRunningContainer locates the primary service container and verifies
+// it is running.
+func (b *composeBackend) findRunningContainer(ctx context.Context, stage string) (string, error) {
+	container, err := b.e.findComposeContainer(ctx, b.ws.ID, b.inv, stage)
+	if err != nil {
+		return "", err
+	}
+	if err := b.e.ensureContainerRunning(ctx, b.ws.ID, container); err != nil {
+		return "", err
+	}
+	return container.ID, nil
 }
