@@ -144,11 +144,6 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	b.WriteString("    labels:\n")
 	fmt.Fprintf(&b, "      %s: %q\n", ocidriver.LabelWorkspace, ws.ID)
 
-	// Add build.labels so compose-built images get the workspace label.
-	b.WriteString("    build:\n")
-	b.WriteString("      labels:\n")
-	fmt.Fprintf(&b, "        %s: %q\n", ocidriver.LabelWorkspace, ws.ID)
-
 	// Override image if a feature image was built.
 	if featureImage != "" {
 		fmt.Fprintf(&b, "    image: %s\n", featureImage)

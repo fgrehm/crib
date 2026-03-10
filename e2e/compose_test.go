@@ -139,7 +139,7 @@ func TestE2ECompose(t *testing.T) {
 	mustRunCrib(t, projectDir, cribHome, "up")
 
 	// 7. remove - must remove all compose services and workspace state.
-	mustRunCrib(t, projectDir, cribHome, "remove")
+	mustRunCrib(t, projectDir, cribHome, "remove", "--force")
 
 	out = mustRunCrib(t, projectDir, cribHome, "list")
 	if !strings.Contains(strings.ToLower(out), "no workspaces") {

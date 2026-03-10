@@ -227,7 +227,7 @@ func TestE2EFullLifecycle(t *testing.T) {
 	}
 
 	// 14. remove - removes container and workspace state.
-	mustRunCrib(t, projectDir, cribHome, "remove")
+	mustRunCrib(t, projectDir, cribHome, "remove", "--force")
 
 	// 15. list - workspace should be gone.
 	out = mustRunCrib(t, projectDir, cribHome, "list")
@@ -269,7 +269,7 @@ func TestE2EUpRecreate(t *testing.T) {
 		t.Errorf("up --recreate: want new container ID, got same %q", id1)
 	}
 
-	mustRunCrib(t, projectDir, cribHome, "remove")
+	mustRunCrib(t, projectDir, cribHome, "remove", "--force")
 }
 
 func TestE2ENoDevcontainer(t *testing.T) {

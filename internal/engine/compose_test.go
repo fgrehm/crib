@@ -409,7 +409,7 @@ func TestGenerateComposeOverride_OmitsImageWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestGenerateComposeOverride_IncludesBuildLabels(t *testing.T) {
+func TestGenerateComposeOverride_NoBuildSection(t *testing.T) {
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
 	e := newComposeTestEngine(t, "docker", ws)
 
@@ -427,12 +427,16 @@ func TestGenerateComposeOverride_IncludesBuildLabels(t *testing.T) {
 	}
 	content := string(data)
 
-	// Should include build.labels for compose-built images.
-	if !strings.Contains(content, "build:") {
-		t.Errorf("expected build section, got:\n%s", content)
+	// Override must NOT include a build: section for image-only services.
+	// Adding build: to the override makes Docker Compose attempt a build
+	// even when the service has no Dockerfile.
+	if strings.Contains(content, "build:") {
+		t.Errorf("override should not contain build section for image-only service, got:\n%s", content)
 	}
-	if !strings.Contains(content, "crib.workspace: \"test-ws\"") {
-		t.Errorf("expected workspace label in build.labels, got:\n%s", content)
+
+	// Container labels should still be present.
+	if !strings.Contains(content, "crib.workspace") {
+		t.Errorf("expected container label, got:\n%s", content)
 	}
 }
 

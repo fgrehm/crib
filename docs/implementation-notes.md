@@ -310,7 +310,10 @@ label=crib.workspace` without relying on name-pattern heuristics.
 |------------|------------------------|
 | Build image (`crib-{wsID}:{hash}`) | `--label` flag on `docker build` / `podman build` |
 | Snapshot image (`crib-{wsID}:snapshot`) | `--change "LABEL ..."` on `docker commit` / `podman commit` |
-| Compose feature image | `build.labels` in the generated compose override YAML |
+
+Compose-built images (those produced by `docker compose build`) are not labeled because
+adding a `build:` section to the compose override triggers a build attempt even for
+image-only services that have no Dockerfile.
 
 Images are cleaned up automatically at three points:
 

@@ -43,7 +43,7 @@ var removeCmd = &cobra.Command{
 			for _, img := range preview.Images {
 				fmt.Fprintf(os.Stderr, "  image: %s\n", img)
 			}
-			fmt.Fprintf(os.Stderr, "  state: ~/.crib/workspaces/%s/\n", ws.ID)
+			fmt.Fprintf(os.Stderr, "  state: %s\n", store.WorkspaceDir(ws.ID))
 
 			confirmed, err := confirmPrompt("removal requires confirmation")
 			if err != nil {

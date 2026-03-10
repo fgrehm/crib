@@ -42,7 +42,7 @@ func TestE2EAliases(t *testing.T) {
 	}
 
 	// "rm" alias for "remove".
-	mustRunCrib(t, projectDir, cribHome, "rm")
+	mustRunCrib(t, projectDir, cribHome, "rm", "--force")
 	out = mustRunCrib(t, projectDir, cribHome, "ls")
 	if !strings.Contains(strings.ToLower(out), "no workspaces") {
 		t.Errorf("ls after rm: want 'no workspaces', got %q", out)

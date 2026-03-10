@@ -16,8 +16,13 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - run: make test
-      - run: make lint
+      - uses: gotesttools/gotestfmt-action@v2
+      - name: Unit tests
+        run: make test 2>&1 | gotestfmt
+        env:
+          GO_TEST_FLAGS: -json
+      - name: Lint
+        run: make lint
       - name: Complexity gate (gocyclo -over 40)
         run: |
           out=$(go tool gocyclo -over 40 .)
@@ -38,14 +43,21 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: gotesttools/gotestfmt-action@v2
       - name: Start podman daemon
         run: |
           podman system service -t 0 &
           sleep 2
-      - name: Run integration tests
-        run: CRIB_RUNTIME=podman make test-integration
-      - name: Run e2e tests
-        run: CRIB_RUNTIME=podman make test-e2e
+      - name: Integration tests
+        run: make test-integration 2>&1 | gotestfmt
+        env:
+          CRIB_RUNTIME: podman
+          GO_TEST_FLAGS: -json
+      - name: E2E tests
+        run: make test-e2e 2>&1 | gotestfmt
+        env:
+          CRIB_RUNTIME: podman
+          GO_TEST_FLAGS: -json
 
   e2e-docker:
     name: E2E tests (Docker)
@@ -58,9 +70,16 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: gotesttools/gotestfmt-action@v2
       - name: Verify Docker is available
         run: docker info
-      - name: Run integration tests
-        run: CRIB_RUNTIME=docker make test-integration
-      - name: Run e2e tests
-        run: CRIB_RUNTIME=docker make test-e2e
+      - name: Integration tests
+        run: make test-integration 2>&1 | gotestfmt
+        env:
+          CRIB_RUNTIME: docker
+          GO_TEST_FLAGS: -json
+      - name: E2E tests
+        run: make test-e2e 2>&1 | gotestfmt
+        env:
+          CRIB_RUNTIME: docker
+          GO_TEST_FLAGS: -json

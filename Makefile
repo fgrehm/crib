@@ -17,7 +17,7 @@ install: build ## Install crib to ~/.local/bin
 	install -m 755 bin/crib ~/.local/bin/crib
 
 test: ## Run unit tests
-	go test ./internal/... -short -count=1
+	go test $(GO_TEST_FLAGS) ./internal/... -short -count=1
 
 lint: ## Run linters
 	go tool golangci-lint run
@@ -30,10 +30,10 @@ audit: ## Run complexity and dead-code analysis (informational)
 	@go tool deadcode ./... 2>&1 || true
 
 test-integration: ## Run integration tests (requires Docker or Podman)
-	go test ./internal/... -run Integration -count=1
+	go test $(GO_TEST_FLAGS) ./internal/... -run Integration -v -count=1
 
 test-e2e: ## Run end-to-end tests against the crib binary (requires Docker or Podman)
-	go test ./e2e/... -v -count=1 -timeout=10m
+	go test $(GO_TEST_FLAGS) ./e2e/... -v -count=1 -timeout=10m
 
 setup-hooks: ## Configure git hooks
 	@git config core.hooksPath .githooks

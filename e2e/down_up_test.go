@@ -59,7 +59,7 @@ func TestE2EDownUpCycle(t *testing.T) {
 	mustRunCrib(t, projectDir, cribHome, "exec", "--", "test", "-f", "/tmp/post-create-ran")
 
 	// Clean up.
-	mustRunCrib(t, projectDir, cribHome, "rm")
+	mustRunCrib(t, projectDir, cribHome, "rm", "--force")
 }
 
 // TestE2EDownUpComposeSkipsBuild verifies that down + up for compose workspaces
