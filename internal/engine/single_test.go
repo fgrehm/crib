@@ -611,7 +611,7 @@ func TestChownPluginVolumes_ErrorContinues(t *testing.T) {
 	}
 }
 
-func TestUpSingle_AlreadyRunning_PreservesPathPrepend(t *testing.T) {
+func TestUpExisting_PreservesPathPrepend(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-path", Source: "/home/user/project"}
 	if err := store.Save(ws); err != nil {
@@ -647,19 +647,23 @@ func TestUpSingle_AlreadyRunning_PreservesPathPrepend(t *testing.T) {
 	cfg.Image = "ruby:3.2"
 	cfg.RemoteUser = "vscode"
 
-	result, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	container := &driver.ContainerDetails{
+		ID:    "existing-c",
+		State: driver.ContainerState{Status: "running"},
+	}
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	result, err := eng.upExisting(context.Background(), ws, cfg, "/workspaces/project", b, container)
 	if err != nil {
-		t.Fatalf("upSingle: %v", err)
+		t.Fatalf("upExisting: %v", err)
 	}
 	if result.ContainerID != "existing-c" {
 		t.Errorf("ContainerID = %q, want existing-c", result.ContainerID)
 	}
 
-	// cfg.RemoteEnv is mutated in place by setupContainer. The caller (Up)
-	// passes it to saveResult after upSingle returns. Verify it contains
+	// cfg.RemoteEnv is mutated in place by finalize. Verify it contains
 	// the plugin PATH entry.
 	if cfg.RemoteEnv == nil {
-		t.Fatal("cfg.RemoteEnv is nil after upSingle, expected plugin PATH entries")
+		t.Fatal("cfg.RemoteEnv is nil, expected plugin PATH entries")
 	}
 	path := cfg.RemoteEnv["PATH"]
 	if !strings.Contains(path, "/home/vscode/.bundle/bin") {
@@ -667,7 +671,7 @@ func TestUpSingle_AlreadyRunning_PreservesPathPrepend(t *testing.T) {
 	}
 }
 
-func TestUpSingle_AlreadyRunning_PassesRemoteUserToPlugins(t *testing.T) {
+func TestUpExisting_PassesRemoteUserToPlugins(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-user", Source: "/home/user/project"}
 	if err := store.Save(ws); err != nil {
@@ -704,9 +708,14 @@ func TestUpSingle_AlreadyRunning_PassesRemoteUserToPlugins(t *testing.T) {
 	cfg.Image = "ubuntu:22.04"
 	cfg.RemoteUser = "vscode"
 
-	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	container := &driver.ContainerDetails{
+		ID:    "existing-c",
+		State: driver.ContainerState{Status: "running"},
+	}
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.upExisting(context.Background(), ws, cfg, "/workspaces/project", b, container)
 	if err != nil {
-		t.Fatalf("upSingle: %v", err)
+		t.Fatalf("upExisting: %v", err)
 	}
 
 	if tp.req == nil {
@@ -717,7 +726,7 @@ func TestUpSingle_AlreadyRunning_PassesRemoteUserToPlugins(t *testing.T) {
 	}
 }
 
-func TestUpSingle_AlreadyRunning_FallsBackToContainerUser(t *testing.T) {
+func TestUpExisting_FallsBackToContainerUser(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-user2", Source: "/home/user/project"}
 	if err := store.Save(ws); err != nil {
@@ -753,9 +762,14 @@ func TestUpSingle_AlreadyRunning_FallsBackToContainerUser(t *testing.T) {
 	cfg.Image = "ubuntu:22.04"
 	cfg.ContainerUser = "devuser"
 
-	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	container := &driver.ContainerDetails{
+		ID:    "existing-c",
+		State: driver.ContainerState{Status: "running"},
+	}
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.upExisting(context.Background(), ws, cfg, "/workspaces/project", b, container)
 	if err != nil {
-		t.Fatalf("upSingle: %v", err)
+		t.Fatalf("upExisting: %v", err)
 	}
 
 	if tp.req == nil {

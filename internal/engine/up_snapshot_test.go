@@ -106,7 +106,7 @@ func (m *snapshotUpMockDriver) ListVolumes(_ context.Context, _ string) ([]drive
 }
 func (m *snapshotUpMockDriver) RemoveVolume(_ context.Context, _ string) error { return nil }
 
-func TestUpSingle_FromSnapshot_PreservesEnv(t *testing.T) {
+func TestUpCreate_FromSnapshot_PreservesEnv(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-up-snap", Source: "/home/user/project"}
 	if err := store.Save(ws); err != nil {
@@ -158,9 +158,10 @@ func TestUpSingle_FromSnapshot_PreservesEnv(t *testing.T) {
 	cfg.Image = "ruby:3.2"
 	cfg.RemoteUser = "vscode"
 
-	result, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	result, err := eng.upCreate(context.Background(), ws, cfg, "/workspaces/project", b, false)
 	if err != nil {
-		t.Fatalf("upSingle: %v", err)
+		t.Fatalf("upCreate: %v", err)
 	}
 
 	if result.ContainerID != "new-container" {
@@ -196,7 +197,7 @@ func TestUpSingle_FromSnapshot_PreservesEnv(t *testing.T) {
 	}
 }
 
-func TestUpSingle_FromSnapshot_RunsResumeHooksOnly(t *testing.T) {
+func TestUpCreate_FromSnapshot_RunsResumeHooksOnly(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-up-resume", Source: "/home/user/project"}
 	if err := store.Save(ws); err != nil {
@@ -238,9 +239,10 @@ func TestUpSingle_FromSnapshot_RunsResumeHooksOnly(t *testing.T) {
 		progress:    func(string) {},
 	}
 
-	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.upCreate(context.Background(), ws, cfg, "/workspaces/project", b, false)
 	if err != nil {
-		t.Fatalf("upSingle: %v", err)
+		t.Fatalf("upCreate: %v", err)
 	}
 
 	// Check which hooks were executed. Only resume hooks (postStart, postAttach)
@@ -277,7 +279,7 @@ func TestUpSingle_FromSnapshot_RunsResumeHooksOnly(t *testing.T) {
 	}
 }
 
-func TestUpSingle_FromSnapshot_RecreateBypassesSnapshot(t *testing.T) {
+func TestUpCreate_FromSnapshot_RecreateBypassesSnapshot(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-up-recreate", Source: t.TempDir()}
 	if err := store.Save(ws); err != nil {
@@ -329,7 +331,8 @@ func TestUpSingle_FromSnapshot_RecreateBypassesSnapshot(t *testing.T) {
 	// because buildImage needs a real image, but we can verify the snapshot
 	// path was NOT taken by checking that RunContainer was NOT called with
 	// the snapshot image. Since buildImage will fail, we expect an error.
-	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{Recreate: true})
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.upCreate(context.Background(), ws, cfg, "/workspaces/project", b, true)
 	// We expect an error from buildImage since we can't actually build.
 	// The key assertion is that the snapshot path was not taken.
 	if err == nil {
@@ -338,12 +341,12 @@ func TestUpSingle_FromSnapshot_RecreateBypassesSnapshot(t *testing.T) {
 			t.Error("Recreate=true should bypass snapshot, but snapshot image was used")
 		}
 	}
-	// With Recreate=true, upSingle deletes the container first, then goes to
+	// With Recreate=true, upCreate deletes the container first, then goes to
 	// the build path (which fails in test because there's no real docker).
 	// This confirms snapshot was not used.
 }
 
-func TestUpSingle_FromSnapshot_StaleSnapshotFallsThrough(t *testing.T) {
+func TestUpCreate_FromSnapshot_StaleSnapshotFallsThrough(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-up-stale", Source: t.TempDir()}
 	if err := store.Save(ws); err != nil {
@@ -391,9 +394,10 @@ func TestUpSingle_FromSnapshot_StaleSnapshotFallsThrough(t *testing.T) {
 	cfg.Image = "ubuntu:22.04"
 	cfg.RemoteUser = "vscode"
 
-	// With a stale snapshot, upSingle should fall through to the build path,
+	// With a stale snapshot, upCreate should fall through to the build path,
 	// which will fail in tests since we can't actually build images.
-	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.upCreate(context.Background(), ws, cfg, "/workspaces/project", b, false)
 	if err == nil {
 		// If somehow it succeeded, verify it didn't use the snapshot.
 		if len(mockDrv.runCalls) > 0 && mockDrv.runCalls[0].Image == "crib-ws-up-stale:snapshot" {
@@ -403,7 +407,7 @@ func TestUpSingle_FromSnapshot_StaleSnapshotFallsThrough(t *testing.T) {
 	// Error expected from buildImage since there's no real docker.
 }
 
-func TestUpSingle_FromSnapshot_PluginCopiesExecuted(t *testing.T) {
+func TestUpCreate_FromSnapshot_PluginCopiesExecuted(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-up-copies", Source: "/home/user/project"}
 	if err := store.Save(ws); err != nil {
@@ -458,9 +462,10 @@ func TestUpSingle_FromSnapshot_PluginCopiesExecuted(t *testing.T) {
 		progress:    func(string) {},
 	}
 
-	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.upCreate(context.Background(), ws, cfg, "/workspaces/project", b, false)
 	if err != nil {
-		t.Fatalf("upSingle: %v", err)
+		t.Fatalf("upCreate: %v", err)
 	}
 
 	// Verify plugin file copy was executed.
@@ -476,7 +481,7 @@ func TestUpSingle_FromSnapshot_PluginCopiesExecuted(t *testing.T) {
 	}
 }
 
-func TestUpSingle_FromSnapshot_PreservesImageName(t *testing.T) {
+func TestUpCreate_FromSnapshot_PreservesImageName(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-up-img", Source: "/home/user/project"}
 	if err := store.Save(ws); err != nil {
@@ -514,9 +519,10 @@ func TestUpSingle_FromSnapshot_PreservesImageName(t *testing.T) {
 		progress:    func(string) {},
 	}
 
-	result, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	result, err := eng.upCreate(context.Background(), ws, cfg, "/workspaces/project", b, false)
 	if err != nil {
-		t.Fatalf("upSingle: %v", err)
+		t.Fatalf("upCreate: %v", err)
 	}
 
 	// The result ImageName should be the original feature image, not the snapshot.
@@ -533,7 +539,7 @@ func TestUpSingle_FromSnapshot_PreservesImageName(t *testing.T) {
 	}
 }
 
-func TestUpSingle_FromSnapshot_PreservesFeatureEntrypoints(t *testing.T) {
+func TestUpCreate_FromSnapshot_PreservesFeatureEntrypoints(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-up-feat", Source: "/home/user/project"}
 	if err := store.Save(ws); err != nil {
@@ -572,9 +578,10 @@ func TestUpSingle_FromSnapshot_PreservesFeatureEntrypoints(t *testing.T) {
 		progress:    func(string) {},
 	}
 
-	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.upCreate(context.Background(), ws, cfg, "/workspaces/project", b, false)
 	if err != nil {
-		t.Fatalf("upSingle: %v", err)
+		t.Fatalf("upCreate: %v", err)
 	}
 
 	// Verify RunContainer was called with feature entrypoint handling.
@@ -601,7 +608,7 @@ func TestUpSingle_FromSnapshot_PreservesFeatureEntrypoints(t *testing.T) {
 	}
 }
 
-func TestUpSingle_FromSnapshot_ResolvesConfigEnv(t *testing.T) {
+func TestUpCreate_FromSnapshot_ResolvesConfigEnv(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-up-envres", Source: "/home/user/project"}
 	if err := store.Save(ws); err != nil {
@@ -645,9 +652,10 @@ func TestUpSingle_FromSnapshot_ResolvesConfigEnv(t *testing.T) {
 		progress:    func(string) {},
 	}
 
-	_, err := eng.upSingle(context.Background(), ws, cfg, "/workspaces/project", UpOptions{})
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	_, err := eng.upCreate(context.Background(), ws, cfg, "/workspaces/project", b, false)
 	if err != nil {
-		t.Fatalf("upSingle: %v", err)
+		t.Fatalf("upCreate: %v", err)
 	}
 
 	saved, err := store.LoadResult(ws.ID)
@@ -667,198 +675,4 @@ func TestUpSingle_FromSnapshot_ResolvesConfigEnv(t *testing.T) {
 	}
 }
 
-func TestFinalizeFromSnapshot_PluginEnvMerged(t *testing.T) {
-	store := workspace.NewStoreAt(t.TempDir())
-	ws := &workspace.Workspace{ID: "ws-finalize-env", Source: "/home/user/project"}
-	if err := store.Save(ws); err != nil {
-		t.Fatal(err)
-	}
-
-	mockDrv := &mockDriver{responses: map[string]string{}}
-	eng := &Engine{
-		driver:   mockDrv,
-		store:    store,
-		logger:   slog.Default(),
-		stdout:   io.Discard,
-		stderr:   io.Discard,
-		progress: func(string) {},
-	}
-
-	cfg := &config.DevContainerConfig{}
-	cfg.RemoteUser = "vscode"
-
-	cc := containerContext{
-		workspaceID:     ws.ID,
-		containerID:     "container-1",
-		workspaceFolder: "/workspaces/project",
-	}
-
-	pluginResp := &plugin.PreContainerRunResponse{
-		Env: map[string]string{
-			"BUNDLE_PATH": "/home/vscode/.bundle",
-			"HISTFILE":    "/home/vscode/.crib_history/.shell_history",
-		},
-		PathPrepend: []string{"/home/vscode/.bundle/bin"},
-	}
-
-	storedResult := &workspace.Result{
-		ImageName:  "ruby:3.2",
-		RemoteUser: "vscode",
-		RemoteEnv: map[string]string{
-			"PATH":      "/usr/local/bin:/usr/bin",
-			"RUBY_ROOT": "/home/vscode/.local/share/mise/installs/ruby/3.4.7",
-		},
-	}
-
-	result, err := eng.finalizeFromSnapshot(context.Background(), ws, cfg, cc, "ruby:3.2", pluginResp, storedResult)
-	if err != nil {
-		t.Fatalf("finalizeFromSnapshot: %v", err)
-	}
-
-	if result.ContainerID != "container-1" {
-		t.Errorf("ContainerID = %q, want container-1", result.ContainerID)
-	}
-	if result.ImageName != "ruby:3.2" {
-		t.Errorf("ImageName = %q, want ruby:3.2", result.ImageName)
-	}
-
-	saved, err := store.LoadResult(ws.ID)
-	if err != nil {
-		t.Fatalf("LoadResult: %v", err)
-	}
-
-	// Plugin env values must be present.
-	if saved.RemoteEnv["BUNDLE_PATH"] != "/home/vscode/.bundle" {
-		t.Errorf("BUNDLE_PATH = %q, want /home/vscode/.bundle", saved.RemoteEnv["BUNDLE_PATH"])
-	}
-	if saved.RemoteEnv["HISTFILE"] != "/home/vscode/.crib_history/.shell_history" {
-		t.Errorf("HISTFILE = %q, want plugin value", saved.RemoteEnv["HISTFILE"])
-	}
-
-	// Stored probed env must survive.
-	if saved.RemoteEnv["RUBY_ROOT"] != "/home/vscode/.local/share/mise/installs/ruby/3.4.7" {
-		t.Errorf("RUBY_ROOT = %q, want stored value", saved.RemoteEnv["RUBY_ROOT"])
-	}
-
-	// PATH should include both plugin prepend and stored probed paths.
-	path := saved.RemoteEnv["PATH"]
-	if !strings.Contains(path, "/home/vscode/.bundle/bin") {
-		t.Errorf("PATH missing plugin .bundle/bin: %q", path)
-	}
-	if !strings.Contains(path, "/usr/local/bin") {
-		t.Errorf("PATH missing stored /usr/local/bin: %q", path)
-	}
-}
-
-func TestFinalizeFromSnapshot_ConfigEnvOverridesStored(t *testing.T) {
-	store := workspace.NewStoreAt(t.TempDir())
-	ws := &workspace.Workspace{ID: "ws-finalize-override", Source: "/home/user/project"}
-	if err := store.Save(ws); err != nil {
-		t.Fatal(err)
-	}
-
-	mockDrv := &mockDriver{responses: map[string]string{}}
-	eng := &Engine{
-		driver:   mockDrv,
-		store:    store,
-		logger:   slog.Default(),
-		stdout:   io.Discard,
-		stderr:   io.Discard,
-		progress: func(string) {},
-	}
-
-	cfg := &config.DevContainerConfig{}
-	cfg.RemoteUser = "vscode"
-	cfg.RemoteEnv = map[string]string{"EDITOR": "nano"}
-
-	cc := containerContext{
-		workspaceID:     ws.ID,
-		containerID:     "container-1",
-		workspaceFolder: "/workspaces/project",
-	}
-
-	storedResult := &workspace.Result{
-		ImageName:  "ruby:3.2",
-		RemoteUser: "vscode",
-		RemoteEnv: map[string]string{
-			"EDITOR":    "vim",
-			"RUBY_ROOT": "/home/vscode/.local/share/mise/installs/ruby/3.4.7",
-			"PATH":      "/usr/local/bin:/usr/bin",
-		},
-	}
-
-	_, err := eng.finalizeFromSnapshot(context.Background(), ws, cfg, cc, "ruby:3.2", nil, storedResult)
-	if err != nil {
-		t.Fatalf("finalizeFromSnapshot: %v", err)
-	}
-
-	saved, err := store.LoadResult(ws.ID)
-	if err != nil {
-		t.Fatalf("LoadResult: %v", err)
-	}
-
-	// devcontainer.json EDITOR=nano must win over stored EDITOR=vim.
-	if saved.RemoteEnv["EDITOR"] != "nano" {
-		t.Errorf("EDITOR = %q, want nano (config should override stored)", saved.RemoteEnv["EDITOR"])
-	}
-	// Stored RUBY_ROOT should still be present.
-	if saved.RemoteEnv["RUBY_ROOT"] != "/home/vscode/.local/share/mise/installs/ruby/3.4.7" {
-		t.Errorf("RUBY_ROOT = %q, want stored value", saved.RemoteEnv["RUBY_ROOT"])
-	}
-}
-
-func TestFinalizeFromSnapshot_ChownsPluginVolumes(t *testing.T) {
-	store := workspace.NewStoreAt(t.TempDir())
-	ws := &workspace.Workspace{ID: "ws-finalize-chown", Source: "/home/user/project"}
-	if err := store.Save(ws); err != nil {
-		t.Fatal(err)
-	}
-
-	mockDrv := &mockDriver{responses: map[string]string{}}
-	eng := &Engine{
-		driver:   mockDrv,
-		store:    store,
-		logger:   slog.Default(),
-		stdout:   io.Discard,
-		stderr:   io.Discard,
-		progress: func(string) {},
-	}
-
-	cfg := &config.DevContainerConfig{}
-	cfg.RemoteUser = "vscode"
-
-	cc := containerContext{
-		workspaceID:     ws.ID,
-		containerID:     "container-1",
-		workspaceFolder: "/workspaces/project",
-	}
-
-	pluginResp := &plugin.PreContainerRunResponse{
-		Mounts: []config.Mount{
-			{Type: "volume", Source: "cache-vol", Target: "/home/vscode/.npm"},
-			{Type: "bind", Source: "/host/path", Target: "/container/path"},
-		},
-	}
-
-	storedResult := &workspace.Result{
-		ImageName:  "ubuntu:22.04",
-		RemoteUser: "vscode",
-		RemoteEnv:  map[string]string{"PATH": "/usr/local/bin:/usr/bin"},
-	}
-
-	_, err := eng.finalizeFromSnapshot(context.Background(), ws, cfg, cc, "ubuntu:22.04", pluginResp, storedResult)
-	if err != nil {
-		t.Fatalf("finalizeFromSnapshot: %v", err)
-	}
-
-	// Verify chown was called for the volume mount but not the bind mount.
-	foundChown := false
-	for _, call := range mockDrv.execCalls {
-		if len(call.cmd) >= 3 && call.cmd[0] == "chown" && call.cmd[2] == "/home/vscode/.npm" {
-			foundChown = true
-		}
-	}
-	if !foundChown {
-		t.Error("expected chown for volume mount /home/vscode/.npm")
-	}
-}
+// Tests for finalize from snapshot are in finalize_test.go.

@@ -188,27 +188,173 @@ func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions
 		e.reportProgress("Container ready.")
 	}
 
-	// Route by config type.
-	var result *UpResult
-	var upErr error
+	// Compose guards.
 	if len(cfg.DockerComposeFile) > 0 {
-		result, upErr = e.upCompose(ctx, ws, cfg, workspaceFolder, opts)
+		if e.compose == nil {
+			return nil, fmt.Errorf("compose is not available (install docker compose or podman compose)")
+		}
+		if cfg.Service == "" {
+			return nil, fmt.Errorf("dockerComposeFile is set but service is not specified")
+		}
+	}
+
+	b := e.newBackend(ws, cfg, workspaceFolder)
+
+	// Check for an existing container.
+	container, err := e.driver.FindContainer(ctx, ws.ID)
+	if err != nil {
+		return nil, fmt.Errorf("finding container: %w", err)
+	}
+
+	if container != nil && !opts.Recreate {
+		return e.upExisting(ctx, ws, cfg, workspaceFolder, b, container)
+	}
+
+	// Remove existing container if recreating.
+	if container != nil && opts.Recreate {
+		e.reportProgress("Removing container...")
+		if err := e.store.ClearHookMarkers(ws.ID); err != nil {
+			e.logger.Warn("failed to clear hook markers", "error", err)
+		}
+		if err := b.deleteExisting(ctx); err != nil {
+			return nil, fmt.Errorf("deleting container for recreation: %w", err)
+		}
+	}
+
+	return e.upCreate(ctx, ws, cfg, workspaceFolder, b, opts.Recreate)
+}
+
+// upExisting handles the case where a container already exists.
+func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, b containerBackend, container *driver.ContainerDetails) (*UpResult, error) {
+	// Load stored result for image name.
+	var storedImageName string
+	if stored, err := e.store.LoadResult(ws.ID); err == nil && stored != nil {
+		storedImageName = stored.ImageName
+	}
+
+	// Dispatch plugins.
+	pluginUser := b.pluginUser(ctx)
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, storedImageName, workspaceFolder, pluginUser)
+	if err != nil {
+		e.logger.Warn("plugin dispatch failed for existing container", "error", err)
+	}
+
+	cc := containerContext{
+		workspaceID:     ws.ID,
+		containerID:     container.ID,
+		workspaceFolder: workspaceFolder,
+	}
+
+	if !container.State.IsRunning() {
+		e.reportProgress("Starting container...")
+		newID, err := b.start(ctx, container.ID, pluginResp)
+		if err != nil {
+			return nil, err
+		}
+		cc.containerID = newID
 	} else {
-		result, upErr = e.upSingle(ctx, ws, cfg, workspaceFolder, opts)
+		e.reportProgress("Container already running")
 	}
 
-	// Save final result with probed environment. An early result (without
-	// remoteEnv) is saved in setupAndReturn before lifecycle hooks run so
-	// crib exec/shell work while hooks are still executing.
-	if result != nil {
-		e.saveResult(ws, cfg, result)
+	return e.finalize(ctx, ws, cfg, finalizeOpts{
+		cc:         cc,
+		imageName:  storedImageName,
+		pluginResp: pluginResp,
+	})
+}
+
+// upCreate handles creating a new container (no existing container or recreate).
+func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, b containerBackend, isRecreate bool) (*UpResult, error) {
+	// Check for snapshot or stored result to resume from.
+	if !isRecreate {
+		if storedResult, loadErr := e.store.LoadResult(ws.ID); loadErr == nil && storedResult != nil {
+			// Check for valid snapshot.
+			if snapshotImage, ok := e.validSnapshot(ctx, ws, cfg); ok {
+				return e.upFromImage(ctx, ws, cfg, workspaceFolder, b, snapshotImage, storedResult, true)
+			}
+			// Compose can resume from stored result without snapshot.
+			if b.canResumeFromStored() {
+				return e.upFromImage(ctx, ws, cfg, workspaceFolder, b, storedResult.ImageName, storedResult, false)
+			}
+		}
 	}
 
-	if upErr != nil {
-		return nil, upErr
+	// Fresh build path.
+	buildRes, err := b.buildImage(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	return result, nil
+	// Dispatch plugins.
+	pluginUser := b.pluginUser(ctx)
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, buildRes.imageName, workspaceFolder, pluginUser)
+	if err != nil {
+		return nil, err
+	}
+
+	containerID, err := b.createContainer(ctx, createOpts{
+		imageName:      buildRes.imageName,
+		hasEntrypoints: buildRes.hasEntrypoints,
+		metadata:       buildRes.imageMetadata,
+		pluginResp:     pluginResp,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	cc := containerContext{
+		workspaceID:     ws.ID,
+		containerID:     containerID,
+		workspaceFolder: workspaceFolder,
+	}
+	return e.finalize(ctx, ws, cfg, finalizeOpts{
+		cc:             cc,
+		imageName:      buildRes.imageName,
+		hasEntrypoints: buildRes.hasEntrypoints,
+		pluginResp:     pluginResp,
+	})
+}
+
+// upFromImage creates a container from a snapshot or stored image.
+func (e *Engine) upFromImage(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, b containerBackend, imageName string, storedResult *workspace.Result, isSnapshot bool) (*UpResult, error) {
+	e.logger.Debug("up from image", "image", imageName, "snapshot", isSnapshot)
+
+	// Dispatch plugins.
+	pluginUser := b.pluginUser(ctx)
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, imageName, workspaceFolder, pluginUser)
+	if err != nil {
+		return nil, err
+	}
+
+	hasEntrypoints := storedResult.HasFeatureEntrypoints
+
+	containerID, err := b.createContainer(ctx, createOpts{
+		imageName:      imageName,
+		hasEntrypoints: hasEntrypoints,
+		pluginResp:     pluginResp,
+		skipBuild:      true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	cc := containerContext{
+		workspaceID:     ws.ID,
+		containerID:     containerID,
+		workspaceFolder: workspaceFolder,
+	}
+
+	// Use the original image name (not snapshot) for the result.
+	resultImageName := storedResult.ImageName
+
+	return e.finalize(ctx, ws, cfg, finalizeOpts{
+		cc:             cc,
+		imageName:      resultImageName,
+		hasEntrypoints: hasEntrypoints,
+		pluginResp:     pluginResp,
+		storedResult:   storedResult,
+		fromSnapshot:   isSnapshot,
+	})
 }
 
 // saveResult persists the workspace result to disk so crib exec/shell can
@@ -417,6 +563,8 @@ func configDir(ws *workspace.Workspace) string {
 // override the primary service with (empty string to skip the override).
 // pluginResp may be nil; when non-nil, plugin mounts and env are included in
 // the compose override.
+//
+// TODO: Remove after restart rewrite (Step 6). Only used by restartRecreateCompose.
 func (e *Engine) recreateComposeServices(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder, featureImage string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
 	inv := newComposeInvocation(ws, cfg, workspaceFolder)
 

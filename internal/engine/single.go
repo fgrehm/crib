@@ -27,155 +27,6 @@ var defaultCmd = []string{"-c", "echo Container started; trap \"exit 0\" 15; exe
 // The feature entrypoint chains via exec "$@", so CMD must be a full command.
 var featureCmd = []string{"/bin/sh", "-c", "echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity"}
 
-// upSingle handles the single container path (image or Dockerfile based).
-func (e *Engine) upSingle(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, opts UpOptions) (*UpResult, error) {
-	// Check for an existing container.
-	container, err := e.driver.FindContainer(ctx, ws.ID)
-	if err != nil {
-		return nil, fmt.Errorf("finding container: %w", err)
-	}
-
-	if container != nil && !opts.Recreate {
-		// Container exists and we're not forcing recreation.
-		if !container.State.IsRunning() {
-			e.reportProgress("Starting container...")
-			if err := e.driver.StartContainer(ctx, ws.ID, container.ID); err != nil {
-				return nil, fmt.Errorf("starting container: %w", err)
-			}
-		} else {
-			e.reportProgress("Container already running")
-		}
-
-		// Dispatch plugins so setupContainer can inject plugin PATH
-		// entries and env vars into RemoteEnv before saving the result.
-		cc := containerContext{
-			workspaceID:     ws.ID,
-			containerID:     container.ID,
-			workspaceFolder: workspaceFolder,
-		}
-		envb := NewEnvBuilder(cfg.RemoteEnv)
-		remoteUser := cfg.RemoteUser
-		if remoteUser == "" {
-			remoteUser = cfg.ContainerUser
-		}
-		if resp, err := e.dispatchPlugins(ctx, ws, cfg, "", workspaceFolder, remoteUser); err != nil {
-			e.logger.Warn("plugin dispatch failed for already-running container", "error", err)
-		} else {
-			envb.AddPluginResponse(resp)
-		}
-
-		return e.setupAndReturn(ctx, ws, cfg, cc, envb)
-	}
-
-	// Remove existing container if recreating.
-	if container != nil && opts.Recreate {
-		e.reportProgress("Removing container...")
-		if err := e.store.ClearHookMarkers(ws.ID); err != nil {
-			e.logger.Warn("failed to clear hook markers", "error", err)
-		}
-		if err := e.driver.DeleteContainer(ctx, ws.ID, container.ID); err != nil {
-			return nil, fmt.Errorf("deleting container for recreation: %w", err)
-		}
-	}
-
-	// No container exists. If this workspace was previously set up (e.g.
-	// after "crib down") and has a valid snapshot, resume from it instead
-	// of rebuilding and re-running all lifecycle hooks.
-	if !opts.Recreate {
-		if storedResult, loadErr := e.store.LoadResult(ws.ID); loadErr == nil && storedResult != nil {
-			if snapshotImage, ok := e.validSnapshot(ctx, ws, cfg); ok {
-				return e.upSingleFromSnapshot(ctx, ws, cfg, workspaceFolder, storedResult, snapshotImage)
-			}
-		}
-	}
-
-	// Build the image.
-	buildRes, err := e.buildImage(ctx, ws, cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	// Build run options.
-	runOpts, err := e.buildRunOptions(cfg, buildRes.imageName, ws.Source, workspaceFolder, buildRes.hasEntrypoints)
-	if err != nil {
-		return nil, err
-	}
-	subCtx := &config.SubstitutionContext{
-		DevContainerID:           ws.ID,
-		LocalWorkspaceFolder:     ws.Source,
-		ContainerWorkspaceFolder: workspaceFolder,
-		Env:                      envMap(),
-	}
-	applyFeatureMetadata(runOpts, buildRes.imageMetadata, subCtx)
-
-	// Run pre-container-run plugins to inject mounts, env, and extra args.
-	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, buildRes.imageName, workspaceFolder)
-	if err != nil {
-		return nil, err
-	}
-
-	e.reportProgress("Creating container...")
-	if err := e.driver.RunContainer(ctx, ws.ID, runOpts); err != nil {
-		return nil, fmt.Errorf("creating container: %w", err)
-	}
-
-	// Find the newly created container.
-	container, err = e.driver.FindContainer(ctx, ws.ID)
-	if err != nil {
-		return nil, fmt.Errorf("finding new container: %w", err)
-	}
-	if container == nil {
-		return nil, fmt.Errorf("container not found after creation")
-	}
-
-	cc := containerContext{
-		workspaceID:     ws.ID,
-		containerID:     container.ID,
-		workspaceFolder: workspaceFolder,
-	}
-	return e.finalizeSetup(ctx, ws, cfg, cc, buildRes.imageName, pluginResp, buildRes.hasEntrypoints)
-}
-
-// upSingleFromSnapshot creates a container from a snapshot image and runs
-// only resume-flow lifecycle hooks, skipping the full build and create-time
-// hooks. Used when "up" is called after "down" and a valid snapshot exists.
-func (e *Engine) upSingleFromSnapshot(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, storedResult *workspace.Result, snapshotImage string) (*UpResult, error) {
-	e.logger.Debug("up single from snapshot", "image", snapshotImage)
-
-	hasFeatureEntrypoints := storedResult.HasFeatureEntrypoints
-
-	runOpts, err := e.buildRunOptions(cfg, snapshotImage, ws.Source, workspaceFolder, hasFeatureEntrypoints)
-	if err != nil {
-		return nil, err
-	}
-
-	// Run pre-container-run plugins to inject mounts, env, and extra args.
-	pluginResp, err := e.runPreContainerRunPlugins(ctx, ws, cfg, runOpts, snapshotImage, workspaceFolder)
-	if err != nil {
-		return nil, err
-	}
-
-	e.reportProgress("Creating container from snapshot...")
-	if err := e.driver.RunContainer(ctx, ws.ID, runOpts); err != nil {
-		return nil, fmt.Errorf("creating container: %w", err)
-	}
-
-	container, err := e.driver.FindContainer(ctx, ws.ID)
-	if err != nil {
-		return nil, fmt.Errorf("finding new container: %w", err)
-	}
-	if container == nil {
-		return nil, fmt.Errorf("container not found after creation")
-	}
-
-	cc := containerContext{
-		workspaceID:     ws.ID,
-		containerID:     container.ID,
-		workspaceFolder: workspaceFolder,
-	}
-	return e.finalizeFromSnapshot(ctx, ws, cfg, cc, storedResult.ImageName, pluginResp, storedResult)
-}
-
 // buildRunOptions constructs RunOptions from the devcontainer config.
 // hasFeatureEntrypoints indicates the image has feature-declared entrypoints
 // baked in via ENTRYPOINT; when true, overrideCommand only sets CMD.
@@ -287,81 +138,6 @@ func applyFeatureMetadata(opts *driver.RunOptions, metadata []*config.ImageMetad
 	}
 }
 
-// finalizeSetup copies plugin files, runs container setup, and persists the
-// result. Both the single-container and compose paths converge here after the
-// container has been created/started.
-func (e *Engine) finalizeSetup(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, imageName string, pluginResp *plugin.PreContainerRunResponse, hasFeatureEntrypoints bool) (*UpResult, error) {
-	if pluginResp != nil {
-		e.execPluginCopies(ctx, cc, pluginResp.Copies)
-
-		// Chown volume mounts to the remote user. Docker volumes are
-		// created with root ownership, so non-root users can't write
-		// to them until we fix permissions.
-		remoteUser := configRemoteUser(cfg)
-		if remoteUser != "" && remoteUser != "root" {
-			volCC := cc
-			volCC.remoteUser = remoteUser
-			e.chownPluginVolumes(ctx, volCC, pluginResp.Mounts)
-		}
-	}
-
-	envb := NewEnvBuilder(cfg.RemoteEnv)
-	envb.AddPluginResponse(pluginResp)
-
-	result, setupErr := e.setupAndReturn(ctx, ws, cfg, cc, envb)
-	if result != nil {
-		result.ImageName = imageName
-		result.HasFeatureEntrypoints = hasFeatureEntrypoints
-		e.saveResult(ws, cfg, result)
-	}
-	return result, setupErr
-}
-
-// finalizeFromSnapshot runs post-creation steps using a snapshot: copies
-// plugin files, resolves environment from the stored result, and runs only
-// resume-flow lifecycle hooks. Used by the up command when a valid snapshot
-// exists from a previous run (e.g. after "crib down").
-func (e *Engine) finalizeFromSnapshot(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, imageName string, pluginResp *plugin.PreContainerRunResponse, storedResult *workspace.Result) (*UpResult, error) {
-	if pluginResp != nil {
-		e.execPluginCopies(ctx, cc, pluginResp.Copies)
-
-		remoteUser := configRemoteUser(cfg)
-		if remoteUser != "" && remoteUser != "root" {
-			volCC := cc
-			volCC.remoteUser = remoteUser
-			e.chownPluginVolumes(ctx, volCC, pluginResp.Mounts)
-		}
-	}
-
-	cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg)
-
-	// Build env from stored result + plugins (no container probing needed).
-	configEnv := resolveConfigEnvFromStored(cfg, storedResult.RemoteEnv)
-	envb := NewEnvBuilder(configEnv)
-	envb.AddPluginResponse(pluginResp)
-	envb.RestoreFrom(storedResult.RemoteEnv)
-	cfg.RemoteEnv = envb.Build()
-
-	result := &UpResult{
-		ContainerID:           cc.containerID,
-		ImageName:             imageName,
-		WorkspaceFolder:       cc.workspaceFolder,
-		RemoteUser:            cc.remoteUser,
-		Ports:                 portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort)),
-		HasFeatureEntrypoints: storedResult.HasFeatureEntrypoints,
-	}
-
-	// Save early so crib exec/shell work while resume hooks run.
-	e.saveResult(ws, cfg, result)
-
-	// Run only resume-flow hooks (create-time effects are in the snapshot).
-	if err := e.runResumeHooks(ctx, ws, cfg, cc); err != nil {
-		e.logger.Warn("resume hooks failed", "error", err)
-	}
-
-	return result, nil
-}
-
 // chownPluginVolumes changes ownership of plugin volume mounts to the
 // remote user. Docker/Podman create volumes with root ownership, so
 // non-root users get permission errors when writing to them.
@@ -375,38 +151,6 @@ func (e *Engine) chownPluginVolumes(ctx context.Context, cc containerContext, mo
 			e.logger.Debug("chown plugin volume failed", "target", m.Target, "error", err)
 		}
 	}
-}
-
-// setupAndReturn runs container setup and returns the result.
-// On lifecycle hook failure, both the result and error are returned so
-// callers can persist the result (container is still usable).
-func (e *Engine) setupAndReturn(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, envb *EnvBuilder) (*UpResult, error) {
-	cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg)
-
-	result := &UpResult{
-		ContainerID:     cc.containerID,
-		WorkspaceFolder: cc.workspaceFolder,
-		RemoteUser:      cc.remoteUser,
-		Ports:           portSpecToBindings(collectPorts(cfg.ForwardPorts, cfg.AppPort)),
-	}
-
-	// Save an early result so crib exec/shell can find the container,
-	// workspace folder, and user while setup (UID sync, env probe,
-	// lifecycle hooks) is still running.
-	e.saveResult(ws, cfg, result)
-
-	// Run container setup (UID sync, env probe, lifecycle hooks).
-	finalEnv, err := e.setupContainer(ctx, ws, cfg, cc, envb)
-	cfg.RemoteEnv = finalEnv
-	if err != nil {
-		return result, fmt.Errorf("setting up container: %w", err)
-	}
-
-	// After create-time hooks complete, commit a snapshot so restart can
-	// use it instead of re-running hooks.
-	e.commitSnapshot(ctx, ws, cfg, cc.containerID)
-
-	return result, nil
 }
 
 // detectContainerUser runs whoami inside the container to detect the default
@@ -527,6 +271,8 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 // runPreContainerRunPlugins dispatches the pre-container-run event to the
 // plugin manager and merges the response into the run options. Returns the
 // merged response so the caller can process file copies after container creation.
+//
+// TODO: Remove after restart rewrite (Step 6). Only used by restartRecreateSingle.
 func (e *Engine) runPreContainerRunPlugins(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, runOpts *driver.RunOptions, imageName, workspaceFolder string) (*plugin.PreContainerRunResponse, error) {
 	resp, err := e.dispatchPlugins(ctx, ws, cfg, imageName, workspaceFolder, "")
 	if err != nil {
