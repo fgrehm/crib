@@ -216,6 +216,9 @@ func (e *Engine) doBuild(ctx context.Context, ws *workspace.Workspace, cfg *conf
 		buildOptions = cfg.Build.Options
 	}
 
+	// Clean up previous build image if hash changed.
+	e.cleanupPreviousBuildImage(ctx, ws.ID, imageName)
+
 	e.reportProgress("Building image...")
 	err = e.driver.BuildImage(ctx, ws.ID, &driver.BuildOptions{
 		PrebuildHash: hash,
@@ -356,6 +359,25 @@ func (e *Engine) resolveFeatureMetadata(cfg *config.DevContainerConfig) []*confi
 		metadata = append(metadata, featureToMetadata(f))
 	}
 	return metadata
+}
+
+// cleanupPreviousBuildImage removes the old build image when the hash changes.
+// Best-effort: logs on failure but does not return an error.
+func (e *Engine) cleanupPreviousBuildImage(ctx context.Context, wsID, newImageName string) {
+	stored, err := e.store.LoadResult(wsID)
+	if err != nil || stored == nil {
+		return
+	}
+	oldImage := stored.ImageName
+	if oldImage == "" || oldImage == newImageName {
+		return
+	}
+	if !strings.HasPrefix(oldImage, "crib-") {
+		return
+	}
+	if err := e.driver.RemoveImage(ctx, oldImage); err != nil {
+		e.logger.Debug("failed to remove previous build image", "image", oldImage, "error", err)
+	}
 }
 
 // featureToMetadata converts a FeatureSet to an ImageMetadata entry.

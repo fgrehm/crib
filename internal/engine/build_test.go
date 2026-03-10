@@ -2,11 +2,13 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/feature"
+	"github.com/fgrehm/crib/internal/workspace"
 )
 
 func TestFeatureToMetadata(t *testing.T) {
@@ -120,6 +122,99 @@ func TestResolveFeatureMetadata_NoFeatures(t *testing.T) {
 	got := eng.resolveFeatureMetadata(cfg)
 	if got != nil {
 		t.Errorf("resolveFeatureMetadata with no features should return nil, got %v", got)
+	}
+}
+
+// buildMockDriver extends mockDriver to track RemoveImage calls.
+type buildMockDriver struct {
+	mockDriver
+	removedImages []string
+	removeErr     error
+}
+
+func (m *buildMockDriver) RemoveImage(ctx context.Context, imageName string) error {
+	m.removedImages = append(m.removedImages, imageName)
+	return m.removeErr
+}
+
+func TestCleanupPreviousBuildImage_NewHashReplacesOld(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	md := &buildMockDriver{}
+	eng := &Engine{driver: md, store: store, logger: slog.Default()}
+
+	oldImage := "crib-myws:crib-oldhash"
+	if err := store.SaveResult("myws", &workspace.Result{ImageName: oldImage}); err != nil {
+		t.Fatal(err)
+	}
+
+	eng.cleanupPreviousBuildImage(context.Background(), "myws", "crib-myws:crib-newhash")
+
+	if len(md.removedImages) != 1 || md.removedImages[0] != oldImage {
+		t.Errorf("removedImages = %v, want [%s]", md.removedImages, oldImage)
+	}
+}
+
+func TestCleanupPreviousBuildImage_CacheHit_NoRemoval(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	md := &buildMockDriver{}
+	eng := &Engine{driver: md, store: store, logger: slog.Default()}
+
+	sameImage := "crib-myws:crib-samehash"
+	if err := store.SaveResult("myws", &workspace.Result{ImageName: sameImage}); err != nil {
+		t.Fatal(err)
+	}
+
+	eng.cleanupPreviousBuildImage(context.Background(), "myws", sameImage)
+
+	if len(md.removedImages) != 0 {
+		t.Errorf("removedImages = %v, want none (cache hit)", md.removedImages)
+	}
+}
+
+func TestCleanupPreviousBuildImage_BaseImage_NotRemoved(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	md := &buildMockDriver{}
+	eng := &Engine{driver: md, store: store, logger: slog.Default()}
+
+	if err := store.SaveResult("myws", &workspace.Result{ImageName: "ubuntu:22.04"}); err != nil {
+		t.Fatal(err)
+	}
+
+	eng.cleanupPreviousBuildImage(context.Background(), "myws", "crib-myws:crib-newhash")
+
+	if len(md.removedImages) != 0 {
+		t.Errorf("removedImages = %v, want none (base image)", md.removedImages)
+	}
+}
+
+func TestCleanupPreviousBuildImage_RemoveFailure_NoError(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	md := &buildMockDriver{removeErr: fmt.Errorf("image in use")}
+	eng := &Engine{driver: md, store: store, logger: slog.Default()}
+
+	oldImage := "crib-myws:crib-oldhash"
+	if err := store.SaveResult("myws", &workspace.Result{ImageName: oldImage}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should not panic or propagate the error.
+	eng.cleanupPreviousBuildImage(context.Background(), "myws", "crib-myws:crib-newhash")
+
+	if len(md.removedImages) != 1 {
+		t.Errorf("removedImages = %v, want 1 attempt even on failure", md.removedImages)
+	}
+}
+
+func TestCleanupPreviousBuildImage_FirstBuild_NoRemoval(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	md := &buildMockDriver{}
+	eng := &Engine{driver: md, store: store, logger: slog.Default()}
+
+	// No stored result exists.
+	eng.cleanupPreviousBuildImage(context.Background(), "myws", "crib-myws:crib-first")
+
+	if len(md.removedImages) != 0 {
+		t.Errorf("removedImages = %v, want none (first build)", md.removedImages)
 	}
 }
 
