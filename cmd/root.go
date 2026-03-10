@@ -122,6 +122,7 @@ func init() {
 	rootCmd.AddCommand(logsCmd)
 	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(cacheCmd)
+	rootCmd.AddCommand(pruneCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 
