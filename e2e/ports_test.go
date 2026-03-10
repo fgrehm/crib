@@ -31,7 +31,7 @@ func TestE2EForwardPorts(t *testing.T) {
 	cribHome := t.TempDir()
 
 	t.Cleanup(func() {
-		cmd := cribCmd(dir, cribHome, "rm")
+		cmd := cribCmd(dir, cribHome, "rm", "--force")
 		_ = cmd.Run()
 	})
 

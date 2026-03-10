@@ -96,7 +96,7 @@ func TestE2ECompose(t *testing.T) {
 
 	// Best-effort cleanup so containers don't linger if the test fails mid-way.
 	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "remove")
+		cmd := cribCmd(projectDir, cribHome, "remove", "--force")
 		_ = cmd.Run()
 	})
 

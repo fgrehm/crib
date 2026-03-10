@@ -18,7 +18,7 @@ func TestE2EDownUpCycle(t *testing.T) {
 	cribHome := t.TempDir()
 
 	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "rm")
+		cmd := cribCmd(projectDir, cribHome, "rm", "--force")
 		_ = cmd.Run()
 	})
 
@@ -76,7 +76,7 @@ func TestE2EDownUpComposeSkipsBuild(t *testing.T) {
 	cribHome := t.TempDir()
 
 	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "rm")
+		cmd := cribCmd(projectDir, cribHome, "rm", "--force")
 		_ = cmd.Run()
 	})
 

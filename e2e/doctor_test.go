@@ -21,7 +21,7 @@ func TestE2EDoctor(t *testing.T) {
 
 	// Bring up a workspace so there's something to check.
 	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "rm")
+		cmd := cribCmd(projectDir, cribHome, "rm", "--force")
 		_ = cmd.Run()
 	})
 

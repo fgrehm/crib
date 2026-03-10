@@ -14,7 +14,7 @@ func TestE2ELogs(t *testing.T) {
 	cribHome := t.TempDir()
 
 	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "rm")
+		cmd := cribCmd(projectDir, cribHome, "rm", "--force")
 		_ = cmd.Run()
 	})
 

@@ -17,10 +17,8 @@ func TestE2ESnapshotCreatedAfterUp(t *testing.T) {
 	cribHome := t.TempDir()
 
 	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "rm")
+		cmd := cribCmd(projectDir, cribHome, "rm", "--force")
 		_ = cmd.Run()
-		// Clean up snapshot image.
-		removeSnapshotImages(t)
 	})
 
 	// Up should create a container and a snapshot.
@@ -47,9 +45,8 @@ func TestE2ERebuildClearsSnapshot(t *testing.T) {
 	cribHome := t.TempDir()
 
 	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "rm")
+		cmd := cribCmd(projectDir, cribHome, "rm", "--force")
 		_ = cmd.Run()
-		removeSnapshotImages(t)
 	})
 
 	// Up creates the snapshot.
@@ -98,21 +95,4 @@ func hasSnapshotImage(t *testing.T) bool {
 		}
 	}
 	return false
-}
-
-// removeSnapshotImages removes all crib snapshot images.
-func removeSnapshotImages(t *testing.T) {
-	t.Helper()
-	for _, rt := range []string{"docker", "podman"} {
-		cmd := exec.Command(rt, "images", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference=crib-*:snapshot")
-		out, err := cmd.Output()
-		if err != nil {
-			continue
-		}
-		for img := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
-			if img != "" {
-				_ = exec.Command(rt, "rmi", img).Run()
-			}
-		}
-	}
 }

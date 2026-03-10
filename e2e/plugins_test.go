@@ -16,7 +16,7 @@ func TestE2EShellHistory(t *testing.T) {
 	cribHome := t.TempDir()
 
 	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "rm")
+		cmd := cribCmd(projectDir, cribHome, "rm", "--force")
 		_ = cmd.Run()
 	})
 
@@ -97,7 +97,7 @@ func TestE2EComposeShellHistory(t *testing.T) {
 	cribHome := t.TempDir()
 
 	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "remove")
+		cmd := cribCmd(projectDir, cribHome, "remove", "--force")
 		_ = cmd.Run()
 		// Best-effort removal. On rootful Docker, chownWorkspace changes file
 		// ownership to the container user, preventing the test user from
