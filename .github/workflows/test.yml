@@ -18,7 +18,7 @@ jobs:
           cache: true
       - uses: gotesttools/gotestfmt-action@v2
       - name: Unit tests
-        run: make test 2>&1 | gotestfmt
+        run: make test | gotestfmt
         env:
           GO_TEST_FLAGS: -json
       - name: Lint
@@ -49,12 +49,12 @@ jobs:
           podman system service -t 0 &
           sleep 2
       - name: Integration tests
-        run: make test-integration 2>&1 | gotestfmt
+        run: make test-integration | gotestfmt
         env:
           CRIB_RUNTIME: podman
           GO_TEST_FLAGS: -json
       - name: E2E tests
-        run: make test-e2e 2>&1 | gotestfmt
+        run: make test-e2e | gotestfmt
         env:
           CRIB_RUNTIME: podman
           GO_TEST_FLAGS: -json
@@ -74,12 +74,12 @@ jobs:
       - name: Verify Docker is available
         run: docker info
       - name: Integration tests
-        run: make test-integration 2>&1 | gotestfmt
+        run: make test-integration | gotestfmt
         env:
           CRIB_RUNTIME: docker
           GO_TEST_FLAGS: -json
       - name: E2E tests
-        run: make test-e2e 2>&1 | gotestfmt
+        run: make test-e2e | gotestfmt
         env:
           CRIB_RUNTIME: docker
           GO_TEST_FLAGS: -json
