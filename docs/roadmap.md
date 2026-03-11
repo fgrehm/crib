@@ -61,6 +61,10 @@ Accept an explicit workspace name argument so these commands work outside the pr
 
 `crib remove` and `crib prune` don't clean up images produced by `docker compose build` for services that have a `build:` section but no DevContainer Features. These images are unnamed by crib (compose names them `{project}-{service}` on Docker, `{project}_{service}` on Podman) and carry no `crib.workspace` label. Cleaning them up requires either tracking the compose image name in `result.json` at build time, or deriving it from the stored config at remove time (accounting for runtime differences and explicit `image:` overrides in the compose file).
 
+### Dangling feature build stage cleanup
+
+When crib installs DevContainer Features, it generates a multi-stage Dockerfile with an intermediate named stage (`dev_containers_base_stage`). BuildKit materializes this stage as a separate image layer that never gets a tag or a `crib.workspace` label. After each rebuild, the old intermediate layer becomes a dangling `<none>:<none>` image. These accumulate silently -- `crib prune` is blind to them because it filters by `crib.workspace` label, and none of the dangling stages carry it. They do carry `devcontainer.metadata` (set by the feature install scripts), which could serve as a fingerprint. Options: apply the `crib.workspace` label to the build call so intermediate stages inherit it (Docker supports `--label` on `buildx build`), or include a `docker image prune` pass in `crib prune` scoped to images that carry `devcontainer.metadata` but no `crib.workspace`.
+
 ### Enhanced `crib list`
 
 Accept arguments to filter/show state details (container status, services, ports, etc.).
