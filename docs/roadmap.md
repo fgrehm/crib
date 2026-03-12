@@ -11,6 +11,10 @@ Items move between sections as priorities shift.
 
 Detect project type (Ruby, Node, Go, etc.) from conventions and generate a working devcontainer config without the user writing one. See the [RFC](https://github.com/fgrehm/crib/blob/main/docs/rfcs/init.md) for the full design.
 
+### Agent sandboxing plugin
+
+Restrict what coding agents can do inside dev containers using [`bubblewrap`](https://github.com/containers/bubblewrap). Filesystem isolation (read-only root, writable workspace only), automatic credential protection, and network restrictions (RFC 1918, cloud metadata endpoints, cloud provider IP ranges). Works with any agent (Claude Code, [`pi`](https://pi.dev/), Aider, Goose). See the [guide](/crib/guides/sandbox/) and [ADR 002](https://github.com/fgrehm/crib/blob/main/docs/decisions/002-sandbox-plugin.md).
+
 ### Transparent command dispatch
 
 Run `crib` commands from inside or outside the container, with automatic delegation.
@@ -36,6 +40,10 @@ Add `--json` or `--format json` flag to commands like `status`, `list` for scrip
 ### ~~`--force` flag for destructive commands~~
 
 ~~Add a `--force` / `-f` flag to commands like `remove`, `rebuild`, and `restart` to skip confirmation prompts. Useful for scripting and CI.~~ Done. `crib remove` and `crib prune` have `--force` / `-f`.
+
+### XDG-based cache provider
+
+The current cache plugin has per-tool providers (`apt`, `pip`, `npm`, `go`, etc.) that each mount a volume to a specific path. The `downloads` provider adds a general-purpose cache at `~/.cache/crib` with `$CRIB_CACHE`. Consider a single `xdg-cache` provider that mounts a volume at `$XDG_CACHE_HOME` (`~/.cache`), which would cover all tools that follow the XDG Base Directory Spec without per-tool configuration. Recipes and scripts could cache downloads to standard paths like `~/.cache/neovim/` without knowing about crib. Tradeoff: less granular control (can't cache apt but not pip), but simpler and more portable. Could coexist with per-tool providers for cases like `apt` where the path isn't under `~/.cache`.
 
 ### Colored log output
 

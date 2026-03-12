@@ -3,7 +3,7 @@ title: Built-in Plugins
 description: What crib's built-in plugins do and how to configure them.
 ---
 
-`crib` ships four plugins that run automatically before each container is created. They inject credentials, SSH config, shell history persistence, and shared package caches into every workspace without any devcontainer.json boilerplate.
+`crib` ships five plugins that run automatically before each container is created. They inject credentials, SSH config, shell history persistence, shared package caches, and agent sandboxing into every workspace without any devcontainer.json boilerplate.
 
 Plugins run during `crib up` and `crib rebuild`. They are fail-open: if a plugin can't find something it needs (no SSH agent running, no Claude credentials on disk), it skips silently and doesn't block container creation.
 
@@ -126,6 +126,36 @@ After switching to workspace mode, run `claude` inside the container and authent
 In both modes, plugin data (including credentials) is stored on the host under `~/.crib/workspaces/{id}/plugins/coding-agents/`. Running `crib remove` deletes the workspace and all plugin data with it.
 
 If you delete the project directory without running `crib remove` first, the workspace state (including any cached credentials) remains on disk. To clean it up manually, delete the workspace directory listed by `crib list`, or remove it directly from `~/.crib/workspaces/`.
+
+---
+
+## Sandbox
+
+Restricts what coding agents can do inside the container. Works with any agent (Claude Code, [`pi`](https://pi.dev/), Aider, Goose, etc.) by wrapping agent commands in [`bubblewrap`](https://github.com/containers/bubblewrap) for filesystem and network isolation. Only the agent's process tree is restricted; other processes in the container (interactive shells, build tools, package managers) are unaffected.
+
+For the full guide, see [Agent Sandboxing](/crib/guides/sandbox/).
+
+**Quick setup** in `devcontainer.json`:
+
+```jsonc
+{
+  "customizations": {
+    "crib": {
+      "sandbox": {
+        "blockLocalNetwork": true,
+        "aliases": ["claude", "pi", "aider"]
+      }
+    }
+  }
+}
+```
+
+**What it does:**
+
+- Makes the filesystem read-only except for the workspace folder and `/tmp`
+- Automatically denies reads on credentials injected by other plugins (SSH config, Claude tokens, shell history)
+- Optionally blocks outbound traffic to private networks, [cloud metadata endpoints](/crib/reference/cloud-metadata-endpoints/), and cloud provider IP ranges
+- Creates aliases in `~/.local/bin/` that transparently wrap agent commands and print a `[crib sandbox]` banner
 
 ---
 
