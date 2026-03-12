@@ -111,6 +111,14 @@ SSH server inside containers via the plugin system, enabling native filesystem p
 
 [ADR 001](decisions/001-no-save-path-abstraction.md) decided against abstracting the 6+ save sites across single/compose/restart paths. Since then, each new feature that touches container state (feature entrypoints, feature metadata, `${containerEnv:*}` resolution) has needed manual wiring into every path. The `resolveConfigEnvFromStored` fix is the latest example of a bug class where restart paths miss critical resolution steps that `setupContainer` handles automatically. Consider a `RestartStateResolver` or similar that encapsulates the restore-from-stored + resolve + plugin-merge sequence so new paths can't silently drop state.
 
+### Project rename
+
+The name "crib" is close to [cribl.io](https://cribl.io/), which muddies search results and makes it harder to find crib-specific troubleshooting material. Candidates: `devcrib`, `cribcontainers`, or something else entirely. This is a breaking change (binary name, Go module path, container labels, state directory) so it needs a migration plan.
+
+### Standalone sandbox package ("crib-cage")
+
+Extract the sandbox plugin's core logic (bubblewrap wrapper generation, network blocking, cloud IP ranges) into a reusable standalone tool or library. This would let other projects use the same sandboxing without depending on crib. The wrapper script generation, iptables rules, and cloud IP range data are all independent of crib's plugin system. Scope: CLI that generates bwrap wrapper scripts from a config file, publishable as a separate binary and Go module.
+
 ### Reduce cyclomatic complexity hotspots
 
 CI gates at gocyclo > 40 (the ratchet that prevents things from getting worse). Several engine functions exceed 15, the practical threshold for maintainability: `upCompose` (38), `syncRemoteUserUID` (29), `generateComposeOverride` (26), `Doctor` (23), `detectConfigChange` (22), `extractTar` (19), `upSingle` (18), `restartRecreateSingle` (18). These should be broken into focused helpers before they become harder to change.
