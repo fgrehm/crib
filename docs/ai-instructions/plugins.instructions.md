@@ -37,6 +37,21 @@ When calling from different contexts:
 
 Log a warning when dispatch fails.
 
+## Post-container-create dispatch
+
+Plugins that need to run commands inside a running container implement the
+optional `PostContainerCreator` interface (alongside `Plugin`). The manager's
+`RunPostContainerCreate()` dispatches to these plugins after file copies and
+volume chown in `finalize()`. Errors are logged and skipped (fail-open, same
+as `PreContainerRun`).
+
+Call site: `finalize.go` -> `dispatchPostContainerCreate()` in `single.go`.
+
+The request carries `ExecFunc` and `ExecOutputFunc` closures that wrap
+`driver.ExecContainer`, so plugins run commands without importing the driver.
+
+Currently only the sandbox plugin implements this interface.
+
 ## Bind mount gotcha: file vs directory
 
 Use directory mounts or `FileCopy` (exec-based injection) for files that undergo

@@ -12,6 +12,7 @@ internal/plugin/
   plugin.go           -> Plugin interface and types
   manager.go          -> Registration and event dispatch
   codingagents/       -> Claude Code credentials plugin
+  sandbox/            -> Coding agent sandboxing (bubblewrap + iptables)
   shellhistory/       -> Persistent shell history plugin
   ssh/                -> SSH agent forwarding, keys, and git signing
 ```
@@ -102,6 +103,34 @@ type FileCopy struct {
 
 Copies run as root and use `sh -c "mkdir -p <dir> && cat > <file>"` with stdin piped.
 
+## Post-Container-Create (optional)
+
+Plugins that need to run commands inside the container after creation can implement the optional `PostContainerCreator` interface:
+
+```go
+type PostContainerCreator interface {
+    PostContainerCreate(ctx context.Context, req *PostContainerCreateRequest) error
+}
+```
+
+This is dispatched after file copies and volume chown in `finalize()`. Errors are logged and skipped (fail-open).
+
+### PostContainerCreateRequest
+
+| Field             | Description                                         |
+|-------------------|-----------------------------------------------------|
+| `WorkspaceID`     | Unique workspace identifier                         |
+| `WorkspaceDir`    | `~/.crib/workspaces/{id}/` (for staging files)      |
+| `ContainerID`     | Running container ID                                |
+| `RemoteUser`      | User inside the container                           |
+| `WorkspaceFolder` | Path inside container                               |
+| `Customizations`  | `customizations.crib` from devcontainer.json        |
+| `Runtime`         | `"docker"` or `"podman"`                            |
+| `ExecFunc`        | Run a command inside the container (output discarded)|
+| `ExecOutputFunc`  | Run a command and capture stdout as a string        |
+
+Both exec functions take `(ctx context.Context, cmd []string, user string)`. Use `"root"` for privileged operations (installing packages, chown) and the remote user for user-scoped operations.
+
 ## Writing a Plugin
 
 ### 1. Create the package
@@ -132,6 +161,13 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
     // Return nil for no-op (e.g. when prerequisite files don't exist).
     // Return response with mounts/env/copies as needed.
     return nil, nil
+}
+
+// Optional: implement PostContainerCreator to run commands inside
+// the container after creation.
+func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContainerCreateRequest) error {
+    // Install tools, generate config files, etc.
+    return req.ExecFunc(ctx, []string{"sh", "-c", "echo hello"}, req.RemoteUser)
 }
 ```
 
@@ -210,8 +246,15 @@ upSingle()                               restartRecreateSingle()
       ...merge responses...                    ...merge responses...
     merge into RunOptions                    merge into RunOptions
   driver.RunContainer()                    driver.RunContainer()
-  execPluginCopies()                       execPluginCopies()
-  setupAndReturn()                         setupAndReturn()
+  finalize()                               finalize()
+    execPluginCopies()                       execPluginCopies()
+    chownPluginVolumes()                     (skip on restart)
+    dispatchPostContainerCreate()            dispatchPostContainerCreate()
+      plugin1.PostContainerCreate()            plugin1.PostContainerCreate()
+    resolveRemoteUser()                      (already set)
+    saveResult() (early)                     saveResult() (early)
+    setupContainer() / hooks                 resumeHooks()
+    saveResult() (final)                     saveResult() (final)
 ```
 
 ## Bundled Plugins
@@ -243,6 +286,33 @@ A minimal `~/.claude.json` with `{"hasCompletedOnboarding":true}` is re-injected
 ### shell-history
 
 Persists bash/zsh history across container recreations by bind-mounting a history directory from workspace state and setting `HISTFILE`.
+
+### sandbox
+
+Restricts coding agents' filesystem and network access inside containers using [bubblewrap](https://github.com/containers/bubblewrap). Configured via devcontainer.json:
+
+```json
+{
+  "customizations": {
+    "crib": {
+      "sandbox": {
+        "denyRead": ["~/.ssh", "~/.claude"],
+        "blockLocalNetwork": true,
+        "blockCloudProviders": true,
+        "aliases": ["claude", "pi", "aider"]
+      }
+    }
+  }
+}
+```
+
+Uses both lifecycle events:
+- **PreContainerRun**: adds `--cap-add=NET_ADMIN --cap-add=NET_RAW` when network blocking is enabled.
+- **PostContainerCreate**: installs bubblewrap, generates wrapper scripts at `~/.local/bin/sandbox` and alias wrappers for configured commands.
+
+Auto-discovers other plugins' artifacts (ssh keys, credentials, shell history) and generates deny rules to protect them. Network blocking uses iptables OUTPUT chain rules for RFC 1918, cloud metadata endpoints, and cloud provider IP ranges (embedded in binary, updated via `scripts/update-cloud-ips.sh`).
+
+See the [sandbox guide](sandbox.md) for full configuration reference.
 
 ### ssh
 
