@@ -38,6 +38,32 @@ type PreContainerRunResponse struct {
 	PathPrepend []string // absolute paths to prepend to PATH in remoteEnv
 }
 
+// PostContainerCreator is an optional interface for plugins that need to run
+// commands inside the container after it has been created and started.
+// Plugins that don't need post-create behavior only implement Plugin.
+type PostContainerCreator interface {
+	PostContainerCreate(ctx context.Context, req *PostContainerCreateRequest) error
+}
+
+// PostContainerCreateRequest carries context about a running container.
+// Plugins use this to install tools or generate files inside the container.
+type PostContainerCreateRequest struct {
+	WorkspaceID     string         // unique workspace identifier
+	WorkspaceDir    string         // ~/.crib/workspaces/{id}/
+	ContainerID     string         // running container ID
+	RemoteUser      string         // user inside the container
+	WorkspaceFolder string         // path inside container
+	Customizations  map[string]any // customizations.crib from devcontainer.json
+	Runtime         string         // "docker" or "podman"
+
+	// ExecFunc runs a command inside the container as the given user.
+	// Stdout/stderr are discarded.
+	ExecFunc func(ctx context.Context, cmd []string, user string) error
+
+	// ExecOutputFunc runs a command and returns its stdout as a string.
+	ExecOutputFunc func(ctx context.Context, cmd []string, user string) (string, error)
+}
+
 // InferRemoteHome returns the home directory path for the given user inside
 // the container. Root or empty user maps to /root, others to /home/{user}.
 // Used by plugins that need to place files in the container user's home

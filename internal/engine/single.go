@@ -274,6 +274,42 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 	return resp, nil
 }
 
+// dispatchPostContainerCreate runs the post-container-create event for all
+// plugins that implement PostContainerCreator. Called from finalize after
+// file copies and volume chown.
+func (e *Engine) dispatchPostContainerCreate(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext) {
+	var cribCustomizations map[string]any
+	if cfg.Customizations != nil {
+		if crib, ok := cfg.Customizations["crib"]; ok {
+			if m, ok := crib.(map[string]any); ok {
+				cribCustomizations = m
+			}
+		}
+	}
+
+	req := &plugin.PostContainerCreateRequest{
+		WorkspaceID:     ws.ID,
+		WorkspaceDir:    e.store.WorkspaceDir(ws.ID),
+		ContainerID:     cc.containerID,
+		RemoteUser:      cc.remoteUser,
+		WorkspaceFolder: cc.workspaceFolder,
+		Customizations:  cribCustomizations,
+		Runtime:         e.runtimeName,
+		ExecFunc: func(ctx context.Context, cmd []string, user string) error {
+			return e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
+				cmd, nil, io.Discard, io.Discard, nil, user)
+		},
+		ExecOutputFunc: func(ctx context.Context, cmd []string, user string) (string, error) {
+			var buf bytes.Buffer
+			err := e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
+				cmd, nil, &buf, io.Discard, nil, user)
+			return buf.String(), err
+		},
+	}
+
+	e.plugins.RunPostContainerCreate(ctx, req)
+}
+
 // execPluginCopies copies staged files into the container via exec.
 //
 // NOTE: Values are embedded in single-quoted shell arguments. This is safe for

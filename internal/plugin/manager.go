@@ -59,3 +59,21 @@ func (m *Manager) RunPreContainerRun(ctx context.Context, req *PreContainerRunRe
 
 	return merged, nil
 }
+
+// RunPostContainerCreate dispatches the post-container-create event to all
+// plugins that implement PostContainerCreator. Plugin errors are logged and
+// skipped (fail-open).
+func (m *Manager) RunPostContainerCreate(ctx context.Context, req *PostContainerCreateRequest) {
+	for _, p := range m.plugins {
+		pcc, ok := p.(PostContainerCreator)
+		if !ok {
+			continue
+		}
+		if m.progress != nil {
+			m.progress("  Running post-create: " + p.Name())
+		}
+		if err := pcc.PostContainerCreate(ctx, req); err != nil {
+			m.logger.Warn("post-create plugin error, skipping", "plugin", p.Name(), "error", err)
+		}
+	}
+}
