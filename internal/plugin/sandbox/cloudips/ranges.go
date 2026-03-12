@@ -1,6 +1,6 @@
 // Package cloudips provides embedded cloud provider IP ranges for firewall
 // rules. The data is version-controlled and updated periodically via
-// scripts/update-cloud-ips.go.
+// scripts/update-cloud-ips.sh.
 package cloudips
 
 import (

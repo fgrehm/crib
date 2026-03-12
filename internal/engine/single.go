@@ -244,16 +244,6 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 		remoteUser = configRemoteUser(cfg)
 	}
 
-	// Extract customizations.crib from devcontainer.json for plugins.
-	var cribCustomizations map[string]any
-	if cfg.Customizations != nil {
-		if crib, ok := cfg.Customizations["crib"]; ok {
-			if m, ok := crib.(map[string]any); ok {
-				cribCustomizations = m
-			}
-		}
-	}
-
 	req := &plugin.PreContainerRunRequest{
 		WorkspaceID:     ws.ID,
 		WorkspaceDir:    e.store.WorkspaceDir(ws.ID),
@@ -263,7 +253,7 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 		RemoteUser:      remoteUser,
 		WorkspaceFolder: workspaceFolder,
 		ContainerName:   "crib-" + ws.ID,
-		Customizations:  cribCustomizations,
+		Customizations:  extractCribCustomizations(cfg),
 	}
 
 	resp, err := e.plugins.RunPreContainerRun(ctx, req)
@@ -278,22 +268,13 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 // plugins that implement PostContainerCreator. Called from finalize after
 // file copies and volume chown.
 func (e *Engine) dispatchPostContainerCreate(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext) {
-	var cribCustomizations map[string]any
-	if cfg.Customizations != nil {
-		if crib, ok := cfg.Customizations["crib"]; ok {
-			if m, ok := crib.(map[string]any); ok {
-				cribCustomizations = m
-			}
-		}
-	}
-
 	req := &plugin.PostContainerCreateRequest{
 		WorkspaceID:     ws.ID,
 		WorkspaceDir:    e.store.WorkspaceDir(ws.ID),
 		ContainerID:     cc.containerID,
 		RemoteUser:      cc.remoteUser,
 		WorkspaceFolder: cc.workspaceFolder,
-		Customizations:  cribCustomizations,
+		Customizations:  extractCribCustomizations(cfg),
 		Runtime:         e.runtimeName,
 		ExecFunc: func(ctx context.Context, cmd []string, user string) error {
 			return e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
@@ -351,4 +332,21 @@ func (e *Engine) execPluginCopies(ctx context.Context, cc containerContext, copi
 			return
 		}
 	}
+}
+
+// extractCribCustomizations returns the customizations.crib map from a
+// devcontainer config, or nil if not present.
+func extractCribCustomizations(cfg *config.DevContainerConfig) map[string]any {
+	if cfg.Customizations == nil {
+		return nil
+	}
+	crib, ok := cfg.Customizations["crib"]
+	if !ok {
+		return nil
+	}
+	m, ok := crib.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return m
 }
