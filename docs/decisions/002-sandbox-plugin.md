@@ -58,7 +58,7 @@ In `devcontainer.json`, under `customizations.crib.sandbox`:
 
         // Network restrictions.
         "blockLocalNetwork": true,   // block RFC 1918, link-local, metadata endpoints
-        "blockCloudProviders": false  // block outbound to known cloud provider IP ranges
+        "blockCloudProviders": false, // block outbound to known cloud provider IP ranges
 
         // Agent command aliases (optional).
         // Creates wrapper scripts in ~/.local/bin/ that print a "sandboxed"
@@ -138,11 +138,11 @@ See [cloud metadata endpoints reference](../reference/cloud-metadata-endpoints.m
 
 **Cloud provider IP ranges** (when `blockCloudProviders` is true):
 
-Blocks outbound traffic to known cloud provider IP ranges (AWS, GCP, Azure, Oracle Cloud, etc.) using their published machine-readable IP range lists. This prevents a compromised agent from reaching arbitrary cloud infrastructure (e.g., exfiltrating data to an attacker-controlled EC2 instance or calling cloud APIs with stolen metadata credentials).
+Blocks outbound traffic to known cloud provider IP ranges using their published machine-readable IP range lists. Currently covers AWS, GCP, Oracle Cloud, and Cloudflare. Azure is not yet included because the download URL for their IP ranges changes weekly (requires scraping a redirect page). This prevents a compromised agent from reaching arbitrary cloud infrastructure (e.g., exfiltrating data to an attacker-controlled EC2 instance or calling cloud APIs with stolen metadata credentials).
 
 The IP ranges are version-controlled and embedded in the `crib` binary (not fetched at runtime). A `lastUpdated` timestamp is stored alongside the data so staleness is visible. A CI job or manual script periodically pulls the latest ranges from provider sources (see [cloud metadata endpoints reference](../reference/cloud-metadata-endpoints.md#cloud-provider-ip-ranges-machine-readable)) and commits updates. This avoids network dependencies at container setup time and makes the blocklist auditable via git history.
 
-This is opt-in because it blocks legitimate traffic to cloud-hosted services (many APIs, registries, and SaaS tools run on AWS/GCP/Azure).
+This is opt-in because it blocks legitimate traffic to cloud-hosted services (many APIs, registries, and SaaS tools run on major cloud providers).
 
 Allowlisted destinations (to avoid breaking common workflows when `blockCloudProviders` is enabled):
 

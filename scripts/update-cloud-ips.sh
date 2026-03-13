@@ -9,6 +9,7 @@
 set -euo pipefail
 
 OUTFILE="internal/plugin/sandbox/cloudips/data/ranges.json"
+mkdir -p "$(dirname "$OUTFILE")"
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
 
@@ -16,26 +17,26 @@ echo "Fetching cloud provider IP ranges..."
 
 # AWS
 echo "  AWS..."
-curl -s "https://ip-ranges.amazonaws.com/ip-ranges.json" > "$TMPDIR/aws.json"
+curl -sf "https://ip-ranges.amazonaws.com/ip-ranges.json" > "$TMPDIR/aws.json"
 jq -r '[.prefixes[].ip_prefix] | unique' "$TMPDIR/aws.json" > "$TMPDIR/aws_v4.json"
 jq -r '[.ipv6_prefixes[].ipv6_prefix] | unique' "$TMPDIR/aws.json" > "$TMPDIR/aws_v6.json"
 
 # GCP
 echo "  GCP..."
-curl -s "https://www.gstatic.com/ipranges/cloud.json" > "$TMPDIR/gcp.json"
+curl -sf "https://www.gstatic.com/ipranges/cloud.json" > "$TMPDIR/gcp.json"
 jq -r '[.prefixes[] | select(.ipv4Prefix) | .ipv4Prefix] | unique' "$TMPDIR/gcp.json" > "$TMPDIR/gcp_v4.json"
 jq -r '[.prefixes[] | select(.ipv6Prefix) | .ipv6Prefix] | unique' "$TMPDIR/gcp.json" > "$TMPDIR/gcp_v6.json"
 
 # Oracle Cloud
 echo "  Oracle Cloud..."
-curl -s "https://docs.oracle.com/en-us/iaas/tools/public_ip_ranges.json" > "$TMPDIR/oci.json"
+curl -sf "https://docs.oracle.com/en-us/iaas/tools/public_ip_ranges.json" > "$TMPDIR/oci.json"
 jq -r '[.regions[].cidrs[].cidr] | unique' "$TMPDIR/oci.json" > "$TMPDIR/oci_v4.json"
 echo '[]' > "$TMPDIR/oci_v6.json"
 
 # Cloudflare (plain text, one CIDR per line)
 echo "  Cloudflare..."
-curl -s "https://www.cloudflare.com/ips-v4" | jq -R -s 'split("\n") | map(select(. != ""))' > "$TMPDIR/cf_v4.json"
-curl -s "https://www.cloudflare.com/ips-v6" | jq -R -s 'split("\n") | map(select(. != ""))' > "$TMPDIR/cf_v6.json"
+curl -sf "https://www.cloudflare.com/ips-v4" | jq -R -s 'split("\n") | map(select(. != ""))' > "$TMPDIR/cf_v4.json"
+curl -sf "https://www.cloudflare.com/ips-v6" | jq -R -s 'split("\n") | map(select(. != ""))' > "$TMPDIR/cf_v6.json"
 
 # Note: Azure is intentionally skipped because the download URL changes weekly
 # and requires scraping a redirect page. Add it when we have a stable API.

@@ -154,39 +154,27 @@ func TestE2ESandboxNetworkRules(t *testing.T) {
 
 	projectDir, cribHome := setupSandboxProject(t)
 
-	// The sandbox wrapper should contain iptables rules for RFC 1918.
-	out := mustRunCrib(t, projectDir, cribHome, "exec", "--",
-		"sh", "-c", "cat /root/.local/bin/sandbox")
-
-	for _, cidr := range []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"} {
-		if !strings.Contains(out, cidr) {
-			t.Errorf("sandbox wrapper missing RFC 1918 block for %s", cidr)
-		}
-	}
-
-	// Cloud metadata endpoint.
-	if !strings.Contains(out, "169.254.0.0/16") {
-		t.Error("sandbox wrapper missing link-local (cloud metadata) block")
-	}
-
-	// IPv6 metadata.
-	if !strings.Contains(out, "ip6tables") {
-		t.Error("sandbox wrapper missing ip6tables rules")
-	}
-
-	// Live iptables test: install iptables, apply one rule, verify it sticks.
+	// Network rules are applied at post-create time (not per sandbox
+	// invocation), so they should already be in effect. Install iptables
+	// to query the OUTPUT chain.
 	_, err := runCrib(t, projectDir, cribHome, "exec", "--",
 		"sh", "-c", "apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq iptables >/dev/null 2>&1")
 	if err != nil {
 		t.Skip("could not install iptables in container (insufficient privileges?)")
 	}
 
-	mustRunCrib(t, projectDir, cribHome, "exec", "--",
-		"sh", "-c", "iptables -A OUTPUT -d 10.0.0.0/8 -j DROP 2>/dev/null")
-
 	rulesOut := mustRunCrib(t, projectDir, cribHome, "exec", "--",
 		"sh", "-c", "iptables -L OUTPUT -n 2>/dev/null")
-	if !strings.Contains(rulesOut, "10.0.0.0/8") {
-		t.Errorf("iptables rule not applied, OUTPUT chain:\n%s", rulesOut)
+
+	// RFC 1918 ranges should already be blocked.
+	for _, cidr := range []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"} {
+		if !strings.Contains(rulesOut, cidr) {
+			t.Errorf("expected iptables rule for %s in OUTPUT chain:\n%s", cidr, rulesOut)
+		}
+	}
+
+	// Cloud metadata endpoint (link-local).
+	if !strings.Contains(rulesOut, "169.254.0.0/16") {
+		t.Errorf("expected iptables rule for 169.254.0.0/16 (cloud metadata) in OUTPUT chain:\n%s", rulesOut)
 	}
 }

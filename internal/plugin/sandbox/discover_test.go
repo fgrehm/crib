@@ -37,8 +37,8 @@ func TestDiscoverPluginArtifacts_AllPlugins(t *testing.T) {
 		t.Errorf("unexpected ssh rule: %+v", rules[1])
 	}
 
-	// shellhistory -> ~/.crib_history (deny-read, allow-write)
-	if rules[2].Path != "/home/vscode/.crib_history" || !rules[2].DenyRead || !rules[2].AllowWrite {
+	// shellhistory -> ~/.crib_history (deny-read)
+	if rules[2].Path != "/home/vscode/.crib_history" || !rules[2].DenyRead {
 		t.Errorf("unexpected shellhistory rule: %+v", rules[2])
 	}
 }

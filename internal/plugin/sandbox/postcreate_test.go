@@ -61,28 +61,29 @@ func TestPostContainerCreate_InstallsAndGeneratesWrapper(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should have at least: install bwrap, mkdir, write sandbox wrapper.
-	if len(execCmds) < 3 {
-		t.Fatalf("expected at least 3 exec calls, got %d: %v", len(execCmds), execCmds)
+	// Should have at least: install bwrap, apply network rules, mkdir, write wrapper.
+	if len(execCmds) < 4 {
+		t.Fatalf("expected at least 4 exec calls, got %d: %v", len(execCmds), execCmds)
 	}
 
-	// First call should check for bwrap.
-	if !strings.Contains(execCmds[0], "bwrap") {
-		t.Errorf("first exec should install bwrap, got: %s", execCmds[0])
+	// First call should install tools (bwrap + iptables).
+	if !strings.Contains(execCmds[0], "bwrap") || !strings.Contains(execCmds[0], "iptables") {
+		t.Errorf("first exec should check for bwrap and iptables, got: %s", execCmds[0])
 	}
 
-	// Second call should create ~/.local/bin.
-	if !strings.Contains(execCmds[1], ".local/bin") {
-		t.Errorf("second exec should create local bin, got: %s", execCmds[1])
+	// Second call should apply network rules (iptables).
+	if !strings.Contains(execCmds[1], "iptables") {
+		t.Errorf("second exec should apply network rules, got: %s", execCmds[1])
 	}
 
-	// Third call should write the sandbox wrapper (base64 encoded).
-	if !strings.Contains(execCmds[2], "base64 -d") {
-		t.Errorf("third exec should write sandbox wrapper via base64, got: %s", execCmds[2])
+	// Third call should create ~/.local/bin.
+	if !strings.Contains(execCmds[2], ".local/bin") {
+		t.Errorf("third exec should create local bin, got: %s", execCmds[2])
 	}
-	// The base64-encoded content should include bwrap args.
-	if !strings.Contains(execCmds[2], "sandbox") {
-		t.Errorf("wrapper write should target sandbox path, got: %s", execCmds[2])
+
+	// Fourth call should write the sandbox wrapper (base64 encoded).
+	if !strings.Contains(execCmds[3], "base64 -d") {
+		t.Errorf("fourth exec should write sandbox wrapper via base64, got: %s", execCmds[3])
 	}
 }
 

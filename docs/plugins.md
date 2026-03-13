@@ -3,7 +3,7 @@ title: Built-in Plugins
 description: What crib's built-in plugins do and how to configure them.
 ---
 
-`crib` ships five plugins that run automatically before each container is created. They inject credentials, SSH config, shell history persistence, shared package caches, and agent sandboxing into every workspace without any devcontainer.json boilerplate.
+`crib` ships five built-in plugins that hook into the dev container lifecycle (before and/or after each container is created). They inject credentials, SSH config, shell history persistence, shared package caches, and optional agent sandboxing into a workspace without extra devcontainer.json boilerplate for the ones that need no configuration.
 
 Plugins run during `crib up` and `crib rebuild`. They are fail-open: if a plugin can't find something it needs (no SSH agent running, no Claude credentials on disk), it skips silently and doesn't block container creation.
 

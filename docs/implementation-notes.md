@@ -373,7 +373,7 @@ See [ADR 002](decisions/002-sandbox-plugin.md) for the full design.
 
 **Files:**
 
-- `internal/plugin/sandbox/` (planned)
+- `internal/plugin/sandbox/`
 
 ### `bubblewrap` inside containers requires user namespaces
 
@@ -402,7 +402,7 @@ compatibility. Worth investigating whether a similar fallback is needed here.
 
 **Files:**
 
-- `internal/plugin/sandbox/` (planned)
+- `internal/plugin/sandbox/`
 
 ## Spec Compliance
 

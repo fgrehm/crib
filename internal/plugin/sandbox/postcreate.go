@@ -21,20 +21,36 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	localBin := remoteHome + "/.local/bin"
 	owner := plugin.InferOwner(req.RemoteUser)
 
-	// 1. Install bubblewrap if not present.
-	installCmd := "command -v bwrap >/dev/null 2>&1 || { " +
-		"apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq bubblewrap >/dev/null 2>&1; }"
-	if err := req.ExecFunc(ctx, []string{"sh", "-c", installCmd}, "root"); err != nil {
-		return fmt.Errorf("installing bubblewrap: %w", err)
-	}
-
-	// 2. Build the sandbox policy.
-	pol := buildPolicy(cfg, req.WorkspaceDir, req.RemoteUser, req.WorkspaceFolder)
-
-	// 3. Set network script if needed.
+	// 1. Install required tools.
+	packages := "bubblewrap"
 	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
-		pol.NetworkScript = generateNetworkScript(cfg)
+		packages += " iptables"
 	}
+	installCmd := fmt.Sprintf(
+		"apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq %s >/dev/null 2>&1",
+		packages)
+	// Only install if any package is missing.
+	checkCmd := "command -v bwrap >/dev/null 2>&1"
+	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
+		checkCmd += " && command -v iptables >/dev/null 2>&1"
+	}
+	fullInstallCmd := fmt.Sprintf("%s || { %s; }", checkCmd, installCmd)
+	if err := req.ExecFunc(ctx, []string{"sh", "-c", fullInstallCmd}, "root"); err != nil {
+		return fmt.Errorf("installing sandbox tools: %w", err)
+	}
+
+	// 2. Apply network restrictions (once, container-wide).
+	// Individual rules suppress errors with 2>/dev/null for cases where
+	// some work but others don't (e.g. ip6tables missing in some setups).
+	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
+		netScript := generateNetworkScript(cfg) + "true\n"
+		if err := req.ExecFunc(ctx, []string{"sh", "-c", netScript}, "root"); err != nil {
+			return fmt.Errorf("applying network rules: %w", err)
+		}
+	}
+
+	// 3. Build the sandbox policy.
+	pol := buildPolicy(cfg, req.WorkspaceDir, req.RemoteUser, req.WorkspaceFolder)
 
 	// 4. Ensure ~/.local/bin exists.
 	mkdirCmd := fmt.Sprintf("mkdir -p '%s' && chown '%s' '%s'", localBin, owner, localBin)

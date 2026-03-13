@@ -51,7 +51,7 @@ The sandbox makes the entire filesystem read-only, then selectively opens up wri
 | `/` (everything) | read-only | Default for all paths not listed below |
 | `workspaceFolder` | read-write | The agent needs to edit project files |
 | `/tmp` | read-write | Scratch space for temp files |
-| `~/.crib_history/` | deny-read, allow-write | May contain credentials (`export TOKEN=...`), but history recording needs write access |
+| `~/.crib_history/` | deny-read | May contain credentials (`export TOKEN=...`) |
 | `~/.ssh/config`, `~/.ssh/*.pub` | deny-read | Injected by the ssh plugin, contains host info |
 | `~/.claude/.credentials.json` | deny-read | Injected by the codingagents plugin |
 
@@ -71,7 +71,7 @@ See the [cloud metadata endpoints reference](/crib/reference/cloud-metadata-endp
 
 Everything else is allowed. Web searches, LLM API calls, package installs, and all other internet traffic work normally. Services bound to `0.0.0.0` inside the container (dev servers, LSPs) can still accept incoming connections.
 
-When `blockCloudProviders` is enabled, the sandbox additionally blocks outbound traffic to known cloud provider IP ranges (AWS, GCP, Azure, Oracle Cloud, etc.) using their published IP range data. This prevents a compromised agent from exfiltrating data to attacker-controlled cloud instances. The IP ranges are embedded in the `crib` binary and updated periodically.
+When `blockCloudProviders` is enabled, the sandbox additionally blocks outbound traffic to known cloud provider IP ranges (currently AWS, GCP, Oracle Cloud, and Cloudflare) using their published IP range data. This prevents a compromised agent from exfiltrating data to attacker-controlled cloud instances. The IP ranges are embedded in the `crib` binary and updated periodically. Azure is not yet covered (the download URL for their IP ranges changes weekly).
 
 :::note
 `blockCloudProviders` is opt-in because many APIs, package registries, and SaaS tools are hosted on major cloud providers. Enabling it may break workflows that depend on cloud-hosted services. Test with your specific setup before enabling for your team.
@@ -94,7 +94,7 @@ All options go under `customizations.crib.sandbox` in `devcontainer.json`:
 
         // Network restrictions.
         "blockLocalNetwork": true,   // block RFC 1918 + metadata endpoints
-        "blockCloudProviders": false  // block known cloud provider IP ranges
+        "blockCloudProviders": false, // block known cloud provider IP ranges
 
         // Agent aliases.
         "aliases": ["claude", "pi", "aider"]
@@ -134,9 +134,9 @@ sandbox aider --model sonnet
 
 The plugin uses [`bubblewrap`](https://github.com/containers/bubblewrap) (`bwrap`), the same sandboxing tool used by [Flatpak](https://flatpak.org/) and [Claude Code's own sandbox](https://code.claude.com/docs/en/sandboxing). It creates a restricted view of the filesystem using Linux namespaces, where denied paths are replaced with empty `tmpfs` mounts and the rest of the filesystem is mounted read-only.
 
-Network restrictions use `iptables` OUTPUT chain rules in the container's shared network namespace. This blocks outbound traffic to specific destinations while leaving everything else (including inbound connections) unaffected.
+Network restrictions use `iptables` OUTPUT chain rules applied once at container setup time in the shared network namespace. Because these rules live in the shared namespace, they affect outbound traffic from all processes in the container, not just the sandboxed agent, and remain in effect until the container is restarted or the rules are explicitly removed.
 
-The sandbox only restricts the agent's process tree. Other processes in the container (your interactive shell, build tools, package managers) run with full access.
+Filesystem and process isolation are scoped to the agent's process tree: only the agent (and any children it spawns) see the restricted view of the filesystem. Other processes in the container (your interactive shell, build tools, package managers) see the full filesystem.
 
 ### Plugin awareness
 
@@ -147,7 +147,7 @@ The sandbox plugin automatically scans `~/.crib/workspaces/{id}/plugins/*/` to d
 | `codingagents` | `~/.claude/.credentials.json` | deny-read |
 | `ssh` | `~/.ssh/config`, `~/.ssh/*.pub` | deny-read |
 | `ssh` | `/tmp/ssh-agent.sock` | allowed (see below) |
-| `shellhistory` | `~/.crib_history/` | deny-read, allow-write |
+| `shellhistory` | `~/.crib_history/` | deny-read |
 
 User-specified `denyRead`/`denyWrite`/`allowWrite` in the config are merged on top of these defaults.
 

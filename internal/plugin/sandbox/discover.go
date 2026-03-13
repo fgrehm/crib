@@ -9,9 +9,8 @@ import (
 
 // denyRule pairs a container path with whether reads or writes are denied.
 type denyRule struct {
-	Path       string
-	DenyRead   bool
-	AllowWrite bool
+	Path     string
+	DenyRead bool // true: --tmpfs (hide contents), false: --ro-bind (read-only)
 }
 
 // discoverPluginArtifacts scans {workspaceDir}/plugins/*/ to find sensitive
@@ -38,12 +37,11 @@ func discoverPluginArtifacts(workspaceDir, remoteUser string) []denyRule {
 		})
 	}
 
-	// shellhistory: ~/.crib_history/ (deny-read, allow-write)
+	// shellhistory: ~/.crib_history/ (deny-read, agents shouldn't see command history)
 	if dirExists(filepath.Join(pluginsDir, "shell-history")) {
 		rules = append(rules, denyRule{
-			Path:       filepath.Join(remoteHome, ".crib_history"),
-			DenyRead:   true,
-			AllowWrite: true,
+			Path:     filepath.Join(remoteHome, ".crib_history"),
+			DenyRead: true,
 		})
 	}
 

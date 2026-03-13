@@ -121,53 +121,20 @@ func TestGenerateWrapperScript_WithDenyPaths(t *testing.T) {
 		RemoteHome:      "/home/vscode",
 		DenyPaths: []denyRule{
 			{Path: "/home/vscode/.ssh", DenyRead: true},
-			{Path: "/home/vscode/.crib_history", DenyRead: true, AllowWrite: true},
+			{Path: "/home/vscode/.crib_history", DenyRead: true},
+			{Path: "/home/vscode/.config", DenyRead: false}, // deny-write
 		},
 	}
 	script := generateWrapperScript(pol)
 
 	if !strings.Contains(script, "--tmpfs '/home/vscode/.ssh'") {
-		t.Error("missing tmpfs for .ssh")
+		t.Error("missing tmpfs for .ssh (deny-read)")
 	}
 	if !strings.Contains(script, "--tmpfs '/home/vscode/.crib_history'") {
-		t.Error("missing tmpfs for .crib_history")
+		t.Error("missing tmpfs for .crib_history (deny-read)")
 	}
-	// Shell history should have a re-bind after tmpfs.
-	lines := strings.Split(script, "\n")
-	tmpfsIdx := -1
-	rebindIdx := -1
-	for i, line := range lines {
-		if strings.Contains(line, "--tmpfs '/home/vscode/.crib_history'") {
-			tmpfsIdx = i
-		}
-		if strings.Contains(line, "--bind '/home/vscode/.crib_history' '/home/vscode/.crib_history'") {
-			rebindIdx = i
-		}
-	}
-	if tmpfsIdx == -1 || rebindIdx == -1 {
-		t.Fatal("missing tmpfs or rebind for crib_history")
-	}
-	if rebindIdx <= tmpfsIdx {
-		t.Error("rebind must come after tmpfs for allow-write to work")
-	}
-}
-
-func TestGenerateWrapperScript_WithNetwork(t *testing.T) {
-	pol := &policy{
-		WorkspaceFolder: "/workspaces/project",
-		RemoteHome:      "/home/vscode",
-		NetworkScript:   "iptables -A OUTPUT -d 10.0.0.0/8 -j DROP 2>/dev/null\n",
-	}
-	script := generateWrapperScript(pol)
-
-	if !strings.Contains(script, "iptables -A OUTPUT -d 10.0.0.0/8 -j DROP") {
-		t.Error("missing network rules in script")
-	}
-	// Network rules should come before exec bwrap.
-	netIdx := strings.Index(script, "iptables")
-	bwrapIdx := strings.Index(script, "exec bwrap")
-	if netIdx > bwrapIdx {
-		t.Error("network rules must come before exec bwrap")
+	if !strings.Contains(script, "--ro-bind '/home/vscode/.config' '/home/vscode/.config'") {
+		t.Error("missing ro-bind for .config (deny-write)")
 	}
 }
 
