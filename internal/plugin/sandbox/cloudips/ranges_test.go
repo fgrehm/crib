@@ -39,10 +39,10 @@ func TestGenerateIPSetRules_ProducesRules(t *testing.T) {
 	if !strings.Contains(rules, "ipset create crib-cloud-v6") {
 		t.Error("expected ipset create for IPv6")
 	}
-	if !strings.Contains(rules, "iptables -A OUTPUT -m set --match-set crib-cloud-v4") {
-		t.Error("expected iptables rule matching ipset")
+	if !strings.Contains(rules, "iptables -C CRIB_SANDBOX -m set --match-set crib-cloud-v4") {
+		t.Error("expected iptables check rule for ipset in CRIB_SANDBOX chain")
 	}
-	if !strings.Contains(rules, "ip6tables -A OUTPUT -m set --match-set crib-cloud-v6") {
-		t.Error("expected ip6tables rule matching ipset")
+	if !strings.Contains(rules, "ip6tables -C CRIB_SANDBOX -m set --match-set crib-cloud-v6") {
+		t.Error("expected ip6tables check rule for ipset in CRIB_SANDBOX chain")
 	}
 }

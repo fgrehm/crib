@@ -8,8 +8,14 @@ import (
 func TestGenerateNetworkScript_NoBlocking(t *testing.T) {
 	cfg := &sandboxConfig{}
 	script := generateNetworkScript(cfg)
-	if script != "" {
-		t.Errorf("expected empty script, got: %s", script)
+	// Even with no blocking flags, the chain setup and jump rules are emitted
+	// (this function is only called when at least one flag is set).
+	if !strings.Contains(script, "CRIB_SANDBOX") {
+		t.Error("expected CRIB_SANDBOX chain setup")
+	}
+	// But no actual DROP rules should be present.
+	if strings.Contains(script, "-j DROP") {
+		t.Errorf("expected no DROP rules, got: %s", script)
 	}
 }
 

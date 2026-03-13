@@ -71,7 +71,9 @@ func GenerateIPSetRules() string {
 			b.WriteString("echo 'add crib-cloud-v4 " + cidr + "'\n")
 		}
 		b.WriteString("} | ipset restore -exist 2>/dev/null\n")
-		b.WriteString("iptables -A OUTPUT -m set --match-set crib-cloud-v4 dst -j DROP 2>/dev/null\n")
+		// Append to CRIB_SANDBOX chain (created by network.go) with check-before-add for idempotency.
+		b.WriteString("iptables -C CRIB_SANDBOX -m set --match-set crib-cloud-v4 dst -j DROP 2>/dev/null || ")
+		b.WriteString("iptables -A CRIB_SANDBOX -m set --match-set crib-cloud-v4 dst -j DROP 2>/dev/null\n")
 	}
 
 	if len(ipv6) > 0 {
@@ -82,7 +84,8 @@ func GenerateIPSetRules() string {
 			b.WriteString("echo 'add crib-cloud-v6 " + cidr + "'\n")
 		}
 		b.WriteString("} | ipset restore -exist 2>/dev/null\n")
-		b.WriteString("ip6tables -A OUTPUT -m set --match-set crib-cloud-v6 dst -j DROP 2>/dev/null\n")
+		b.WriteString("ip6tables -C CRIB_SANDBOX -m set --match-set crib-cloud-v6 dst -j DROP 2>/dev/null || ")
+		b.WriteString("ip6tables -A CRIB_SANDBOX -m set --match-set crib-cloud-v6 dst -j DROP 2>/dev/null\n")
 	}
 
 	return b.String()
