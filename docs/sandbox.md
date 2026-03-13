@@ -221,7 +221,7 @@ Ubuntu 23.10+ added [AppArmor restrictions on unprivileged user namespaces](http
 
 ### Rootless Docker/Podman
 
-The `iptables`-based network restrictions require real root privileges inside the container. In rootless setups, `blockLocalNetwork` and `blockCloudProviders` may silently fail to apply. Individual rule failures are suppressed (the script continues applying remaining rules), so partial protection is possible depending on the runtime configuration.
+The `iptables`-based network restrictions require real root privileges inside the container. In rootless setups, `blockLocalNetwork` and `blockCloudProviders` may fail to apply. Individual rule failures do not stop the script (remaining rules are still attempted), and any failure is surfaced as a warning by the plugin manager. Partial protection is possible depending on the runtime configuration.
 
 ### SSH agent usage
 
