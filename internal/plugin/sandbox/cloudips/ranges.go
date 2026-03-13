@@ -50,15 +50,17 @@ func GenerateIPSetRules() string {
 		return "# cloud provider IP ranges: failed to load\n"
 	}
 
-	var b strings.Builder
-	b.WriteString("# Cloud provider IP ranges (last updated: " + ranges.LastUpdated + ")\n")
-
 	// Collect all CIDRs across providers.
 	var ipv4, ipv6 []string
 	for _, provider := range ranges.Providers {
 		ipv4 = append(ipv4, provider.IPv4...)
 		ipv6 = append(ipv6, provider.IPv6...)
 	}
+
+	// Pre-allocate: ~45 bytes per "echo 'add crib-cloud-vN <cidr>'\n" line.
+	var b strings.Builder
+	b.Grow((len(ipv4) + len(ipv6)) * 45)
+	b.WriteString("# Cloud provider IP ranges (last updated: " + ranges.LastUpdated + ")\n")
 
 	if len(ipv4) > 0 {
 		b.WriteString("ipset create crib-cloud-v4 hash:net -exist 2>/dev/null\n")
