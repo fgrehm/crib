@@ -6,9 +6,14 @@ import (
 	"github.com/fgrehm/crib/internal/plugin/sandbox/cloudips"
 )
 
-// generateNetworkScript produces iptables commands that block outbound
-// traffic to restricted destinations. Injected into the sandbox wrapper
-// script and runs before exec bwrap.
+// generateNetworkScript produces shell commands that block outbound traffic
+// to restricted destinations. Applied once at container setup time.
+//
+// blockLocalNetwork uses plain iptables rules (~11 entries for RFC 1918,
+// link-local, metadata endpoints). blockCloudProviders uses ipset hash:net
+// sets loaded via "ipset restore" + a single iptables match rule per address
+// family. We keep iptables for the small local-network ruleset so that
+// users who only enable blockLocalNetwork don't need ipset installed.
 func generateNetworkScript(cfg *sandboxConfig) string {
 	var b strings.Builder
 
