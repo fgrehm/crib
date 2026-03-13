@@ -128,8 +128,9 @@ This is dispatched after file copies and volume chown in `finalize()`. Errors ar
 | `Runtime`         | `"docker"` or `"podman"`                            |
 | `ExecFunc`        | Run a command inside the container (output discarded)|
 | `ExecOutputFunc`  | Run a command and capture stdout as a string        |
+| `CopyFileFunc`    | Write content to a file inside the container (stdin-piped) |
 
-Both exec functions take `(ctx context.Context, cmd []string, user string)`. Use `"root"` for privileged operations (installing packages, chown) and the remote user for user-scoped operations.
+`ExecFunc` and `ExecOutputFunc` take `(ctx, cmd []string, user string)`. `CopyFileFunc` takes `(ctx, content []byte, destPath, mode, user string)` and pipes content via stdin to `cat > path` (no shell quoting or base64 needed). Use `"root"` for privileged operations (installing packages, chown) and the remote user for user-scoped operations.
 
 ## Writing a Plugin
 

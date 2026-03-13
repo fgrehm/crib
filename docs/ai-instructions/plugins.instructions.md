@@ -47,8 +47,10 @@ as `PreContainerRun`).
 
 Call site: `finalize.go` -> `dispatchPostContainerCreate()` in `single.go`.
 
-The request carries `ExecFunc` and `ExecOutputFunc` closures that wrap
-`driver.ExecContainer`, so plugins run commands without importing the driver.
+The request carries `ExecFunc`, `ExecOutputFunc`, and `CopyFileFunc` closures
+that wrap `driver.ExecContainer`, so plugins run commands without importing the
+driver. `CopyFileFunc` pipes content via stdin (no base64 or shell quoting) and
+is the preferred way to write files into the container.
 
 Currently only the sandbox plugin implements this interface.
 
