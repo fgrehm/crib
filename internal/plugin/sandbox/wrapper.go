@@ -40,10 +40,17 @@ func buildPolicy(cfg *sandboxConfig, workspaceDir, remoteUser, workspaceFolder s
 		})
 	}
 
-	// Extra writable paths.
+	// Extra writable paths (excluding any that conflict with deny rules).
+	denySet := make(map[string]bool)
+	for _, rule := range rules {
+		denySet[rule.Path] = true
+	}
 	allow := make([]string, 0, len(cfg.AllowWrite))
 	for _, p := range cfg.AllowWrite {
-		allow = append(allow, expandHome(p, remoteHome))
+		expanded := expandHome(p, remoteHome)
+		if !denySet[expanded] {
+			allow = append(allow, expanded)
+		}
 	}
 
 	return &policy{
