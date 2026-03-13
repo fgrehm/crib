@@ -217,7 +217,7 @@ Blocks cloud provider IPs, SSH agent access, and writes to config directories. T
 
 ### Ubuntu 24.04+
 
-Ubuntu 23.10+ added [AppArmor restrictions on unprivileged user namespaces](https://ubuntu.com/blog/ubuntu-23-10-restricted-unprivileged-user-namespaces) that [break `bubblewrap`](https://github.com/containers/bubblewrap/issues/632) even when the kernel sysctl is enabled. If the sandbox can't initialize, `crib` prints a warning but doesn't block container creation. On Debian and older Ubuntu, it works out of the box.
+Ubuntu 23.10+ added [AppArmor restrictions on unprivileged user namespaces](https://ubuntu.com/blog/ubuntu-23-10-restricted-unprivileged-user-namespaces) that [break `bubblewrap`](https://github.com/containers/bubblewrap/issues/632) even when the kernel sysctl is enabled. The sandbox plugin installs bubblewrap and generates the wrapper script, but doesn't probe whether bwrap actually works. If namespaces are blocked, bwrap will fail at runtime when the agent is launched (not at container setup time). On Debian and older Ubuntu, it works out of the box.
 
 ### Rootless Docker/Podman
 

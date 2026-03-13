@@ -109,7 +109,7 @@ Known plugin artifacts and their default sandbox treatment:
    - `--bind` for `workspaceFolder` and `/tmp` (writable)
    - `--tmpfs` for denied paths (masks the real contents)
    - `--dev /dev`, `--proc /proc`
-   - Network namespace with `iptables` rules if `blockLocalNetwork` is true
+   - (Network rules are applied separately via `iptables` in the shared namespace, not via bwrap flags)
 3. For each entry in `aliases`, generate `~/.local/bin/{alias}` that:
    - Prints a note: `[crib sandbox] Running {alias} in sandboxed mode`
    - Execs `sandbox {real-binary-path} "$@"`

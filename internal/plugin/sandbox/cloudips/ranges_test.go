@@ -16,7 +16,8 @@ func TestLoad_ParsesData(t *testing.T) {
 	if ranges.Providers == nil {
 		t.Error("expected non-nil providers map")
 	}
-	for _, name := range []string{"aws", "gcp", "azure", "oraclecloud", "cloudflare"} {
+	// Providers that must always have data (stable URLs).
+	for _, name := range []string{"aws", "gcp", "oraclecloud", "cloudflare"} {
 		p, ok := ranges.Providers[name]
 		if !ok {
 			t.Errorf("missing provider %s", name)
@@ -25,6 +26,11 @@ func TestLoad_ParsesData(t *testing.T) {
 		if len(p.IPv4) == 0 {
 			t.Errorf("expected IPv4 ranges for %s", name)
 		}
+	}
+	// Azure is best-effort (Microsoft changes the download URL weekly).
+	// Verify the key exists but allow empty ranges.
+	if _, ok := ranges.Providers["azure"]; !ok {
+		t.Error("missing provider azure")
 	}
 }
 

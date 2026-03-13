@@ -301,7 +301,7 @@ func (e *Engine) dispatchPostContainerCreate(ctx context.Context, ws *workspace.
 				writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", plugin.ShellQuote(mode), dest)
 			}
 			if user != "" {
-				writeCmd += fmt.Sprintf(" && chown '%s' '%s'", plugin.ShellQuote(user), dest)
+				writeCmd += fmt.Sprintf(" && chown '%s' '%s' '%s'", plugin.ShellQuote(user), dir, dest)
 			}
 			return e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
 				[]string{"sh", "-c", writeCmd}, bytes.NewReader(content),
