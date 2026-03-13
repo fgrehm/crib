@@ -62,6 +62,10 @@ type PostContainerCreateRequest struct {
 
 	// ExecOutputFunc runs a command and returns its stdout as a string.
 	ExecOutputFunc func(ctx context.Context, cmd []string, user string) (string, error)
+
+	// CopyFileFunc writes content to a path inside the container.
+	// Uses the same stdin-piped cat approach as the engine's execPluginCopies.
+	CopyFileFunc func(ctx context.Context, content []byte, destPath, mode, user string) error
 }
 
 // InferRemoteHome returns the home directory path for the given user inside

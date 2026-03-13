@@ -156,25 +156,31 @@ func TestE2ESandboxNetworkRules(t *testing.T) {
 
 	// Network rules are applied at post-create time (not per sandbox
 	// invocation), so they should already be in effect. Install iptables
-	// to query the OUTPUT chain.
+	// to query the CRIB_SANDBOX chain.
 	_, err := runCrib(t, projectDir, cribHome, "exec", "--",
 		"sh", "-c", "apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq iptables >/dev/null 2>&1")
 	if err != nil {
 		t.Skip("could not install iptables in container (insufficient privileges?)")
 	}
 
-	rulesOut := mustRunCrib(t, projectDir, cribHome, "exec", "--",
+	// OUTPUT should jump to CRIB_SANDBOX.
+	outputOut := mustRunCrib(t, projectDir, cribHome, "exec", "--",
 		"sh", "-c", "iptables -L OUTPUT -n 2>/dev/null")
+	if !strings.Contains(outputOut, "CRIB_SANDBOX") {
+		t.Errorf("expected OUTPUT chain to jump to CRIB_SANDBOX:\n%s", outputOut)
+	}
 
-	// RFC 1918 ranges should already be blocked.
+	// CRIB_SANDBOX should contain the actual block rules.
+	rulesOut := mustRunCrib(t, projectDir, cribHome, "exec", "--",
+		"sh", "-c", "iptables -L CRIB_SANDBOX -n 2>/dev/null")
 	for _, cidr := range []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"} {
 		if !strings.Contains(rulesOut, cidr) {
-			t.Errorf("expected iptables rule for %s in OUTPUT chain:\n%s", cidr, rulesOut)
+			t.Errorf("expected iptables rule for %s in CRIB_SANDBOX chain:\n%s", cidr, rulesOut)
 		}
 	}
 
 	// Cloud metadata endpoint (link-local).
 	if !strings.Contains(rulesOut, "169.254.0.0/16") {
-		t.Errorf("expected iptables rule for 169.254.0.0/16 (cloud metadata) in OUTPUT chain:\n%s", rulesOut)
+		t.Errorf("expected iptables rule for 169.254.0.0/16 (cloud metadata) in CRIB_SANDBOX chain:\n%s", rulesOut)
 	}
 }

@@ -28,7 +28,7 @@ func TestPostContainerCreate_InstallsAndGeneratesWrapper(t *testing.T) {
 	}
 
 	var execCmds []string
-	var execOutputCmds []string
+	copiedFiles := map[string]string{} // path -> content
 
 	p := New()
 	req := &plugin.PostContainerCreateRequest{
@@ -44,16 +44,15 @@ func TestPostContainerCreate_InstallsAndGeneratesWrapper(t *testing.T) {
 			},
 		},
 		ExecFunc: func(_ context.Context, cmd []string, _ string) error {
-			if len(cmd) > 2 {
-				execCmds = append(execCmds, cmd[2])
-			}
+			execCmds = append(execCmds, strings.Join(cmd, " "))
 			return nil
 		},
-		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
-			if len(cmd) > 2 {
-				execOutputCmds = append(execOutputCmds, cmd[2])
-			}
+		ExecOutputFunc: func(_ context.Context, _ []string, _ string) (string, error) {
 			return "", nil
+		},
+		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
+			copiedFiles[dest] = string(content)
+			return nil
 		},
 	}
 
@@ -61,37 +60,34 @@ func TestPostContainerCreate_InstallsAndGeneratesWrapper(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should have at least: install bwrap, apply network rules, mkdir, write wrapper.
-	if len(execCmds) < 4 {
-		t.Fatalf("expected at least 4 exec calls, got %d: %v", len(execCmds), execCmds)
+	// First exec should install tools (bwrap + iptables).
+	if len(execCmds) == 0 || !strings.Contains(execCmds[0], "bwrap") || !strings.Contains(execCmds[0], "iptables") {
+		t.Errorf("first exec should check for bwrap and iptables, got: %v", execCmds)
 	}
 
-	// First call should install tools (bwrap + iptables).
-	if !strings.Contains(execCmds[0], "bwrap") || !strings.Contains(execCmds[0], "iptables") {
-		t.Errorf("first exec should check for bwrap and iptables, got: %s", execCmds[0])
+	// Network script should be copied to temp file, then executed.
+	netScript, ok := copiedFiles["/tmp/.crib-sandbox-setup.sh"]
+	if !ok {
+		t.Fatal("expected network script to be copied to temp file")
+	}
+	if !strings.Contains(netScript, "CRIB_SANDBOX") {
+		t.Errorf("network script should use CRIB_SANDBOX chain, got:\n%s", netScript)
 	}
 
-	// Second call should apply network rules (iptables).
-	if !strings.Contains(execCmds[1], "iptables") {
-		t.Errorf("second exec should apply network rules, got: %s", execCmds[1])
+	// Sandbox wrapper should be copied.
+	wrapper, ok := copiedFiles["/home/vscode/.local/bin/sandbox"]
+	if !ok {
+		t.Fatal("expected sandbox wrapper to be copied")
 	}
-
-	// Third call should create ~/.local/bin.
-	if !strings.Contains(execCmds[2], ".local/bin") {
-		t.Errorf("third exec should create local bin, got: %s", execCmds[2])
-	}
-
-	// Fourth call should write the sandbox wrapper (base64 encoded).
-	if !strings.Contains(execCmds[3], "base64 -d") {
-		t.Errorf("fourth exec should write sandbox wrapper via base64, got: %s", execCmds[3])
+	if !strings.Contains(wrapper, "exec bwrap") {
+		t.Errorf("sandbox wrapper should contain bwrap invocation, got:\n%s", wrapper)
 	}
 }
 
 func TestPostContainerCreate_WithAliases(t *testing.T) {
 	wsDir := t.TempDir()
 
-	var execCmds []string
-	execOutputResults := map[string]string{}
+	copiedFiles := map[string]string{}
 
 	p := New()
 	req := &plugin.PostContainerCreateRequest{
@@ -106,10 +102,7 @@ func TestPostContainerCreate_WithAliases(t *testing.T) {
 				"aliases": []any{"claude", "missing-tool"},
 			},
 		},
-		ExecFunc: func(_ context.Context, cmd []string, _ string) error {
-			if len(cmd) > 2 {
-				execCmds = append(execCmds, cmd[2])
-			}
+		ExecFunc: func(_ context.Context, _ []string, _ string) error {
 			return nil
 		},
 		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
@@ -121,8 +114,11 @@ func TestPostContainerCreate_WithAliases(t *testing.T) {
 			if strings.Contains(cmdStr, "claude") {
 				return "/usr/local/bin/claude\n", nil
 			}
-			result := execOutputResults[cmdStr]
-			return result, nil
+			return "", nil
+		},
+		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
+			copiedFiles[dest] = string(content)
+			return nil
 		},
 	}
 
@@ -130,21 +126,65 @@ func TestPostContainerCreate_WithAliases(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should have written an alias for claude but not for missing-tool.
-	foundClaudeAlias := false
-	for _, cmd := range execCmds {
-		if strings.Contains(cmd, "claude") && strings.Contains(cmd, "base64 -d") {
-			foundClaudeAlias = true
-		}
+	// Should have written an alias for claude.
+	alias, ok := copiedFiles["/home/vscode/.local/bin/claude"]
+	if !ok {
+		t.Fatal("expected claude alias to be written")
 	}
-	if !foundClaudeAlias {
-		t.Error("expected claude alias to be written")
+	if !strings.Contains(alias, "[crib sandbox]") {
+		t.Errorf("alias should contain sandbox banner, got:\n%s", alias)
 	}
 
-	// missing-tool should not have an alias (ExecOutputFunc returns empty).
-	for _, cmd := range execCmds {
-		if strings.Contains(cmd, "missing-tool") && strings.Contains(cmd, "base64 -d") {
-			t.Error("missing-tool should not have an alias written")
+	// missing-tool should not have an alias.
+	if _, ok := copiedFiles["/home/vscode/.local/bin/missing-tool"]; ok {
+		t.Error("missing-tool should not have an alias written")
+	}
+}
+
+func TestPostContainerCreate_InvalidAliasNamesSkipped(t *testing.T) {
+	wsDir := t.TempDir()
+	copiedFiles := map[string]string{}
+
+	p := New()
+	req := &plugin.PostContainerCreateRequest{
+		WorkspaceID:     "test-ws",
+		WorkspaceDir:    wsDir,
+		ContainerID:     "abc123",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspaces/project",
+		Runtime:         "docker",
+		Customizations: map[string]any{
+			"sandbox": map[string]any{
+				"aliases": []any{"valid-name", "bad;name", "../escape", "also bad"},
+			},
+		},
+		ExecFunc: func(_ context.Context, _ []string, _ string) error {
+			return nil
+		},
+		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
+			if len(cmd) > 2 && strings.Contains(cmd[2], "valid-name") {
+				return "/usr/bin/valid-name\n", nil
+			}
+			return "", nil
+		},
+		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
+			copiedFiles[dest] = string(content)
+			return nil
+		},
+	}
+
+	if err := p.PostContainerCreate(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Only valid-name should have an alias.
+	if _, ok := copiedFiles["/home/vscode/.local/bin/valid-name"]; !ok {
+		t.Error("expected valid-name alias to be written")
+	}
+	for _, bad := range []string{"bad;name", "../escape", "also bad"} {
+		path := "/home/vscode/.local/bin/" + bad
+		if _, ok := copiedFiles[path]; ok {
+			t.Errorf("invalid alias %q should have been skipped", bad)
 		}
 	}
 }

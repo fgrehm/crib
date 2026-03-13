@@ -238,6 +238,9 @@ func testPostCreateRequest() *PostContainerCreateRequest {
 		ExecFunc: func(_ context.Context, _ []string, _ string) error {
 			return nil
 		},
+		CopyFileFunc: func(_ context.Context, _ []byte, _, _, _ string) error {
+			return nil
+		},
 	}
 }
 

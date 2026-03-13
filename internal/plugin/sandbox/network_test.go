@@ -83,6 +83,35 @@ func TestGenerateNetworkScript_BlockCloudProviders(t *testing.T) {
 	}
 }
 
+func TestGenerateNetworkScript_UsesDedicatedChain(t *testing.T) {
+	cfg := &sandboxConfig{BlockLocalNetwork: true}
+	script := generateNetworkScript(cfg)
+
+	// Should create CRIB_SANDBOX chain (idempotent).
+	if !strings.Contains(script, "iptables -N CRIB_SANDBOX") {
+		t.Error("missing chain creation for iptables")
+	}
+	if !strings.Contains(script, "ip6tables -N CRIB_SANDBOX") {
+		t.Error("missing chain creation for ip6tables")
+	}
+
+	// Rules should target CRIB_SANDBOX, not OUTPUT directly.
+	if strings.Contains(script, "-A OUTPUT -d") {
+		t.Error("rules should target CRIB_SANDBOX chain, not OUTPUT directly")
+	}
+	if !strings.Contains(script, "-A CRIB_SANDBOX -d") {
+		t.Error("expected rules in CRIB_SANDBOX chain")
+	}
+
+	// Should have a jump rule from OUTPUT to CRIB_SANDBOX.
+	if !strings.Contains(script, "-C OUTPUT -j CRIB_SANDBOX") {
+		t.Error("missing check for existing jump rule")
+	}
+	if !strings.Contains(script, "-A OUTPUT -j CRIB_SANDBOX") {
+		t.Error("missing conditional jump rule addition")
+	}
+}
+
 func TestGenerateNetworkScript_BothFlags(t *testing.T) {
 	cfg := &sandboxConfig{
 		BlockLocalNetwork:   true,

@@ -268,11 +268,18 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 // plugins that implement PostContainerCreator. Called from finalize after
 // file copies and volume chown.
 func (e *Engine) dispatchPostContainerCreate(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext) {
+	// Use configRemoteUser (from devcontainer.json) rather than cc.remoteUser,
+	// which hasn't been resolved yet at this point in the finalize flow.
+	remoteUser := cc.remoteUser
+	if remoteUser == "" {
+		remoteUser = configRemoteUser(cfg)
+	}
+
 	req := &plugin.PostContainerCreateRequest{
 		WorkspaceID:     ws.ID,
 		WorkspaceDir:    e.store.WorkspaceDir(ws.ID),
 		ContainerID:     cc.containerID,
-		RemoteUser:      cc.remoteUser,
+		RemoteUser:      remoteUser,
 		WorkspaceFolder: cc.workspaceFolder,
 		Customizations:  extractCribCustomizations(cfg),
 		Runtime:         e.runtimeName,
@@ -285,6 +292,19 @@ func (e *Engine) dispatchPostContainerCreate(ctx context.Context, ws *workspace.
 			err := e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
 				cmd, nil, &buf, io.Discard, nil, user)
 			return buf.String(), err
+		},
+		CopyFileFunc: func(ctx context.Context, content []byte, destPath, mode, user string) error {
+			dir := filepath.Dir(destPath)
+			writeCmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", dir, destPath)
+			if mode != "" {
+				writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", mode, destPath)
+			}
+			if user != "" {
+				writeCmd += fmt.Sprintf(" && chown '%s' '%s'", user, destPath)
+			}
+			return e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
+				[]string{"sh", "-c", writeCmd}, bytes.NewReader(content),
+				io.Discard, io.Discard, nil, "root")
 		},
 	}
 

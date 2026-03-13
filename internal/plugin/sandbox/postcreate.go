@@ -2,12 +2,16 @@ package sandbox
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/fgrehm/crib/internal/plugin"
 )
+
+// validAliasName restricts alias names to safe characters for shell commands
+// and file paths. Prevents injection via malicious devcontainer.json.
+var validAliasName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // PostContainerCreate installs bubblewrap and generates wrapper scripts
 // inside the container. No-op when sandbox config is absent.
@@ -46,11 +50,11 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	}
 
 	// 2. Apply network restrictions (once, container-wide).
-	// Individual rules suppress errors with 2>/dev/null for cases where
-	// some work but others don't (e.g. ip6tables missing in some setups).
+	// The script is copied to a temp file and executed to avoid ARG_MAX
+	// limits when blockCloudProviders generates ~1 MB of ipset rules.
 	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
 		netScript := generateNetworkScript(cfg) + "true\n"
-		if err := req.ExecFunc(ctx, []string{"sh", "-c", netScript}, "root"); err != nil {
+		if err := execScriptViaFile(ctx, req, netScript); err != nil {
 			return fmt.Errorf("applying network rules: %w", err)
 		}
 	}
@@ -58,28 +62,25 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// 3. Build the sandbox policy.
 	pol := buildPolicy(cfg, req.WorkspaceDir, req.RemoteUser, req.WorkspaceFolder)
 
-	// 4. Ensure ~/.local/bin exists.
-	mkdirCmd := fmt.Sprintf("mkdir -p '%s' && chown '%s' '%s'", localBin, owner, localBin)
-	if err := req.ExecFunc(ctx, []string{"sh", "-c", mkdirCmd}, "root"); err != nil {
-		return fmt.Errorf("creating local bin: %w", err)
-	}
-
-	// 5. Generate and write the sandbox wrapper script.
+	// 4. Generate and write the sandbox wrapper script.
 	sandboxPath := localBin + "/sandbox"
 	wrapperContent := generateWrapperScript(pol)
-	if err := writeFileViaExec(ctx, req, sandboxPath, wrapperContent, owner); err != nil {
+	if err := req.CopyFileFunc(ctx, []byte(wrapperContent), sandboxPath, "0755", owner); err != nil {
 		return fmt.Errorf("writing sandbox wrapper: %w", err)
 	}
 
-	// 6. Generate alias wrappers.
+	// 5. Generate alias wrappers.
 	for _, alias := range cfg.Aliases {
+		if !validAliasName.MatchString(alias) {
+			continue
+		}
 		aliasPath := localBin + "/" + alias
 		realPath, err := resolveRealBinary(ctx, req, alias, localBin)
 		if err != nil || realPath == "" {
 			continue
 		}
 		aliasContent := generateAliasScript(alias, realPath, sandboxPath)
-		if err := writeFileViaExec(ctx, req, aliasPath, aliasContent, owner); err != nil {
+		if err := req.CopyFileFunc(ctx, []byte(aliasContent), aliasPath, "0755", owner); err != nil {
 			return fmt.Errorf("writing alias %s: %w", alias, err)
 		}
 	}
@@ -87,13 +88,16 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	return nil
 }
 
-// writeFileViaExec writes content to a file inside the container using
-// base64 encoding to avoid shell quoting issues.
-func writeFileViaExec(ctx context.Context, req *plugin.PostContainerCreateRequest, path, content, owner string) error {
-	encoded := base64.StdEncoding.EncodeToString([]byte(content))
-	cmd := fmt.Sprintf("echo '%s' | base64 -d > '%s' && chmod 755 '%s' && chown '%s' '%s'",
-		encoded, path, path, owner, path)
-	return req.ExecFunc(ctx, []string{"sh", "-c", cmd}, "root")
+// execScriptViaFile copies a shell script into the container and executes it.
+// Avoids ARG_MAX limits for large scripts (e.g. ~1 MB of ipset rules).
+func execScriptViaFile(ctx context.Context, req *plugin.PostContainerCreateRequest, script string) error {
+	const tmpScript = "/tmp/.crib-sandbox-setup.sh"
+	if err := req.CopyFileFunc(ctx, []byte(script), tmpScript, "0700", "root"); err != nil {
+		return err
+	}
+	err := req.ExecFunc(ctx, []string{"sh", tmpScript}, "root")
+	_ = req.ExecFunc(ctx, []string{"rm", "-f", tmpScript}, "root")
+	return err
 }
 
 // resolveRealBinary finds the real path of a binary inside the container,

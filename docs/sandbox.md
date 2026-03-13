@@ -120,7 +120,7 @@ The `aliases` list creates wrapper scripts in `~/.local/bin/` inside the contain
 1. Prints `[crib sandbox] Running {name} in sandboxed mode`
 2. Launches the real binary through the `sandbox` wrapper
 
-The real binary path is resolved at container setup time (skipping `~/.local/bin/` to avoid self-reference). If the real binary isn't found, the alias is skipped with a warning.
+The real binary path is resolved at container setup time (skipping `~/.local/bin/` to avoid self-reference). If the real binary isn't found, the alias is silently skipped.
 
 Without aliases, you can always use the `sandbox` command directly:
 
@@ -221,7 +221,7 @@ Ubuntu 23.10+ added [AppArmor restrictions on unprivileged user namespaces](http
 
 ### Rootless Docker/Podman
 
-The `iptables`-based network restrictions require real root privileges inside the container. In rootless setups, `blockLocalNetwork` and `blockCloudProviders` may not work. The plugin detects this and warns.
+The `iptables`-based network restrictions require real root privileges inside the container. In rootless setups, `blockLocalNetwork` and `blockCloudProviders` may silently fail to apply. Individual rule failures are suppressed (the script continues applying remaining rules), so partial protection is possible depending on the runtime configuration.
 
 ### SSH agent usage
 

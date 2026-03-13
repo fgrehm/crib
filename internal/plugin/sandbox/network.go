@@ -43,8 +43,19 @@ func generateNetworkScript(cfg *sandboxConfig) string {
 	var b strings.Builder
 
 	if cfg.BlockLocalNetwork {
+		// Use a dedicated chain so rules are idempotent across rebuilds.
+		// Flush and recreate the chain each time, with a single jump rule.
+		for _, bin := range []string{"iptables", "ip6tables"} {
+			fmt.Fprintf(&b, "%s -N CRIB_SANDBOX 2>/dev/null || %s -F CRIB_SANDBOX 2>/dev/null\n", bin, bin)
+		}
+
 		for _, rule := range localNetworkBlockedCIDRs {
-			fmt.Fprintf(&b, "%s -A OUTPUT -d %s -j DROP 2>/dev/null\n", rule.binary, rule.cidr)
+			fmt.Fprintf(&b, "%s -A CRIB_SANDBOX -d %s -j DROP 2>/dev/null\n", rule.binary, rule.cidr)
+		}
+
+		// Ensure exactly one jump rule in OUTPUT (check before adding).
+		for _, bin := range []string{"iptables", "ip6tables"} {
+			fmt.Fprintf(&b, "%s -C OUTPUT -j CRIB_SANDBOX 2>/dev/null || %s -A OUTPUT -j CRIB_SANDBOX 2>/dev/null\n", bin, bin)
 		}
 	}
 
