@@ -71,7 +71,7 @@ See the [cloud metadata endpoints reference](/crib/reference/cloud-metadata-endp
 
 Everything else is allowed. Web searches, LLM API calls, package installs, and all other internet traffic work normally. Services bound to `0.0.0.0` inside the container (dev servers, LSPs) can still accept incoming connections.
 
-When `blockCloudProviders` is enabled, the sandbox additionally blocks outbound traffic to known cloud provider IP ranges (currently AWS, GCP, Oracle Cloud, and Cloudflare) using their published IP range data. This prevents a compromised agent from exfiltrating data to attacker-controlled cloud instances. The IP ranges are embedded in the `crib` binary and updated periodically. Azure is not yet covered (the download URL for their IP ranges changes weekly).
+When `blockCloudProviders` is enabled, the sandbox additionally blocks outbound traffic to known cloud provider IP ranges (AWS, GCP, Azure, Oracle Cloud, and Cloudflare) using their published IP range data. This prevents a compromised agent from exfiltrating data to attacker-controlled cloud instances. The IP ranges are embedded in the `crib` binary and updated periodically. Uses `ipset` for efficient matching (O(1) lookup regardless of the number of CIDRs).
 
 :::note
 `blockCloudProviders` is opt-in because many APIs, package registries, and SaaS tools are hosted on major cloud providers. Enabling it may break workflows that depend on cloud-hosted services. Test with your specific setup before enabling for your team.

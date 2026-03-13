@@ -138,7 +138,7 @@ See [cloud metadata endpoints reference](../reference/cloud-metadata-endpoints.m
 
 **Cloud provider IP ranges** (when `blockCloudProviders` is true):
 
-Blocks outbound traffic to known cloud provider IP ranges using their published machine-readable IP range lists. Currently covers AWS, GCP, Oracle Cloud, and Cloudflare. Azure is not yet included because the download URL for their IP ranges changes weekly (requires scraping a redirect page). This prevents a compromised agent from reaching arbitrary cloud infrastructure (e.g., exfiltrating data to an attacker-controlled EC2 instance or calling cloud APIs with stolen metadata credentials).
+Blocks outbound traffic to known cloud provider IP ranges using their published machine-readable IP range lists. Currently covers AWS, GCP, Azure, Oracle Cloud, and Cloudflare. This prevents a compromised agent from reaching arbitrary cloud infrastructure (e.g., exfiltrating data to an attacker-controlled EC2 instance or calling cloud APIs with stolen metadata credentials). Uses `ipset` (`hash:net` sets) for efficient matching regardless of the number of CIDRs.
 
 The IP ranges are version-controlled and embedded in the `crib` binary (not fetched at runtime). A `lastUpdated` timestamp is stored alongside the data so staleness is visible. A CI job or manual script periodically pulls the latest ranges from provider sources (see [cloud metadata endpoints reference](../reference/cloud-metadata-endpoints.md#cloud-provider-ip-ranges-machine-readable)) and commits updates. This avoids network dependencies at container setup time and makes the blocklist auditable via git history.
 

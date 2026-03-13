@@ -310,7 +310,7 @@ Uses both lifecycle events:
 - **PreContainerRun**: adds `--cap-add=NET_ADMIN --cap-add=NET_RAW` when network blocking is enabled.
 - **PostContainerCreate**: installs bubblewrap, generates wrapper scripts at `~/.local/bin/sandbox` and alias wrappers for configured commands.
 
-Auto-discovers other plugins' artifacts (ssh keys, credentials, shell history) and generates deny rules to protect them. Network blocking uses iptables OUTPUT chain rules for RFC 1918, cloud metadata endpoints, and cloud provider IP ranges (embedded in binary, updated via `scripts/update-cloud-ips.sh`).
+Auto-discovers other plugins' artifacts (ssh keys, credentials, shell history) and generates deny rules to protect them. Network blocking uses iptables OUTPUT chain rules for RFC 1918 and cloud metadata endpoints, and ipset (`hash:net`) for cloud provider IP ranges (AWS, GCP, Azure, Oracle Cloud, Cloudflare; embedded in binary, updated via `scripts/update-cloud-ips.sh`).
 
 See the [sandbox guide](sandbox.md) for full configuration reference.
 

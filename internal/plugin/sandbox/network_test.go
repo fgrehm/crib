@@ -74,9 +74,12 @@ func TestGenerateNetworkScript_BlockCloudProviders(t *testing.T) {
 	cfg := &sandboxConfig{BlockCloudProviders: true}
 	script := generateNetworkScript(cfg)
 
-	// Should include the cloud provider rules header.
-	if !strings.Contains(script, "Cloud provider IP ranges") {
-		t.Error("expected cloud provider rules section")
+	// Should include ipset-based cloud provider rules.
+	if !strings.Contains(script, "ipset create crib-cloud-v4") {
+		t.Error("expected ipset create for cloud provider ranges")
+	}
+	if !strings.Contains(script, "--match-set crib-cloud-v4") {
+		t.Error("expected iptables rule matching cloud ipset")
 	}
 }
 
@@ -91,7 +94,7 @@ func TestGenerateNetworkScript_BothFlags(t *testing.T) {
 	if !strings.Contains(script, "10.0.0.0/8") {
 		t.Error("missing RFC 1918 rules")
 	}
-	if !strings.Contains(script, "Cloud provider IP ranges") {
-		t.Error("missing cloud provider rules")
+	if !strings.Contains(script, "ipset create crib-cloud-v4") {
+		t.Error("missing cloud provider ipset rules")
 	}
 }

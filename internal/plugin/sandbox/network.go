@@ -44,8 +44,8 @@ func generateNetworkScript(cfg *sandboxConfig) string {
 	return b.String()
 }
 
-// generateCloudProviderRules produces iptables rules from embedded cloud
-// provider IP ranges.
+// generateCloudProviderRules produces ipset+iptables rules from embedded
+// cloud provider IP ranges.
 func generateCloudProviderRules() string {
-	return cloudips.GenerateIPTablesRules()
+	return cloudips.GenerateIPSetRules()
 }

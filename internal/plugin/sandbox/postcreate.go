@@ -26,6 +26,9 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
 		packages += " iptables"
 	}
+	if cfg.BlockCloudProviders {
+		packages += " ipset"
+	}
 	installCmd := fmt.Sprintf(
 		"apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq %s >/dev/null 2>&1",
 		packages)
@@ -33,6 +36,9 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	checkCmd := "command -v bwrap >/dev/null 2>&1"
 	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
 		checkCmd += " && command -v iptables >/dev/null 2>&1"
+	}
+	if cfg.BlockCloudProviders {
+		checkCmd += " && command -v ipset >/dev/null 2>&1"
 	}
 	fullInstallCmd := fmt.Sprintf("%s || { %s; }", checkCmd, installCmd)
 	if err := req.ExecFunc(ctx, []string{"sh", "-c", fullInstallCmd}, "root"); err != nil {
