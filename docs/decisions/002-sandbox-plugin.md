@@ -88,11 +88,11 @@ Known plugin artifacts and their default sandbox treatment:
 | `codingagents` | `~/.claude/` | deny-read |
 | `ssh` | `~/.ssh/` | deny-read |
 | `ssh` | `/tmp/ssh-agent.sock` (`SSH_AUTH_SOCK`) | no restriction (see below) |
-| `shellhistory` | `~/.crib_history/` | deny-read, allow-write |
+| `shellhistory` | `~/.crib_history/` | deny-read (tmpfs) |
 
 **SSH agent socket:** the private key never enters the container. The socket only exposes a signing oracle ("sign this data with key X"). A process cannot extract the key through the socket ([ref](https://smallstep.com/blog/ssh-agent-explained/)). However, it can *use* the key to authenticate (git push, SSH to servers). This is an accepted tradeoff, since agents need git access to be useful. Blocking the socket entirely would break git operations.
 
-**Shell history:** the history file (`~/.crib_history/.shell_history`) may contain sensitive data (e.g., `export TOKEN=...` commands). It should be deny-read by default so sandboxed agents cannot search it for credentials. Write access is allowed so history continues to work when running commands through the sandbox.
+**Shell history:** the history file (`~/.crib_history/.shell_history`) may contain sensitive data (e.g., `export TOKEN=...` commands). Denied via `--tmpfs`, which masks the real directory with an empty ephemeral filesystem. The sandboxed process can still write to it (shell history works during the session), but writes are lost when the process exits and existing history is not visible.
 
 ### What the plugin does
 
@@ -117,7 +117,7 @@ Known plugin artifacts and their default sandbox treatment:
 
 ### Network isolation and `0.0.0.0` binding
 
-`blockLocalNetwork` uses `--share-net` (shared network namespace) with `iptables` OUTPUT chain rules, not `--unshare-net` (isolated network namespace). This means:
+`blockLocalNetwork` uses `iptables` OUTPUT chain rules applied at container setup time (not via bwrap). The bwrap wrapper inherits the container's network namespace by default (no `--unshare-net`). This means:
 
 - **Outbound** traffic to RFC 1918 ranges and metadata endpoints is blocked.
 - **Inbound** connections and `0.0.0.0` binding are unaffected. Services started by the agent (dev servers, LSPs) can still accept connections normally.
@@ -164,7 +164,7 @@ exec bwrap \
   --proc /proc \
   --bind '/workspaces/project' '/workspaces/project' \
   --bind /tmp /tmp \
-  --bind '/home/vscode/.crib_history' '/home/vscode/.crib_history' \
+  --tmpfs '/home/vscode/.crib_history' \
   --tmpfs '/home/vscode/.ssh' \
   --tmpfs '/home/vscode/.claude' \
   -- "$@"
