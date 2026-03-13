@@ -52,8 +52,8 @@ The sandbox makes the entire filesystem read-only, then selectively opens up wri
 | `workspaceFolder` | read-write | The agent needs to edit project files |
 | `/tmp` | read-write | Scratch space for temp files |
 | `~/.crib_history/` | deny-read | May contain credentials (`export TOKEN=...`) |
-| `~/.ssh/config`, `~/.ssh/*.pub` | deny-read | Injected by the ssh plugin, contains host info |
-| `~/.claude/.credentials.json` | deny-read | Injected by the codingagents plugin |
+| `~/.ssh/` | deny-read | Injected by the ssh plugin, contains host info |
+| `~/.claude/` | deny-read | Injected by the codingagents plugin |
 
 The sandbox automatically discovers what other `crib` plugins have injected and applies appropriate restrictions. You don't need to manually list credential paths.
 
@@ -71,7 +71,7 @@ See the [cloud metadata endpoints reference](/crib/reference/cloud-metadata-endp
 
 Everything else is allowed. Web searches, LLM API calls, package installs, and all other internet traffic work normally. Services bound to `0.0.0.0` inside the container (dev servers, LSPs) can still accept incoming connections.
 
-When `blockCloudProviders` is enabled, the sandbox additionally blocks outbound traffic to known cloud provider IP ranges (AWS, GCP, Azure, Oracle Cloud, and Cloudflare) using their published IP range data. This prevents a compromised agent from exfiltrating data to attacker-controlled cloud instances. The IP ranges are embedded in the `crib` binary and updated periodically. Uses `ipset` for efficient matching (O(1) lookup regardless of the number of CIDRs).
+When `blockCloudProviders` is enabled, the sandbox additionally blocks outbound traffic to known cloud provider IP ranges (AWS, GCP, Oracle Cloud, and Cloudflare) using their published IP range data. Azure ranges are fetched on a best-effort basis (Microsoft changes the download URL weekly), so coverage may be incomplete. This prevents a compromised agent from exfiltrating data to attacker-controlled cloud instances. The IP ranges are embedded in the `crib` binary and updated periodically. Uses `ipset` for efficient matching (O(1) lookup regardless of the number of CIDRs).
 
 :::note
 `blockCloudProviders` is opt-in because many APIs, package registries, and SaaS tools are hosted on major cloud providers. Enabling it may break workflows that depend on cloud-hosted services. Test with your specific setup before enabling for your team.
@@ -144,8 +144,8 @@ The sandbox plugin automatically scans `~/.crib/workspaces/{id}/plugins/*/` to d
 
 | Plugin | What it injected | Sandbox rule |
 |--------|-----------------|--------------|
-| `codingagents` | `~/.claude/.credentials.json` | deny-read |
-| `ssh` | `~/.ssh/config`, `~/.ssh/*.pub` | deny-read |
+| `codingagents` | `~/.claude/` | deny-read |
+| `ssh` | `~/.ssh/` | deny-read |
 | `ssh` | `/tmp/ssh-agent.sock` | allowed (see below) |
 | `shellhistory` | `~/.crib_history/` | deny-read |
 

@@ -294,13 +294,14 @@ func (e *Engine) dispatchPostContainerCreate(ctx context.Context, ws *workspace.
 			return buf.String(), err
 		},
 		CopyFileFunc: func(ctx context.Context, content []byte, destPath, mode, user string) error {
-			dir := filepath.Dir(destPath)
-			writeCmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", dir, destPath)
+			dir := plugin.ShellQuote(filepath.Dir(destPath))
+			dest := plugin.ShellQuote(destPath)
+			writeCmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", dir, dest)
 			if mode != "" {
-				writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", mode, destPath)
+				writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", plugin.ShellQuote(mode), dest)
 			}
 			if user != "" {
-				writeCmd += fmt.Sprintf(" && chown '%s' '%s'", user, destPath)
+				writeCmd += fmt.Sprintf(" && chown '%s' '%s'", plugin.ShellQuote(user), dest)
 			}
 			return e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
 				[]string{"sh", "-c", writeCmd}, bytes.NewReader(content),
@@ -312,12 +313,7 @@ func (e *Engine) dispatchPostContainerCreate(ctx context.Context, ws *workspace.
 }
 
 // execPluginCopies copies staged files into the container via exec.
-//
-// NOTE: Values are embedded in single-quoted shell arguments. This is safe for
-// all current callers (bundled plugins with hardcoded paths like
-// ~/.claude/.credentials.json). If we add external/user-defined plugins, the
-// values must be shell-escaped first to prevent breakage or injection from
-// paths containing single quotes.
+// All values are shell-escaped before embedding in single-quoted arguments.
 func (e *Engine) execPluginCopies(ctx context.Context, cc containerContext, copies []plugin.FileCopy) {
 	for _, cp := range copies {
 		data, err := os.ReadFile(cp.Source)
@@ -327,19 +323,21 @@ func (e *Engine) execPluginCopies(ctx context.Context, cc containerContext, copi
 		}
 
 		// Build a shell command that creates the parent dir and writes the file.
-		// Values are single-quoted to handle paths with spaces or special chars.
-		dir := filepath.Dir(cp.Target)
-		writeCmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", dir, cp.Target)
+		// Values are shell-escaped and single-quoted to handle paths with
+		// spaces, special chars, or single quotes.
+		dir := plugin.ShellQuote(filepath.Dir(cp.Target))
+		target := plugin.ShellQuote(cp.Target)
+		writeCmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", dir, target)
 		if cp.Mode != "" {
-			writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", cp.Mode, cp.Target)
+			writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", plugin.ShellQuote(cp.Mode), target)
 		}
 		if cp.User != "" {
-			writeCmd += fmt.Sprintf(" && chown '%s' '%s' '%s'", cp.User, dir, cp.Target)
+			writeCmd += fmt.Sprintf(" && chown '%s' '%s' '%s'", plugin.ShellQuote(cp.User), dir, target)
 		}
 
 		var shellCmd string
 		if cp.IfNotExists {
-			shellCmd = fmt.Sprintf("[ -f '%s' ] || { %s; }", cp.Target, writeCmd)
+			shellCmd = fmt.Sprintf("[ -f '%s' ] || { %s; }", target, writeCmd)
 		} else {
 			shellCmd = writeCmd
 		}

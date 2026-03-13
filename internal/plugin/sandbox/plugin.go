@@ -31,7 +31,7 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 	resp := &plugin.PreContainerRunResponse{}
 
 	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
-		resp.RunArgs = append(resp.RunArgs, "--cap-add=NET_ADMIN", "--cap-add=NET_RAW")
+		resp.RunArgs = append(resp.RunArgs, "--cap-add=NET_ADMIN")
 	}
 
 	return resp, nil

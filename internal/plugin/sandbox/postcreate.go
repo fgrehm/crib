@@ -53,7 +53,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// The script is copied to a temp file and executed to avoid ARG_MAX
 	// limits when blockCloudProviders generates ~1 MB of ipset rules.
 	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
-		netScript := generateNetworkScript(cfg) + "true\n"
+		netScript := generateNetworkScript(cfg)
 		if err := execScriptViaFile(ctx, req, netScript); err != nil {
 			return fmt.Errorf("applying network rules: %w", err)
 		}
@@ -106,7 +106,7 @@ func resolveRealBinary(ctx context.Context, req *plugin.PostContainerCreateReque
 	resolveCmd := fmt.Sprintf(
 		"PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -v -F '%s' | paste -sd ':') "+
 			"command -v '%s' 2>/dev/null || true",
-		excludeDir, name)
+		plugin.ShellQuote(excludeDir), name)
 	result, err := req.ExecOutputFunc(ctx, []string{"sh", "-c", resolveCmd}, "root")
 	if err != nil {
 		return "", err

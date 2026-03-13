@@ -138,6 +138,28 @@ func TestGenerateWrapperScript_WithDenyPaths(t *testing.T) {
 	}
 }
 
+func TestGenerateWrapperScript_QuotedPaths(t *testing.T) {
+	pol := &policy{
+		WorkspaceFolder: "/workspaces/it's a project",
+		RemoteHome:      "/home/vscode",
+		DenyPaths: []denyRule{
+			{Path: "/home/vscode/o'reilly", DenyRead: true},
+		},
+		AllowWritePaths: []string{"/data/it's"},
+	}
+	script := generateWrapperScript(pol)
+
+	if !strings.Contains(script, "--bind '/workspaces/it'\\''s a project' '/workspaces/it'\\''s a project'") {
+		t.Error("workspace folder not properly escaped")
+	}
+	if !strings.Contains(script, "--tmpfs '/home/vscode/o'\\''reilly'") {
+		t.Error("deny path not properly escaped")
+	}
+	if !strings.Contains(script, "--bind '/data/it'\\''s' '/data/it'\\''s'") {
+		t.Error("allow-write path not properly escaped")
+	}
+}
+
 func TestGenerateAliasScript(t *testing.T) {
 	script := generateAliasScript("claude", "/usr/local/bin/claude", "/home/vscode/.local/bin/sandbox")
 
@@ -149,5 +171,13 @@ func TestGenerateAliasScript(t *testing.T) {
 	}
 	if !strings.Contains(script, "exec '/home/vscode/.local/bin/sandbox' '/usr/local/bin/claude'") {
 		t.Error("missing exec with sandbox and real binary")
+	}
+}
+
+func TestGenerateAliasScript_QuotedPaths(t *testing.T) {
+	script := generateAliasScript("claude", "/opt/it's/claude", "/home/user/.local/bin/sandbox")
+
+	if !strings.Contains(script, "exec '/home/user/.local/bin/sandbox' '/opt/it'\\''s/claude'") {
+		t.Error("real binary path not properly escaped")
 	}
 }

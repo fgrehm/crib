@@ -55,14 +55,29 @@ fi
 
 # Oracle Cloud
 echo "  Oracle Cloud..."
-curl -sf "https://docs.oracle.com/en-us/iaas/tools/public_ip_ranges.json" > "$TMPDIR/oci.json"
-jq -r '[.regions[].cidrs[].cidr] | unique' "$TMPDIR/oci.json" > "$TMPDIR/oci_v4.json"
-echo '[]' > "$TMPDIR/oci_v6.json"
+if curl -sf "https://docs.oracle.com/en-us/iaas/tools/public_ip_ranges.json" > "$TMPDIR/oci.json"; then
+  jq -r '[.regions[].cidrs[].cidr] | unique' "$TMPDIR/oci.json" > "$TMPDIR/oci_v4.json"
+  echo '[]' > "$TMPDIR/oci_v6.json"
+else
+  echo "    WARNING: could not fetch Oracle Cloud IP ranges, using empty ranges"
+  echo '[]' > "$TMPDIR/oci_v4.json"
+  echo '[]' > "$TMPDIR/oci_v6.json"
+fi
 
 # Cloudflare (plain text, one CIDR per line)
 echo "  Cloudflare..."
-curl -sf "https://www.cloudflare.com/ips-v4" | jq -R -s 'split("\n") | map(select(. != ""))' > "$TMPDIR/cf_v4.json"
-curl -sf "https://www.cloudflare.com/ips-v6" | jq -R -s 'split("\n") | map(select(. != ""))' > "$TMPDIR/cf_v6.json"
+if curl -sf "https://www.cloudflare.com/ips-v4" > "$TMPDIR/cf_v4_raw.txt"; then
+  jq -R -s 'split("\n") | map(select(. != ""))' "$TMPDIR/cf_v4_raw.txt" > "$TMPDIR/cf_v4.json"
+else
+  echo "    WARNING: could not fetch Cloudflare IPv4 ranges, using empty ranges"
+  echo '[]' > "$TMPDIR/cf_v4.json"
+fi
+if curl -sf "https://www.cloudflare.com/ips-v6" > "$TMPDIR/cf_v6_raw.txt"; then
+  jq -R -s 'split("\n") | map(select(. != ""))' "$TMPDIR/cf_v6_raw.txt" > "$TMPDIR/cf_v6.json"
+else
+  echo "    WARNING: could not fetch Cloudflare IPv6 ranges, using empty ranges"
+  echo '[]' > "$TMPDIR/cf_v6.json"
+fi
 
 # Assemble the final JSON.
 TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')

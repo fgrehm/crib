@@ -65,10 +65,10 @@ func TestPreContainerRun_BlockLocalNetwork_AddsNetCaps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.RunArgs) != 2 {
-		t.Fatalf("expected 2 RunArgs, got %d: %v", len(resp.RunArgs), resp.RunArgs)
+	if len(resp.RunArgs) != 1 {
+		t.Fatalf("expected 1 RunArg, got %d: %v", len(resp.RunArgs), resp.RunArgs)
 	}
-	if resp.RunArgs[0] != "--cap-add=NET_ADMIN" || resp.RunArgs[1] != "--cap-add=NET_RAW" {
+	if resp.RunArgs[0] != "--cap-add=NET_ADMIN" {
 		t.Errorf("unexpected RunArgs: %v", resp.RunArgs)
 	}
 }
@@ -83,7 +83,7 @@ func TestPreContainerRun_BlockCloudProviders_AddsNetCaps(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(resp.RunArgs) != 2 {
-		t.Fatalf("expected 2 RunArgs, got %d", len(resp.RunArgs))
+	if len(resp.RunArgs) != 1 {
+		t.Fatalf("expected 1 RunArg, got %d", len(resp.RunArgs))
 	}
 }

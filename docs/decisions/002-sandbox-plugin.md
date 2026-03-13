@@ -85,8 +85,8 @@ Known plugin artifacts and their default sandbox treatment:
 
 | Plugin | Artifacts | Default sandbox rule |
 |--------|-----------|----------------------|
-| `codingagents` | `~/.claude/.credentials.json` | deny-read |
-| `ssh` | `~/.ssh/config`, `~/.ssh/*.pub` | deny-read |
+| `codingagents` | `~/.claude/` | deny-read |
+| `ssh` | `~/.ssh/` | deny-read |
 | `ssh` | `/tmp/ssh-agent.sock` (`SSH_AUTH_SOCK`) | no restriction (see below) |
 | `shellhistory` | `~/.crib_history/` | deny-read, allow-write |
 
@@ -98,7 +98,7 @@ Known plugin artifacts and their default sandbox treatment:
 
 **Pre-container-run (v1):**
 
-- Adds `RunArgs` for network restrictions if `blockLocalNetwork` is true: `--cap-add=NET_ADMIN --cap-add=NET_RAW` (both needed for `iptables` inside the container).
+- Adds `RunArgs` for network restrictions if `blockLocalNetwork` is true: `--cap-add=NET_ADMIN` (needed for `iptables` inside the container).
 - Inspects other plugins' staged artifacts to build the default deny lists.
 
 **Post-create (via `FileCopy` + exec):**
@@ -138,7 +138,7 @@ See [cloud metadata endpoints reference](../reference/cloud-metadata-endpoints.m
 
 **Cloud provider IP ranges** (when `blockCloudProviders` is true):
 
-Blocks outbound traffic to known cloud provider IP ranges using their published machine-readable IP range lists. Currently covers AWS, GCP, Azure, Oracle Cloud, and Cloudflare. This prevents a compromised agent from reaching arbitrary cloud infrastructure (e.g., exfiltrating data to an attacker-controlled EC2 instance or calling cloud APIs with stolen metadata credentials). Uses `ipset` (`hash:net` sets) for efficient matching regardless of the number of CIDRs.
+Blocks outbound traffic to known cloud provider IP ranges using their published machine-readable IP range lists. Currently covers AWS, GCP, Oracle Cloud, and Cloudflare. Azure ranges are fetched on a best-effort basis (Microsoft changes the download URL weekly), so coverage may be incomplete. This prevents a compromised agent from reaching arbitrary cloud infrastructure (e.g., exfiltrating data to an attacker-controlled EC2 instance or calling cloud APIs with stolen metadata credentials). Uses `ipset` (`hash:net` sets) for efficient matching regardless of the number of CIDRs.
 
 The IP ranges are version-controlled and embedded in the `crib` binary (not fetched at runtime). A `lastUpdated` timestamp is stored alongside the data so staleness is visible. A CI job or manual script periodically pulls the latest ranges from provider sources (see [cloud metadata endpoints reference](../reference/cloud-metadata-endpoints.md#cloud-provider-ip-ranges-machine-readable)) and commits updates. This avoids network dependencies at container setup time and makes the blocklist auditable via git history.
 
@@ -230,7 +230,7 @@ Claude Code's sandbox runtime offers [`enableWeakerNestedSandbox`](https://code.
 
 ### `iptables` in rootless mode
 
-`iptables` inside a container requires real root privileges. In rootless Docker/Podman, even `CAP_NET_ADMIN` + `CAP_NET_RAW` may not be sufficient because the host user lacks real root. `blockLocalNetwork` and `blockCloudProviders` may silently fail in rootless setups. The plugin should detect this and warn.
+`iptables` inside a container requires real root privileges. In rootless Docker/Podman, even `CAP_NET_ADMIN` may not be sufficient because the host user lacks real root. `blockLocalNetwork` and `blockCloudProviders` may silently fail in rootless setups. The plugin should detect this and warn.
 
 ### SSH agent usage (not extraction)
 
