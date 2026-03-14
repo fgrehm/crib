@@ -26,7 +26,7 @@ func buildPolicy(cfg *sandboxConfig, workspaceDir, remoteUser, workspaceFolder s
 
 	// Deduplicate by path: deny-read wins over deny-write.
 	seen := make(map[string]int) // path -> index in rules
-	rules := make([]denyRule, 0, len(discovered)+len(cfg.DenyRead)+len(cfg.DenyWrite))
+	var rules []denyRule
 	addRule := func(r denyRule) {
 		if idx, ok := seen[r.Path]; ok {
 			if r.DenyRead && !rules[idx].DenyRead {
@@ -49,7 +49,7 @@ func buildPolicy(cfg *sandboxConfig, workspaceDir, remoteUser, workspaceFolder s
 	}
 
 	// Extra writable paths (excluding any that conflict with deny rules).
-	allow := make([]string, 0, len(cfg.AllowWrite))
+	var allow []string
 	for _, p := range cfg.AllowWrite {
 		expanded := expandHome(p, remoteHome)
 		if _, denied := seen[expanded]; !denied {
