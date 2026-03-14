@@ -19,6 +19,13 @@ func New() *Plugin {
 // Name returns the plugin identifier.
 func (p *Plugin) Name() string { return "sandbox" }
 
+// IsPostContainerCreateEnabled returns false when no sandbox config is present,
+// so the plugin manager skips dispatch (and progress messages) for unconfigured
+// workspaces.
+func (p *Plugin) IsPostContainerCreateEnabled(req *plugin.PostContainerCreateRequest) bool {
+	return parseConfig(req.Customizations) != nil
+}
+
 // PreContainerRun reads sandbox config and returns RunArgs for network
 // capabilities when blockLocalNetwork is enabled. Returns nil (no-op) when
 // no sandbox config is present.
@@ -30,7 +37,7 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 
 	resp := &plugin.PreContainerRunResponse{}
 
-	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
+	if cfg.BlockLocalNetwork {
 		resp.RunArgs = append(resp.RunArgs, "--cap-add=NET_ADMIN")
 	}
 

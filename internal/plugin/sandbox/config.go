@@ -3,12 +3,11 @@ package sandbox
 // sandboxConfig holds the parsed sandbox configuration from
 // customizations.crib.sandbox in devcontainer.json.
 type sandboxConfig struct {
-	DenyRead            []string // extra paths to deny reads on
-	DenyWrite           []string // extra paths to deny writes on
-	AllowWrite          []string // extra writable paths beyond workspace + /tmp
-	BlockLocalNetwork   bool
-	BlockCloudProviders bool
-	Aliases             []string // agent commands to wrap (e.g. "claude", "pi")
+	DenyRead          []string // extra paths to deny reads on
+	DenyWrite         []string // extra paths to deny writes on
+	AllowWrite        []string // extra writable paths beyond workspace + /tmp
+	BlockLocalNetwork bool
+	Aliases           []string // agent commands to wrap (e.g. "claude", "pi")
 }
 
 // parseConfig extracts sandbox config from customizations.crib.
@@ -36,10 +35,6 @@ func parseConfig(customizations map[string]any) *sandboxConfig {
 	if v, ok := m["blockLocalNetwork"].(bool); ok {
 		cfg.BlockLocalNetwork = v
 	}
-	if v, ok := m["blockCloudProviders"].(bool); ok {
-		cfg.BlockCloudProviders = v
-	}
-
 	return cfg
 }
 

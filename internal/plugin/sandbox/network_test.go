@@ -76,19 +76,6 @@ func TestGenerateNetworkScript_BlockLocalNetwork(t *testing.T) {
 	}
 }
 
-func TestGenerateNetworkScript_BlockCloudProviders(t *testing.T) {
-	cfg := &sandboxConfig{BlockCloudProviders: true}
-	script := generateNetworkScript(cfg)
-
-	// Should include ipset-based cloud provider rules.
-	if !strings.Contains(script, "ipset create crib-cloud-v4") {
-		t.Error("expected ipset create for cloud provider ranges")
-	}
-	if !strings.Contains(script, "--match-set crib-cloud-v4") {
-		t.Error("expected iptables rule matching cloud ipset")
-	}
-}
-
 func TestGenerateNetworkScript_UsesDedicatedChain(t *testing.T) {
 	cfg := &sandboxConfig{BlockLocalNetwork: true}
 	script := generateNetworkScript(cfg)
@@ -115,21 +102,5 @@ func TestGenerateNetworkScript_UsesDedicatedChain(t *testing.T) {
 	}
 	if !strings.Contains(script, "-A OUTPUT -j CRIB_SANDBOX") {
 		t.Error("missing conditional jump rule addition")
-	}
-}
-
-func TestGenerateNetworkScript_BothFlags(t *testing.T) {
-	cfg := &sandboxConfig{
-		BlockLocalNetwork:   true,
-		BlockCloudProviders: true,
-	}
-	script := generateNetworkScript(cfg)
-
-	// Should have both RFC 1918 and cloud provider rules.
-	if !strings.Contains(script, "10.0.0.0/8") {
-		t.Error("missing RFC 1918 rules")
-	}
-	if !strings.Contains(script, "ipset create crib-cloud-v4") {
-		t.Error("missing cloud provider ipset rules")
 	}
 }

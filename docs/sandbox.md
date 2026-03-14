@@ -71,12 +71,6 @@ See the [cloud metadata endpoints reference](/crib/reference/cloud-metadata-endp
 
 Everything else is allowed. Web searches, LLM API calls, package installs, and all other internet traffic work normally. Services bound to `0.0.0.0` inside the container (dev servers, LSPs) can still accept incoming connections.
 
-When `blockCloudProviders` is enabled, the sandbox additionally blocks outbound traffic to known cloud provider IP ranges (AWS, GCP, Oracle Cloud, and Cloudflare) using their published IP range data. Azure ranges are fetched on a best-effort basis (Microsoft changes the download URL weekly), so coverage may be incomplete. This prevents a compromised agent from exfiltrating data to attacker-controlled cloud instances. The IP ranges are embedded in the `crib` binary and updated periodically. Uses `ipset` for efficient matching (O(1) lookup regardless of the number of CIDRs).
-
-:::note
-`blockCloudProviders` is opt-in because many APIs, package registries, and SaaS tools are hosted on major cloud providers. Enabling it may break workflows that depend on cloud-hosted services. Test with your specific setup before enabling for your team.
-:::
-
 ## Configuration reference
 
 All options go under `customizations.crib.sandbox` in `devcontainer.json`:
@@ -94,7 +88,6 @@ All options go under `customizations.crib.sandbox` in `devcontainer.json`:
 
         // Network restrictions.
         "blockLocalNetwork": true,   // block RFC 1918 + metadata endpoints
-        "blockCloudProviders": false, // block known cloud provider IP ranges
 
         // Agent aliases.
         "aliases": ["claude", "pi", "aider"]
@@ -201,7 +194,6 @@ Filesystem isolation plus network protection against metadata endpoint access an
     "crib": {
       "sandbox": {
         "blockLocalNetwork": true,
-        "blockCloudProviders": true,
         "aliases": ["claude", "pi", "aider"],
         "denyRead": ["/tmp/ssh-agent.sock"],
         "denyWrite": ["~/.config", "~/.local"]
@@ -211,7 +203,7 @@ Filesystem isolation plus network protection against metadata endpoint access an
 }
 ```
 
-Blocks cloud provider IPs, SSH agent access, and writes to config directories. The agent can only write to the workspace and `/tmp`. Note that `blockCloudProviders` may break workflows that depend on cloud-hosted services.
+Blocks metadata endpoints and RFC 1918 ranges, SSH agent access, and writes to config directories. The agent can only write to the workspace and `/tmp`.
 
 ## Limitations
 
@@ -221,7 +213,7 @@ Ubuntu 23.10+ added [AppArmor restrictions on unprivileged user namespaces](http
 
 ### Rootless Docker/Podman
 
-The `iptables`-based network restrictions require real root privileges inside the container. In rootless setups, `blockLocalNetwork` and `blockCloudProviders` may fail to apply. Individual rule failures do not stop the script (remaining rules are still attempted), and any failure is surfaced as a warning by the plugin manager. Partial protection is possible depending on the runtime configuration.
+The `iptables`-based network restrictions require real root privileges inside the container. In rootless setups, `blockLocalNetwork` may fail to apply. Individual rule failures do not stop the script (remaining rules are still attempted). If the network setup script fails entirely (e.g. `iptables` is unavailable), the plugin manager logs a warning and continues.
 
 ### SSH agent usage
 

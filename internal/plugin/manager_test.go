@@ -267,6 +267,39 @@ func TestRunPostContainerCreate_SkipsNonImplementors(t *testing.T) {
 	mgr.RunPostContainerCreate(context.Background(), testPostCreateRequest())
 }
 
+// stubPostCreateEnabledPlugin adds PostContainerCreateEnabler to stubPostCreatePlugin.
+type stubPostCreateEnabledPlugin struct {
+	stubPostCreatePlugin
+	enabled bool
+}
+
+func (s *stubPostCreateEnabledPlugin) IsPostContainerCreateEnabled(_ *PostContainerCreateRequest) bool {
+	return s.enabled
+}
+
+func TestRunPostContainerCreate_SkipsDisabledPlugins(t *testing.T) {
+	mgr := testManager()
+	disabled := &stubPostCreateEnabledPlugin{
+		stubPostCreatePlugin: stubPostCreatePlugin{stubPlugin: stubPlugin{name: "disabled"}},
+		enabled:              false,
+	}
+	enabled := &stubPostCreateEnabledPlugin{
+		stubPostCreatePlugin: stubPostCreatePlugin{stubPlugin: stubPlugin{name: "enabled"}},
+		enabled:              true,
+	}
+	mgr.Register(disabled)
+	mgr.Register(enabled)
+
+	mgr.RunPostContainerCreate(context.Background(), testPostCreateRequest())
+
+	if disabled.postCreateCalled {
+		t.Error("expected disabled plugin to be skipped")
+	}
+	if !enabled.postCreateCalled {
+		t.Error("expected enabled plugin to be called")
+	}
+}
+
 func TestRunPostContainerCreate_ErrorFailOpen(t *testing.T) {
 	mgr := testManager()
 	failing := &stubPostCreatePlugin{

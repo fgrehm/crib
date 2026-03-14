@@ -72,18 +72,3 @@ func TestPreContainerRun_BlockLocalNetwork_AddsNetCaps(t *testing.T) {
 		t.Errorf("unexpected RunArgs: %v", resp.RunArgs)
 	}
 }
-
-func TestPreContainerRun_BlockCloudProviders_AddsNetCaps(t *testing.T) {
-	p := New()
-	resp, err := p.PreContainerRun(context.Background(), testReq(map[string]any{
-		"sandbox": map[string]any{
-			"blockCloudProviders": true,
-		},
-	}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(resp.RunArgs) != 1 {
-		t.Fatalf("expected 1 RunArg, got %d", len(resp.RunArgs))
-	}
-}

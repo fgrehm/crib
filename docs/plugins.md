@@ -154,7 +154,7 @@ For the full guide, see [Agent Sandboxing](/crib/guides/sandbox/).
 
 - Makes the filesystem read-only except for the workspace folder and `/tmp`
 - Automatically denies reads on credentials injected by other plugins (SSH config, Claude tokens, shell history)
-- Optionally blocks outbound traffic to private networks, [cloud metadata endpoints](/crib/reference/cloud-metadata-endpoints/), and cloud provider IP ranges
+- Optionally blocks outbound traffic to private networks and [cloud metadata endpoints](/crib/reference/cloud-metadata-endpoints/)
 - Creates aliases in `~/.local/bin/` that transparently wrap agent commands and print a `[crib sandbox]` banner
 
 ---

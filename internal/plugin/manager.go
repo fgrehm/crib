@@ -69,6 +69,9 @@ func (m *Manager) RunPostContainerCreate(ctx context.Context, req *PostContainer
 		if !ok {
 			continue
 		}
+		if e, ok := p.(PostContainerCreateEnabler); ok && !e.IsPostContainerCreateEnabled(req) {
+			continue
+		}
 		if m.progress != nil {
 			m.progress("  Running post-create: " + p.Name())
 		}

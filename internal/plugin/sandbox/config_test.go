@@ -30,9 +30,6 @@ func TestParseConfig_Empty(t *testing.T) {
 	if cfg.BlockLocalNetwork {
 		t.Error("expected blockLocalNetwork=false by default")
 	}
-	if cfg.BlockCloudProviders {
-		t.Error("expected blockCloudProviders=false by default")
-	}
 	if len(cfg.Aliases) != 0 {
 		t.Error("expected empty aliases")
 	}
@@ -41,12 +38,11 @@ func TestParseConfig_Empty(t *testing.T) {
 func TestParseConfig_Full(t *testing.T) {
 	cfg := parseConfig(map[string]any{
 		"sandbox": map[string]any{
-			"denyRead":            []any{"~/.ssh/config"},
-			"denyWrite":           []any{"~/.ssh", "~/.claude"},
-			"allowWrite":          []any{"/var/log"},
-			"blockLocalNetwork":   true,
-			"blockCloudProviders": true,
-			"aliases":             []any{"claude", "pi", "aider"},
+			"denyRead":          []any{"~/.ssh/config"},
+			"denyWrite":         []any{"~/.ssh", "~/.claude"},
+			"allowWrite":        []any{"/var/log"},
+			"blockLocalNetwork": true,
+			"aliases":           []any{"claude", "pi", "aider"},
 		},
 	})
 	if cfg == nil {
@@ -54,9 +50,6 @@ func TestParseConfig_Full(t *testing.T) {
 	}
 	if !cfg.BlockLocalNetwork {
 		t.Error("expected blockLocalNetwork=true")
-	}
-	if !cfg.BlockCloudProviders {
-		t.Error("expected blockCloudProviders=true")
 	}
 	if len(cfg.DenyRead) != 1 || cfg.DenyRead[0] != "~/.ssh/config" {
 		t.Errorf("unexpected denyRead: %v", cfg.DenyRead)

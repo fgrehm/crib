@@ -27,22 +27,16 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 
 	// 1. Install required tools.
 	packages := "bubblewrap"
-	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
+	if cfg.BlockLocalNetwork {
 		packages += " iptables"
-	}
-	if cfg.BlockCloudProviders {
-		packages += " ipset"
 	}
 	installCmd := fmt.Sprintf(
 		"apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq %s >/dev/null 2>&1",
 		packages)
 	// Only install if any package is missing.
 	checkCmd := "command -v bwrap >/dev/null 2>&1"
-	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
+	if cfg.BlockLocalNetwork {
 		checkCmd += " && command -v iptables >/dev/null 2>&1"
-	}
-	if cfg.BlockCloudProviders {
-		checkCmd += " && command -v ipset >/dev/null 2>&1"
 	}
 	fullInstallCmd := fmt.Sprintf("%s || { %s; }", checkCmd, installCmd)
 	if err := req.ExecFunc(ctx, []string{"sh", "-c", fullInstallCmd}, "root"); err != nil {
@@ -52,7 +46,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// 2. Apply network restrictions (once, container-wide).
 	// The script is copied to a temp file and executed to avoid ARG_MAX
 	// limits when blockCloudProviders generates ~1 MB of ipset rules.
-	if cfg.BlockLocalNetwork || cfg.BlockCloudProviders {
+	if cfg.BlockLocalNetwork {
 		netScript := generateNetworkScript(cfg)
 		if err := execScriptViaFile(ctx, req, netScript); err != nil {
 			return fmt.Errorf("applying network rules: %w", err)

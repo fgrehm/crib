@@ -45,6 +45,14 @@ type PostContainerCreator interface {
 	PostContainerCreate(ctx context.Context, req *PostContainerCreateRequest) error
 }
 
+// PostContainerCreateEnabler is an optional companion to PostContainerCreator.
+// When implemented, the manager calls IsPostContainerCreateEnabled before
+// printing a progress message or dispatching PostContainerCreate. Returning
+// false silently skips the plugin for this request (e.g. when unconfigured).
+type PostContainerCreateEnabler interface {
+	IsPostContainerCreateEnabled(req *PostContainerCreateRequest) bool
+}
+
 // PostContainerCreateRequest carries context about a running container.
 // Plugins use this to install tools or generate files inside the container.
 type PostContainerCreateRequest struct {

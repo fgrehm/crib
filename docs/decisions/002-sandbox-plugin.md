@@ -136,20 +136,16 @@ If `--unshare-net` were used instead, the sandbox would get an isolated network 
 
 See [cloud metadata endpoints reference](../reference/cloud-metadata-endpoints.md) for the full list with sources.
 
-**Cloud provider IP ranges** (when `blockCloudProviders` is true):
+**Cloud provider IP ranges (deferred to v2):**
 
-Blocks outbound traffic to known cloud provider IP ranges using their published machine-readable IP range lists. Currently covers AWS, GCP, Oracle Cloud, and Cloudflare. Azure ranges are fetched on a best-effort basis (Microsoft changes the download URL weekly), so coverage may be incomplete. This prevents a compromised agent from reaching arbitrary cloud infrastructure (e.g., exfiltrating data to an attacker-controlled EC2 instance or calling cloud APIs with stolen metadata credentials). Uses `ipset` (`hash:net` sets) for efficient matching regardless of the number of CIDRs.
+IP-range blocklisting of cloud providers was evaluated for v1 but deferred. The approach has practical weaknesses that make it a poor fit for this use case:
 
-The IP ranges are version-controlled and embedded in the `crib` binary (not fetched at runtime). A `lastUpdated` timestamp is stored alongside the data so staleness is visible. A CI job or manual script periodically pulls the latest ranges from provider sources (see [cloud metadata endpoints reference](../reference/cloud-metadata-endpoints.md#cloud-provider-ip-ranges-machine-readable)) and commits updates. This avoids network dependencies at container setup time and makes the blocklist auditable via git history.
+- The blocklist is necessarily incomplete: cloud providers don't publish exhaustive machine-readable lists, some providers (e.g. Azure) change their download URLs unpredictably, and new providers are never covered automatically.
+- Embedded CIDRs go stale as providers reallocate ranges; keeping them current requires ongoing CI work.
+- Breaking legitimate traffic (package registries, APIs, SaaS tools hosted on major clouds) without a clean allowlisting mechanism creates operational friction that outweighs the security benefit.
+- No other agent sandbox tool uses IP-range blocklisting. The industry pattern is default-deny + explicit domain allowlist (e.g. Claude Code's proxy-based sandbox, Trail of Bits' devcontainer).
 
-This is opt-in because it blocks legitimate traffic to cloud-hosted services (many APIs, registries, and SaaS tools run on major cloud providers).
-
-Allowlisted destinations (to avoid breaking common workflows when `blockCloudProviders` is enabled):
-
-- LLM provider API endpoints (built-in allowlist of `api.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com`, etc.)
-- Package registries (`registry.npmjs.org`, `pypi.org`, `proxy.golang.org`, etc.)
-
-The exact allowlist mechanism is TBD. IP-based allowlisting is fragile (CDN IPs change), so a DNS-based approach or proxy may be needed. If the allowlist proves too complex for v1, `blockCloudProviders` will ship as best-effort with clear documentation of what breaks.
+`blockLocalNetwork` covers the highest-value targets (cloud metadata endpoints, RFC 1918 lateral movement) with a stable, well-defined set of CIDRs. A proper cloud egress story requires a proxy component for domain-level allowlisting and is tracked in v2.
 
 ### Wrapper script (sketch)
 
@@ -187,11 +183,11 @@ exec '/home/vscode/.local/bin/sandbox' '/usr/local/bin/claude' "$@"
 - Plugin awareness via workspace state dir scanning.
 - Optional agent aliases with banner message.
 - `blockLocalNetwork` via `iptables` rules (metadata endpoints, RFC 1918).
-- `blockCloudProviders` via `iptables` rules using published cloud provider IP ranges.
 - Configuration in `devcontainer.json` customizations.
 
 ### v2 (future)
 
+- `blockCloudProviders`: block outbound traffic to cloud provider IP ranges. IP-range blocklisting was evaluated and rejected for v1 (see Network isolation section above). A proper solution needs a proxy component for domain-level allowlisting.
 - `gh` CLI restrictions: wrapper script that intercepts mutation subcommands (`gh issue create`, `gh pr create`, `gh pr comment`, `gh pr merge`, `gh pr close`, `gh issue comment`, `gh release create`). Read-only commands (`gh pr view`, `gh issue list`, `gh pr diff`) allowed. `gh api` blocked entirely (covers both REST and GraphQL escape hatches; `gh api graphql -f query='mutation { ... }'` bypasses subcommand checks). Start conservative, relax later.
 - Per-agent policy profiles (different restrictions for different agents).
 - [`@anthropic-ai/sandbox-runtime`](https://github.com/anthropic-experimental/sandbox-runtime) as alternative backend.
@@ -230,7 +226,7 @@ Claude Code's sandbox runtime offers [`enableWeakerNestedSandbox`](https://code.
 
 ### `iptables` in rootless mode
 
-`iptables` inside a container requires real root privileges. In rootless Docker/Podman, even `CAP_NET_ADMIN` may not be sufficient because the host user lacks real root. `blockLocalNetwork` and `blockCloudProviders` may silently fail in rootless setups. The plugin should detect this and warn.
+`iptables` inside a container requires real root privileges. In rootless Docker/Podman, even `CAP_NET_ADMIN` may not be sufficient because the host user lacks real root. `blockLocalNetwork` may silently fail in rootless setups. The plugin should detect this and warn.
 
 ### SSH agent usage (not extraction)
 

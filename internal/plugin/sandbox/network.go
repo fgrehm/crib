@@ -3,8 +3,6 @@ package sandbox
 import (
 	"fmt"
 	"strings"
-
-	"github.com/fgrehm/crib/internal/plugin/sandbox/cloudips"
 )
 
 // Destinations blocked by blockLocalNetwork, grouped by iptables binary.
@@ -56,20 +54,10 @@ func generateNetworkScript(cfg *sandboxConfig) string {
 		}
 	}
 
-	if cfg.BlockCloudProviders {
-		b.WriteString(generateCloudProviderRules())
-	}
-
 	// Ensure exactly one jump rule in OUTPUT (check before adding).
 	for _, bin := range []string{"iptables", "ip6tables"} {
 		fmt.Fprintf(&b, "%s -C OUTPUT -j CRIB_SANDBOX 2>/dev/null || %s -A OUTPUT -j CRIB_SANDBOX 2>/dev/null\n", bin, bin)
 	}
 
 	return b.String()
-}
-
-// generateCloudProviderRules produces ipset+iptables rules from embedded
-// cloud provider IP ranges.
-func generateCloudProviderRules() string {
-	return cloudips.GenerateIPSetRules()
 }
