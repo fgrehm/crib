@@ -25,32 +25,28 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	localBin := remoteHome + "/.local/bin"
 	owner := plugin.InferOwner(req.RemoteUser)
 
-	// 1. Install required tools.
-	packages := "bubblewrap"
-	if cfg.BlockLocalNetwork {
-		packages += " iptables"
-	}
-	installCmd := fmt.Sprintf(
-		"apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq %s >/dev/null 2>&1",
-		packages)
-	// Only install if any package is missing.
-	checkCmd := "command -v bwrap >/dev/null 2>&1"
-	if cfg.BlockLocalNetwork {
-		checkCmd += " && command -v iptables >/dev/null 2>&1"
-	}
-	fullInstallCmd := fmt.Sprintf(
-		"%s || { command -v apt-get >/dev/null 2>&1 && { %s; } || "+
-			"{ echo 'crib sandbox: bubblewrap not found and apt-get not available; install bubblewrap manually' >&2; exit 1; }; }",
-		checkCmd, installCmd)
-	if err := req.ExecFunc(ctx, []string{"sh", "-c", fullInstallCmd}, "root"); err != nil {
-		return fmt.Errorf("installing sandbox tools (image may need bubblewrap pre-installed): %w", err)
+	// 1. Install bubblewrap (required for filesystem sandboxing).
+	bwrapInstall := "command -v bwrap >/dev/null 2>&1 || { " +
+		"command -v apt-get >/dev/null 2>&1 && " +
+		"apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq bubblewrap >/dev/null 2>&1 || " +
+		"{ echo 'crib sandbox: bubblewrap not found and apt-get not available; install bubblewrap manually' >&2; exit 1; }; }"
+	if err := req.ExecFunc(ctx, []string{"sh", "-c", bwrapInstall}, "root"); err != nil {
+		return fmt.Errorf("installing bubblewrap (image may need it pre-installed): %w", err)
 	}
 
-	// 2. Apply network restrictions (once, container-wide).
-	// Non-fatal: iptables may fail in rootless/restricted environments.
-	// Filesystem sandboxing (bwrap) still works independently.
+	// 2. Install iptables and apply network restrictions (non-fatal).
+	// iptables may be unavailable or fail in rootless/restricted environments.
+	// Filesystem sandboxing (bwrap) works independently.
 	var netErr error
 	if cfg.BlockLocalNetwork {
+		iptablesInstall := "command -v iptables >/dev/null 2>&1 || { " +
+			"command -v apt-get >/dev/null 2>&1 && " +
+			"apt-get install -y -qq iptables >/dev/null 2>&1; }"
+		if err := req.ExecFunc(ctx, []string{"sh", "-c", iptablesInstall}, "root"); err != nil {
+			netErr = fmt.Errorf("installing iptables: %w", err)
+		}
+	}
+	if cfg.BlockLocalNetwork && netErr == nil {
 		netScript := generateNetworkScript(cfg)
 		netErr = execScriptViaFile(ctx, req, netScript)
 	}

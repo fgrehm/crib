@@ -64,9 +64,12 @@ func TestPostContainerCreate_InstallsAndGeneratesWrapper(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// First exec should install tools (bwrap + iptables).
-	if len(execCmds) == 0 || !strings.Contains(execCmds[0], "bwrap") || !strings.Contains(execCmds[0], "iptables") {
-		t.Errorf("first exec should check for bwrap and iptables, got: %v", execCmds)
+	// First exec installs bwrap, second installs iptables (independent steps).
+	if len(execCmds) < 2 || !strings.Contains(execCmds[0], "bwrap") {
+		t.Errorf("first exec should install bwrap, got: %v", execCmds)
+	}
+	if !strings.Contains(execCmds[1], "iptables") {
+		t.Errorf("second exec should install iptables, got: %v", execCmds)
 	}
 
 	// Network script should be copied to the mktemp path, then executed.
