@@ -99,12 +99,12 @@ All options go under `customizations.crib.sandbox` in `devcontainer.json`:
 
 ### Path syntax
 
-Paths in `denyRead`, `denyWrite`, and `allowWrite` support two prefixes:
+Paths in `denyRead`, `denyWrite`, and `allowWrite` must be **directories** (bubblewrap's `--tmpfs` and `--bind` operate on mount points, not individual files). To deny access to a specific file, deny the parent directory.
 
 | Prefix | Meaning | Example |
 |--------|---------|---------|
 | `~/` | Relative to container user's home | `~/.ssh` |
-| `/` | Absolute path inside the container | `/etc/shadow` |
+| `/` | Absolute path inside the container | `/etc/secrets` |
 
 ### Aliases
 

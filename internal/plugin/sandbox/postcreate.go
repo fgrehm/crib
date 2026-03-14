@@ -38,9 +38,12 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	if cfg.BlockLocalNetwork {
 		checkCmd += " && command -v iptables >/dev/null 2>&1"
 	}
-	fullInstallCmd := fmt.Sprintf("%s || { %s; }", checkCmd, installCmd)
+	fullInstallCmd := fmt.Sprintf(
+		"%s || { command -v apt-get >/dev/null 2>&1 && { %s; } || "+
+			"{ echo 'crib sandbox: bubblewrap not found and apt-get not available; install bubblewrap manually' >&2; exit 1; }; }",
+		checkCmd, installCmd)
 	if err := req.ExecFunc(ctx, []string{"sh", "-c", fullInstallCmd}, "root"); err != nil {
-		return fmt.Errorf("installing sandbox tools: %w", err)
+		return fmt.Errorf("installing sandbox tools (image may need bubblewrap pre-installed): %w", err)
 	}
 
 	// 2. Apply network restrictions (once, container-wide).
@@ -97,7 +100,8 @@ func execScriptViaFile(ctx context.Context, req *plugin.PostContainerCreateReque
 	}
 	tmpScript := strings.TrimSpace(tmpPath)
 	if err := req.CopyFileFunc(ctx, []byte(script), tmpScript, "0700", "root"); err != nil {
-		return err
+		_ = req.ExecFunc(ctx, []string{"rm", "-f", tmpScript}, "root")
+		return fmt.Errorf("writing temp script: %w", err)
 	}
 	execErr := req.ExecFunc(ctx, []string{"sh", tmpScript}, "root")
 	_ = req.ExecFunc(ctx, []string{"rm", "-f", tmpScript}, "root")
