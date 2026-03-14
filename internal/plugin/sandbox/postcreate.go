@@ -44,13 +44,12 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	}
 
 	// 2. Apply network restrictions (once, container-wide).
-	// The script is copied to a temp file and executed to avoid ARG_MAX
-	// limits with large rule sets.
+	// Non-fatal: iptables may fail in rootless/restricted environments.
+	// Filesystem sandboxing (bwrap) still works independently.
+	var netErr error
 	if cfg.BlockLocalNetwork {
 		netScript := generateNetworkScript(cfg)
-		if err := execScriptViaFile(ctx, req, netScript); err != nil {
-			return fmt.Errorf("applying network rules: %w", err)
-		}
+		netErr = execScriptViaFile(ctx, req, netScript)
 	}
 
 	// 3. Build the sandbox policy.
@@ -77,6 +76,12 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 		if err := req.CopyFileFunc(ctx, []byte(aliasContent), aliasPath, "0755", owner); err != nil {
 			return fmt.Errorf("writing alias %s: %w", alias, err)
 		}
+	}
+
+	// Surface network setup failure after wrapper generation so the plugin
+	// manager logs it as a warning (fail-open).
+	if netErr != nil {
+		return fmt.Errorf("applying network rules (filesystem sandbox still active): %w", netErr)
 	}
 
 	return nil
