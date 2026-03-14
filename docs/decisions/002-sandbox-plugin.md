@@ -20,11 +20,11 @@ Claude Code has [native sandbox support](https://code.claude.com/docs/en/sandbox
 
 ## Decision
 
-Add a new `sandbox` plugin (separate from `codingagents`) that installs `bubblewrap` inside the container and generates a `sandbox` wrapper script. Users launch agents through the wrapper (e.g., `sandbox claude`, `sandbox pi`) or configure aliases so agent commands are transparently wrapped.
+Add a new `sandbox` plugin (separate from `coding-agents`) that installs `bubblewrap` inside the container and generates a `sandbox` wrapper script. Users launch agents through the wrapper (e.g., `sandbox claude`, `sandbox pi`) or configure aliases so agent commands are transparently wrapped.
 
 ### Why a separate plugin
 
-The sandbox concern is orthogonal to credential injection. The `codingagents` plugin manages Claude Code credentials. The `ssh` plugin forwards keys and config. The `sandbox` plugin restricts what processes can do with all of that. Keeping it separate means it composes with any combination of other plugins and applies to any agent, not just Claude Code.
+The sandbox concern is orthogonal to credential injection. The `coding-agents` plugin manages Claude Code credentials. The `ssh` plugin forwards keys and config. The `sandbox` plugin restricts what processes can do with all of that. Keeping it separate means it composes with any combination of other plugins and applies to any agent, not just Claude Code.
 
 ### Why `bubblewrap`
 
@@ -195,9 +195,9 @@ exec '/home/vscode/.local/bin/sandbox' '/usr/local/bin/claude' "$@"
 
 ## Alternatives considered
 
-### A. Extend the `codingagents` plugin
+### A. Extend the `coding-agents` plugin
 
-Add sandbox config to the existing `codingagents` plugin. Rejected because: sandboxing is agent-agnostic. Users want to sandbox `pi`, `aider`, and future agents too. Coupling sandbox to Claude Code credentials doesn't make sense.
+Add sandbox config to the existing `coding-agents` plugin. Rejected because: sandboxing is agent-agnostic. Users want to sandbox `pi`, `aider`, and future agents too. Coupling sandbox to Claude Code credentials doesn't make sense.
 
 ### B. Container-level restrictions only
 

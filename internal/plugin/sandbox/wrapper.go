@@ -22,33 +22,37 @@ func buildPolicy(cfg *sandboxConfig, workspaceDir, remoteUser, workspaceFolder s
 	remoteHome := plugin.InferRemoteHome(remoteUser)
 
 	// Auto-discovered deny rules from other plugins.
-	rules := discoverPluginArtifacts(workspaceDir, remoteUser)
+	discovered := discoverPluginArtifacts(workspaceDir, remoteUser)
 
-	// User-configured deny-read paths.
-	for _, p := range cfg.DenyRead {
-		rules = append(rules, denyRule{
-			Path:     expandHome(p, remoteHome),
-			DenyRead: true,
-		})
+	// Deduplicate by path: deny-read wins over deny-write.
+	seen := make(map[string]int) // path -> index in rules
+	rules := make([]denyRule, 0, len(discovered)+len(cfg.DenyRead)+len(cfg.DenyWrite))
+	addRule := func(r denyRule) {
+		if idx, ok := seen[r.Path]; ok {
+			if r.DenyRead && !rules[idx].DenyRead {
+				rules[idx].DenyRead = true // upgrade to deny-read
+			}
+			return
+		}
+		seen[r.Path] = len(rules)
+		rules = append(rules, r)
 	}
 
-	// User-configured deny-write paths.
+	for _, r := range discovered {
+		addRule(r)
+	}
+	for _, p := range cfg.DenyRead {
+		addRule(denyRule{Path: expandHome(p, remoteHome), DenyRead: true})
+	}
 	for _, p := range cfg.DenyWrite {
-		rules = append(rules, denyRule{
-			Path:     expandHome(p, remoteHome),
-			DenyRead: false,
-		})
+		addRule(denyRule{Path: expandHome(p, remoteHome), DenyRead: false})
 	}
 
 	// Extra writable paths (excluding any that conflict with deny rules).
-	denySet := make(map[string]bool)
-	for _, rule := range rules {
-		denySet[rule.Path] = true
-	}
 	allow := make([]string, 0, len(cfg.AllowWrite))
 	for _, p := range cfg.AllowWrite {
 		expanded := expandHome(p, remoteHome)
-		if !denySet[expanded] {
+		if _, denied := seen[expanded]; !denied {
 			allow = append(allow, expanded)
 		}
 	}

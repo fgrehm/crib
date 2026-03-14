@@ -14,7 +14,7 @@ internal/
   engine/      -> Core orchestration (up/down/restart, lifecycle hooks)
   driver/      -> Container runtime abstraction (Docker/Podman)
   compose/     -> Docker Compose / Podman Compose helper
-  plugin/      -> Plugin system (codingagents, packagecache, shellhistory, ssh)
+  plugin/      -> Plugin system (codingagents, packagecache, sandbox, shellhistory, ssh)
   workspace/   -> Workspace state (~/.crib/workspaces/)
   dockerfile/  -> Dockerfile parsing and rewriting
 ```

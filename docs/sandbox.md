@@ -53,7 +53,7 @@ The sandbox makes the entire filesystem read-only, then selectively opens up wri
 | `/tmp` | read-write | Scratch space for temp files |
 | `~/.crib_history/` | deny-read | May contain credentials (`export TOKEN=...`) |
 | `~/.ssh/` | deny-read | Injected by the ssh plugin, contains host info |
-| `~/.claude/` | deny-read | Injected by the coding-agents plugin |
+| `~/.claude/` | deny-read | Injected by the `coding-agents` plugin |
 
 The sandbox automatically discovers what other `crib` plugins have injected and applies appropriate restrictions. You don't need to manually list credential paths.
 

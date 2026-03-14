@@ -79,6 +79,29 @@ func TestBuildPolicy_MergesUserConfig(t *testing.T) {
 	}
 }
 
+func TestBuildPolicy_DeduplicatesDenyPaths(t *testing.T) {
+	wsDir := t.TempDir()
+	// ssh discovery will add ~/.ssh as deny-read.
+	if err := os.MkdirAll(filepath.Join(wsDir, "plugins", "ssh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &sandboxConfig{
+		// User also configures ~/.ssh as denyRead (duplicate).
+		DenyRead:  []string{"~/.ssh"},
+		DenyWrite: []string{"~/.ssh"}, // deny-write for same path, should not add a second rule
+	}
+	pol := buildPolicy(cfg, wsDir, "vscode", "/workspaces/project")
+
+	// Should be 1 entry (deduplicated), with DenyRead=true (deny-read wins).
+	if len(pol.DenyPaths) != 1 {
+		t.Fatalf("expected 1 deduplicated deny path, got %d: %+v", len(pol.DenyPaths), pol.DenyPaths)
+	}
+	if !pol.DenyPaths[0].DenyRead {
+		t.Error("deny-read should win over deny-write for the same path")
+	}
+}
+
 func TestExpandHome(t *testing.T) {
 	if got := expandHome("~/.ssh", "/home/vscode"); got != "/home/vscode/.ssh" {
 		t.Errorf("expected /home/vscode/.ssh, got %s", got)
