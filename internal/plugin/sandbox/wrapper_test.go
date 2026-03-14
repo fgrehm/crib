@@ -156,8 +156,8 @@ func TestGenerateWrapperScript_WithDenyPaths(t *testing.T) {
 	if !strings.Contains(script, "--tmpfs '/home/vscode/.crib_history'") {
 		t.Error("missing tmpfs for .crib_history (deny-read)")
 	}
-	if !strings.Contains(script, "--ro-bind '/home/vscode/.config' '/home/vscode/.config'") {
-		t.Error("missing ro-bind for .config (deny-write)")
+	if !strings.Contains(script, "--ro-bind-try '/home/vscode/.config' '/home/vscode/.config'") {
+		t.Error("missing ro-bind-try for .config (deny-write)")
 	}
 }
 
@@ -178,7 +178,7 @@ func TestGenerateWrapperScript_QuotedPaths(t *testing.T) {
 	if !strings.Contains(script, "--tmpfs '/home/vscode/o'\\''reilly'") {
 		t.Error("deny path not properly escaped")
 	}
-	if !strings.Contains(script, "--bind '/data/it'\\''s' '/data/it'\\''s'") {
+	if !strings.Contains(script, "--bind-try '/data/it'\\''s' '/data/it'\\''s'") {
 		t.Error("allow-write path not properly escaped")
 	}
 }

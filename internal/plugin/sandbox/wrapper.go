@@ -85,22 +85,23 @@ func generateWrapperScript(pol *policy) string {
 	// Writable /tmp.
 	b.WriteString("  --bind /tmp /tmp \\\n")
 
-	// Extra writable paths from user config.
+	// Extra writable paths from user config (--bind-try: skip if path absent).
 	for _, p := range pol.AllowWritePaths {
 		ep := plugin.ShellQuote(p)
-		fmt.Fprintf(&b, "  --bind '%s' '%s' \\\n", ep, ep)
+		fmt.Fprintf(&b, "  --bind-try '%s' '%s' \\\n", ep, ep)
 	}
 
 	// Deny rules.
 	// deny-read: --tmpfs masks real contents with an empty tmpfs.
-	// deny-write: --ro-bind re-mounts the path read-only, overriding any
+	// deny-write: --ro-bind-try re-mounts the path read-only, overriding any
 	//   writable --bind above (e.g. a denyWrite path under workspaceFolder).
+	//   Uses -try variant so absent paths don't hard-fail the sandbox.
 	for _, rule := range pol.DenyPaths {
 		ep := plugin.ShellQuote(rule.Path)
 		if rule.DenyRead {
 			fmt.Fprintf(&b, "  --tmpfs '%s' \\\n", ep)
 		} else {
-			fmt.Fprintf(&b, "  --ro-bind '%s' '%s' \\\n", ep, ep)
+			fmt.Fprintf(&b, "  --ro-bind-try '%s' '%s' \\\n", ep, ep)
 		}
 	}
 

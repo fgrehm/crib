@@ -96,11 +96,11 @@ func TestGenerateNetworkScript_UsesDedicatedChain(t *testing.T) {
 		t.Error("expected rules in CRIB_SANDBOX chain")
 	}
 
-	// Should have a jump rule from OUTPUT to CRIB_SANDBOX.
-	if !strings.Contains(script, "-C OUTPUT -j CRIB_SANDBOX") {
-		t.Error("missing check for existing jump rule")
+	// Should delete any existing jump then insert at top of OUTPUT.
+	if !strings.Contains(script, "-D OUTPUT -j CRIB_SANDBOX") {
+		t.Error("missing delete of existing jump rule")
 	}
-	if !strings.Contains(script, "-A OUTPUT -j CRIB_SANDBOX") {
-		t.Error("missing conditional jump rule addition")
+	if !strings.Contains(script, "-I OUTPUT 1 -j CRIB_SANDBOX") {
+		t.Error("missing insert at top of OUTPUT chain")
 	}
 }

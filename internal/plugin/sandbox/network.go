@@ -60,10 +60,11 @@ func generateNetworkScript(cfg *sandboxConfig) string {
 		}
 	}
 
-	// Ensure exactly one jump rule in OUTPUT (check before adding).
+	// Ensure exactly one jump rule at the top of OUTPUT so it runs before
+	// any pre-existing ACCEPT/RETURN rules. Delete first, then insert at position 1.
 	// ip6tables first, iptables last for exit code.
 	for _, bin := range []string{"ip6tables", "iptables"} {
-		fmt.Fprintf(&b, "%s -C OUTPUT -j CRIB_SANDBOX 2>/dev/null || %s -A OUTPUT -j CRIB_SANDBOX 2>/dev/null\n", bin, bin)
+		fmt.Fprintf(&b, "%s -D OUTPUT -j CRIB_SANDBOX 2>/dev/null; %s -I OUTPUT 1 -j CRIB_SANDBOX 2>/dev/null\n", bin, bin)
 	}
 
 	return b.String()
