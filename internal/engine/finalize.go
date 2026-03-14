@@ -31,7 +31,7 @@ type finalizeOpts struct {
 func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, opts finalizeOpts) (*UpResult, error) {
 	cc := opts.cc
 
-	// 1. Plugin post-creation: file copies and volume chown.
+	// 1. Plugin post-creation: file copies, volume chown, and post-create hooks.
 	if opts.pluginResp != nil {
 		e.execPluginCopies(ctx, cc, opts.pluginResp.Copies)
 
@@ -43,6 +43,11 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 				e.chownPluginVolumes(ctx, volCC, opts.pluginResp.Mounts)
 			}
 		}
+	}
+
+	// 1b. Plugin post-container-create hooks (e.g. sandbox installs bubblewrap).
+	if e.plugins != nil {
+		e.dispatchPostContainerCreate(ctx, ws, cfg, cc)
 	}
 
 	// 2. Resolve remote user (skip if already set, e.g. from restartSimple).

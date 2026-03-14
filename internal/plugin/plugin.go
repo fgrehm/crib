@@ -38,6 +38,44 @@ type PreContainerRunResponse struct {
 	PathPrepend []string // absolute paths to prepend to PATH in remoteEnv
 }
 
+// PostContainerCreator is an optional interface for plugins that need to run
+// commands inside the container after it has been created and started.
+// Plugins that don't need post-create behavior only implement Plugin.
+type PostContainerCreator interface {
+	PostContainerCreate(ctx context.Context, req *PostContainerCreateRequest) error
+}
+
+// PostContainerCreateEnabler is an optional companion to PostContainerCreator.
+// When implemented, the manager calls IsPostContainerCreateEnabled before
+// printing a progress message or dispatching PostContainerCreate. Returning
+// false silently skips the plugin for this request (e.g. when unconfigured).
+type PostContainerCreateEnabler interface {
+	IsPostContainerCreateEnabled(req *PostContainerCreateRequest) bool
+}
+
+// PostContainerCreateRequest carries context about a running container.
+// Plugins use this to install tools or generate files inside the container.
+type PostContainerCreateRequest struct {
+	WorkspaceID     string         // unique workspace identifier
+	WorkspaceDir    string         // ~/.crib/workspaces/{id}/
+	ContainerID     string         // running container ID
+	RemoteUser      string         // user inside the container
+	WorkspaceFolder string         // path inside container
+	Customizations  map[string]any // customizations.crib from devcontainer.json
+	Runtime         string         // "docker" or "podman"
+
+	// ExecFunc runs a command inside the container as the given user.
+	// Stdout/stderr are discarded.
+	ExecFunc func(ctx context.Context, cmd []string, user string) error
+
+	// ExecOutputFunc runs a command and returns its stdout as a string.
+	ExecOutputFunc func(ctx context.Context, cmd []string, user string) (string, error)
+
+	// CopyFileFunc writes content to a path inside the container.
+	// Uses the same stdin-piped cat approach as the engine's execPluginCopies.
+	CopyFileFunc func(ctx context.Context, content []byte, destPath, mode, user string) error
+}
+
 // InferRemoteHome returns the home directory path for the given user inside
 // the container. Root or empty user maps to /root, others to /home/{user}.
 // Used by plugins that need to place files in the container user's home

@@ -50,9 +50,15 @@ routes to:
 `finalize()` in `finalize.go` replaces the old `setupAndReturn`, `finalizeSetup`,
 `finalizeFromSnapshot`, and `runRecreateLifecycle`. Every flow converges here.
 
-Two save sites (both inside finalize):
-1. Early save before lifecycle hooks (so `crib exec`/`crib shell` work)
-2. Final save after setup completes (with probed env)
+Steps in order:
+1. Plugin file copies (`execPluginCopies`)
+2. Volume chown (if needed)
+3. Plugin post-container-create dispatch (`dispatchPostContainerCreate` in
+   `single.go`; e.g. sandbox installs bubblewrap)
+4. Remote user resolution
+5. Early save before lifecycle hooks (so `crib exec`/`crib shell` work)
+6. Lifecycle hooks or snapshot restore
+7. Final save after setup completes (with probed env)
 
 ## remoteEnv is injected at exec time, not baked in
 

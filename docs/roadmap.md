@@ -11,6 +11,10 @@ Items move between sections as priorities shift.
 
 Detect project type (Ruby, Node, Go, etc.) from conventions and generate a working devcontainer config without the user writing one. See the [RFC](https://github.com/fgrehm/crib/blob/main/docs/rfcs/init.md) for the full design.
 
+### Agent sandboxing plugin
+
+Restrict what coding agents can do inside dev containers using [`bubblewrap`](https://github.com/containers/bubblewrap). Filesystem isolation (read-only root, writable workspace only), automatic credential protection, and network restrictions (RFC 1918, cloud metadata endpoints). Works with any agent (Claude Code, [`pi`](https://pi.dev/), Aider, Goose). See the [guide](/crib/guides/sandbox/) and [ADR 002](https://github.com/fgrehm/crib/blob/main/docs/decisions/002-sandbox-plugin.md).
+
 ### Transparent command dispatch
 
 Run `crib` commands from inside or outside the container, with automatic delegation.
@@ -36,6 +40,10 @@ Add `--json` or `--format json` flag to commands like `status`, `list` for scrip
 ### ~~`--force` flag for destructive commands~~
 
 ~~Add a `--force` / `-f` flag to commands like `remove`, `rebuild`, and `restart` to skip confirmation prompts. Useful for scripting and CI.~~ Done. `crib remove` and `crib prune` have `--force` / `-f`.
+
+### XDG-based cache provider
+
+The current cache plugin has per-tool providers (`apt`, `pip`, `npm`, `go`, etc.) that each mount a volume to a specific path. The `downloads` provider adds a general-purpose cache at `~/.cache/crib` with `$CRIB_CACHE`. Consider a single `xdg-cache` provider that mounts a volume at `$XDG_CACHE_HOME` (`~/.cache`), which would cover all tools that follow the XDG Base Directory Spec without per-tool configuration. Recipes and scripts could cache downloads to standard paths like `~/.cache/neovim/` without knowing about crib. Tradeoff: less granular control (can't cache apt but not pip), but simpler and more portable. Could coexist with per-tool providers for cases like `apt` where the path isn't under `~/.cache`.
 
 ### Colored log output
 
@@ -102,6 +110,14 @@ SSH server inside containers via the plugin system, enabling native filesystem p
 ### Revisit save-path abstraction (ADR 001)
 
 [ADR 001](decisions/001-no-save-path-abstraction.md) decided against abstracting the 6+ save sites across single/compose/restart paths. Since then, each new feature that touches container state (feature entrypoints, feature metadata, `${containerEnv:*}` resolution) has needed manual wiring into every path. The `resolveConfigEnvFromStored` fix is the latest example of a bug class where restart paths miss critical resolution steps that `setupContainer` handles automatically. Consider a `RestartStateResolver` or similar that encapsulates the restore-from-stored + resolve + plugin-merge sequence so new paths can't silently drop state.
+
+### Project rename
+
+The name "crib" is close to [cribl.io](https://cribl.io/), which muddies search results and makes it harder to find crib-specific troubleshooting material. Candidates: `devcrib`, `cribcontainers`, or something else entirely. This is a breaking change (binary name, Go module path, container labels, state directory) so it needs a migration plan.
+
+### Standalone sandbox package ("crib-cage")
+
+Extract the sandbox plugin's core logic (bubblewrap wrapper generation, network blocking, cloud IP ranges) into a reusable standalone tool or library. This would let other projects use the same sandboxing without depending on crib. The wrapper script generation, iptables rules, and cloud IP range data are all independent of crib's plugin system. Scope: CLI that generates bwrap wrapper scripts from a config file, publishable as a separate binary and Go module.
 
 ### Reduce cyclomatic complexity hotspots
 

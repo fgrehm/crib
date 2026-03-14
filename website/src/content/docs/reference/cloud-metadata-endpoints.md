@@ -1,0 +1,1 @@
+../../../../../docs/reference/cloud-metadata-endpoints.md

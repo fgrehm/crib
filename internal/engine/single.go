@@ -244,16 +244,6 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 		remoteUser = configRemoteUser(cfg)
 	}
 
-	// Extract customizations.crib from devcontainer.json for plugins.
-	var cribCustomizations map[string]any
-	if cfg.Customizations != nil {
-		if crib, ok := cfg.Customizations["crib"]; ok {
-			if m, ok := crib.(map[string]any); ok {
-				cribCustomizations = m
-			}
-		}
-	}
-
 	req := &plugin.PreContainerRunRequest{
 		WorkspaceID:     ws.ID,
 		WorkspaceDir:    e.store.WorkspaceDir(ws.ID),
@@ -263,7 +253,7 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 		RemoteUser:      remoteUser,
 		WorkspaceFolder: workspaceFolder,
 		ContainerName:   "crib-" + ws.ID,
-		Customizations:  cribCustomizations,
+		Customizations:  extractCribCustomizations(cfg),
 	}
 
 	resp, err := e.plugins.RunPreContainerRun(ctx, req)
@@ -274,13 +264,59 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 	return resp, nil
 }
 
+// dispatchPostContainerCreate runs the post-container-create event for all
+// plugins that implement PostContainerCreator. Called from finalize after
+// file copies and volume chown.
+func (e *Engine) dispatchPostContainerCreate(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext) {
+	// Use configRemoteUser (from devcontainer.json) rather than cc.remoteUser,
+	// which hasn't been resolved yet at this point in the finalize flow.
+	// When neither config nor cc provides a user, InferRemoteHome("") returns
+	// /root, which is correct: containers without an explicit remoteUser run
+	// as root by default.
+	remoteUser := cc.remoteUser
+	if remoteUser == "" {
+		remoteUser = configRemoteUser(cfg)
+	}
+
+	req := &plugin.PostContainerCreateRequest{
+		WorkspaceID:     ws.ID,
+		WorkspaceDir:    e.store.WorkspaceDir(ws.ID),
+		ContainerID:     cc.containerID,
+		RemoteUser:      remoteUser,
+		WorkspaceFolder: cc.workspaceFolder,
+		Customizations:  extractCribCustomizations(cfg),
+		Runtime:         e.runtimeName,
+		ExecFunc: func(ctx context.Context, cmd []string, user string) error {
+			return e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
+				cmd, nil, io.Discard, io.Discard, nil, user)
+		},
+		ExecOutputFunc: func(ctx context.Context, cmd []string, user string) (string, error) {
+			var buf bytes.Buffer
+			err := e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
+				cmd, nil, &buf, io.Discard, nil, user)
+			return buf.String(), err
+		},
+		CopyFileFunc: func(ctx context.Context, content []byte, destPath, mode, user string) error {
+			dir := plugin.ShellQuote(filepath.Dir(destPath))
+			dest := plugin.ShellQuote(destPath)
+			writeCmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", dir, dest)
+			if mode != "" {
+				writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", plugin.ShellQuote(mode), dest)
+			}
+			if user != "" {
+				writeCmd += fmt.Sprintf(" && chown '%s' '%s' '%s'", plugin.ShellQuote(user), dir, dest)
+			}
+			return e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
+				[]string{"sh", "-c", writeCmd}, bytes.NewReader(content),
+				io.Discard, io.Discard, nil, "root")
+		},
+	}
+
+	e.plugins.RunPostContainerCreate(ctx, req)
+}
+
 // execPluginCopies copies staged files into the container via exec.
-//
-// NOTE: Values are embedded in single-quoted shell arguments. This is safe for
-// all current callers (bundled plugins with hardcoded paths like
-// ~/.claude/.credentials.json). If we add external/user-defined plugins, the
-// values must be shell-escaped first to prevent breakage or injection from
-// paths containing single quotes.
+// All values are shell-escaped before embedding in single-quoted arguments.
 func (e *Engine) execPluginCopies(ctx context.Context, cc containerContext, copies []plugin.FileCopy) {
 	for _, cp := range copies {
 		data, err := os.ReadFile(cp.Source)
@@ -290,19 +326,21 @@ func (e *Engine) execPluginCopies(ctx context.Context, cc containerContext, copi
 		}
 
 		// Build a shell command that creates the parent dir and writes the file.
-		// Values are single-quoted to handle paths with spaces or special chars.
-		dir := filepath.Dir(cp.Target)
-		writeCmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", dir, cp.Target)
+		// Values are shell-escaped and single-quoted to handle paths with
+		// spaces, special chars, or single quotes.
+		dir := plugin.ShellQuote(filepath.Dir(cp.Target))
+		target := plugin.ShellQuote(cp.Target)
+		writeCmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", dir, target)
 		if cp.Mode != "" {
-			writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", cp.Mode, cp.Target)
+			writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", plugin.ShellQuote(cp.Mode), target)
 		}
 		if cp.User != "" {
-			writeCmd += fmt.Sprintf(" && chown '%s' '%s' '%s'", cp.User, dir, cp.Target)
+			writeCmd += fmt.Sprintf(" && chown '%s' '%s' '%s'", plugin.ShellQuote(cp.User), dir, target)
 		}
 
 		var shellCmd string
 		if cp.IfNotExists {
-			shellCmd = fmt.Sprintf("[ -f '%s' ] || { %s; }", cp.Target, writeCmd)
+			shellCmd = fmt.Sprintf("[ -f '%s' ] || { %s; }", target, writeCmd)
 		} else {
 			shellCmd = writeCmd
 		}
@@ -315,4 +353,21 @@ func (e *Engine) execPluginCopies(ctx context.Context, cc containerContext, copi
 			return
 		}
 	}
+}
+
+// extractCribCustomizations returns the customizations.crib map from a
+// devcontainer config, or nil if not present.
+func extractCribCustomizations(cfg *config.DevContainerConfig) map[string]any {
+	if cfg.Customizations == nil {
+		return nil
+	}
+	crib, ok := cfg.Customizations["crib"]
+	if !ok {
+		return nil
+	}
+	m, ok := crib.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return m
 }

@@ -78,6 +78,7 @@ export default defineConfig({
             { label: "Lifecycle Hooks", slug: "guides/lifecycle-hooks" },
             { label: "Smart Restart", slug: "guides/smart-restart" },
             { label: "Built-in Plugins", slug: "guides/plugins" },
+            { label: "Agent Sandboxing", slug: "guides/sandbox" },
             {
               label: "Authoring Features",
               slug: "guides/authoring-features",
@@ -94,6 +95,10 @@ export default defineConfig({
           label: "Reference",
           items: [
             { label: "Troubleshooting", slug: "reference/troubleshooting" },
+            {
+              label: "Cloud Metadata Endpoints",
+              slug: "reference/cloud-metadata-endpoints",
+            },
             { label: "CHANGELOG", slug: "reference/changelog" },
           ],
         },

@@ -21,6 +21,18 @@ func (s *stubPlugin) PreContainerRun(_ context.Context, _ *PreContainerRunReques
 	return s.resp, s.err
 }
 
+// stubPostCreatePlugin implements both Plugin and PostContainerCreator.
+type stubPostCreatePlugin struct {
+	stubPlugin
+	postCreateCalled bool
+	postCreateErr    error
+}
+
+func (s *stubPostCreatePlugin) PostContainerCreate(_ context.Context, _ *PostContainerCreateRequest) error {
+	s.postCreateCalled = true
+	return s.postCreateErr
+}
+
 func testManager() *Manager {
 	return NewManager(slog.Default())
 }
@@ -43,8 +55,8 @@ func TestRunPreContainerRun_SinglePlugin(t *testing.T) {
 	mgr.Register(&stubPlugin{
 		name: "test-plugin",
 		resp: &PreContainerRunResponse{
-			Mounts: []config.Mount{{Type: "bind", Source: "/host/path", Target: "/container/path"}},
-			Env:    map[string]string{"FOO": "bar"},
+			Mounts:  []config.Mount{{Type: "bind", Source: "/host/path", Target: "/container/path"}},
+			Env:     map[string]string{"FOO": "bar"},
 			RunArgs: []string{"--network=host"},
 		},
 	})
@@ -212,5 +224,97 @@ func TestRunPreContainerRun_NoPlugins(t *testing.T) {
 	}
 	if len(resp.Copies) != 0 {
 		t.Errorf("expected 0 copies, got %d", len(resp.Copies))
+	}
+}
+
+func testPostCreateRequest() *PostContainerCreateRequest {
+	return &PostContainerCreateRequest{
+		WorkspaceID:     "test-ws",
+		WorkspaceDir:    "/tmp/workspaces/test-ws",
+		ContainerID:     "abc123",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspaces/project",
+		Runtime:         "docker",
+		ExecFunc: func(_ context.Context, _ []string, _ string) error {
+			return nil
+		},
+		CopyFileFunc: func(_ context.Context, _ []byte, _, _, _ string) error {
+			return nil
+		},
+	}
+}
+
+func TestRunPostContainerCreate_DispatchesToImplementors(t *testing.T) {
+	mgr := testManager()
+	pcc := &stubPostCreatePlugin{stubPlugin: stubPlugin{name: "sandbox"}}
+	plain := &stubPlugin{name: "plain"}
+	mgr.Register(pcc)
+	mgr.Register(plain)
+
+	mgr.RunPostContainerCreate(context.Background(), testPostCreateRequest())
+
+	if !pcc.postCreateCalled {
+		t.Error("expected PostContainerCreate to be called on sandbox plugin")
+	}
+}
+
+func TestRunPostContainerCreate_SkipsNonImplementors(t *testing.T) {
+	mgr := testManager()
+	plain := &stubPlugin{name: "plain"}
+	mgr.Register(plain)
+
+	// Should not panic or error.
+	mgr.RunPostContainerCreate(context.Background(), testPostCreateRequest())
+}
+
+// stubPostCreateEnabledPlugin adds PostContainerCreateEnabler to stubPostCreatePlugin.
+type stubPostCreateEnabledPlugin struct {
+	stubPostCreatePlugin
+	enabled bool
+}
+
+func (s *stubPostCreateEnabledPlugin) IsPostContainerCreateEnabled(_ *PostContainerCreateRequest) bool {
+	return s.enabled
+}
+
+func TestRunPostContainerCreate_SkipsDisabledPlugins(t *testing.T) {
+	mgr := testManager()
+	disabled := &stubPostCreateEnabledPlugin{
+		stubPostCreatePlugin: stubPostCreatePlugin{stubPlugin: stubPlugin{name: "disabled"}},
+		enabled:              false,
+	}
+	enabled := &stubPostCreateEnabledPlugin{
+		stubPostCreatePlugin: stubPostCreatePlugin{stubPlugin: stubPlugin{name: "enabled"}},
+		enabled:              true,
+	}
+	mgr.Register(disabled)
+	mgr.Register(enabled)
+
+	mgr.RunPostContainerCreate(context.Background(), testPostCreateRequest())
+
+	if disabled.postCreateCalled {
+		t.Error("expected disabled plugin to be skipped")
+	}
+	if !enabled.postCreateCalled {
+		t.Error("expected enabled plugin to be called")
+	}
+}
+
+func TestRunPostContainerCreate_ErrorFailOpen(t *testing.T) {
+	mgr := testManager()
+	failing := &stubPostCreatePlugin{
+		stubPlugin:    stubPlugin{name: "failing"},
+		postCreateErr: errors.New("install failed"),
+	}
+	good := &stubPostCreatePlugin{
+		stubPlugin: stubPlugin{name: "good"},
+	}
+	mgr.Register(failing)
+	mgr.Register(good)
+
+	mgr.RunPostContainerCreate(context.Background(), testPostCreateRequest())
+
+	if !good.postCreateCalled {
+		t.Error("expected good plugin to still run after failing plugin")
 	}
 }

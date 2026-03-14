@@ -18,6 +18,7 @@ import (
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/plugin/codingagents"
 	"github.com/fgrehm/crib/internal/plugin/packagecache"
+	"github.com/fgrehm/crib/internal/plugin/sandbox"
 	"github.com/fgrehm/crib/internal/plugin/shellhistory"
 	pluginssh "github.com/fgrehm/crib/internal/plugin/ssh"
 	"github.com/fgrehm/crib/internal/ui"
@@ -285,6 +286,7 @@ func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
 	mgr.Register(codingagents.New())
 	mgr.Register(shellhistory.New())
 	mgr.Register(pluginssh.New())
+	mgr.Register(sandbox.New())
 	if len(cacheProviders) > 0 {
 		if unknown := packagecache.ValidateProviders(cacheProviders); len(unknown) > 0 {
 			logger.Warn("unknown cache providers in .cribrc", "unknown", unknown, "supported", packagecache.SupportedProviders())
