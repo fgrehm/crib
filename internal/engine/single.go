@@ -270,6 +270,9 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 func (e *Engine) dispatchPostContainerCreate(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext) {
 	// Use configRemoteUser (from devcontainer.json) rather than cc.remoteUser,
 	// which hasn't been resolved yet at this point in the finalize flow.
+	// When neither config nor cc provides a user, InferRemoteHome("") returns
+	// /root, which is correct: containers without an explicit remoteUser run
+	// as root by default.
 	remoteUser := cc.remoteUser
 	if remoteUser == "" {
 		remoteUser = configRemoteUser(cfg)

@@ -47,7 +47,11 @@ func TestPostContainerCreate_InstallsAndGeneratesWrapper(t *testing.T) {
 			execCmds = append(execCmds, strings.Join(cmd, " "))
 			return nil
 		},
-		ExecOutputFunc: func(_ context.Context, _ []string, _ string) (string, error) {
+		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
+			// Simulate mktemp returning a temp path.
+			if len(cmd) > 0 && cmd[0] == "mktemp" {
+				return "/tmp/crib-sandbox-abc123.sh\n", nil
+			}
 			return "", nil
 		},
 		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
@@ -65,8 +69,8 @@ func TestPostContainerCreate_InstallsAndGeneratesWrapper(t *testing.T) {
 		t.Errorf("first exec should check for bwrap and iptables, got: %v", execCmds)
 	}
 
-	// Network script should be copied to temp file, then executed.
-	netScript, ok := copiedFiles["/tmp/.crib-sandbox-setup.sh"]
+	// Network script should be copied to the mktemp path, then executed.
+	netScript, ok := copiedFiles["/tmp/crib-sandbox-abc123.sh"]
 	if !ok {
 		t.Fatal("expected network script to be copied to temp file")
 	}

@@ -83,15 +83,20 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 }
 
 // execScriptViaFile copies a shell script into the container and executes it.
-// Avoids ARG_MAX limits for large scripts (e.g. ~1 MB of ipset rules).
+// Uses mktemp to create a unique path (avoids symlink attacks in /tmp).
 func execScriptViaFile(ctx context.Context, req *plugin.PostContainerCreateRequest, script string) error {
-	const tmpScript = "/tmp/.crib-sandbox-setup.sh"
+	// Create a temp file via mktemp to avoid symlink races on a fixed path.
+	tmpPath, err := req.ExecOutputFunc(ctx, []string{"mktemp", "/tmp/crib-sandbox-XXXXXX.sh"}, "root")
+	if err != nil {
+		return fmt.Errorf("creating temp file: %w", err)
+	}
+	tmpScript := strings.TrimSpace(tmpPath)
 	if err := req.CopyFileFunc(ctx, []byte(script), tmpScript, "0700", "root"); err != nil {
 		return err
 	}
-	err := req.ExecFunc(ctx, []string{"sh", tmpScript}, "root")
+	execErr := req.ExecFunc(ctx, []string{"sh", tmpScript}, "root")
 	_ = req.ExecFunc(ctx, []string{"rm", "-f", tmpScript}, "root")
-	return err
+	return execErr
 }
 
 // resolveRealBinary finds the real path of a binary inside the container,
