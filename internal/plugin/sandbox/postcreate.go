@@ -41,7 +41,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	if cfg.BlockLocalNetwork {
 		iptablesInstall := "command -v iptables >/dev/null 2>&1 || { " +
 			"command -v apt-get >/dev/null 2>&1 && " +
-			"apt-get install -y -qq iptables >/dev/null 2>&1; }"
+			"apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq iptables >/dev/null 2>&1; }"
 		if err := req.ExecFunc(ctx, []string{"sh", "-c", iptablesInstall}, "root"); err != nil {
 			netErr = fmt.Errorf("installing iptables: %w", err)
 		}
