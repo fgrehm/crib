@@ -40,19 +40,29 @@ var localNetworkBlockedCIDRs = []struct {
 func generateNetworkScript(cfg *sandboxConfig) string {
 	var b strings.Builder
 
-	// Create/flush the CRIB_SANDBOX chain and ensure a jump from OUTPUT.
-	for _, bin := range []string{"iptables", "ip6tables"} {
+	// IPv6 rules first (best-effort: ip6tables may not exist in all containers).
+	// IPv4 rules last so the script's exit code reflects iptables success.
+	for _, bin := range []string{"ip6tables", "iptables"} {
 		fmt.Fprintf(&b, "%s -N CRIB_SANDBOX 2>/dev/null || %s -F CRIB_SANDBOX 2>/dev/null\n", bin, bin)
 	}
 
 	if cfg.BlockLocalNetwork {
+		// Emit ip6tables rules before iptables rules.
 		for _, rule := range localNetworkBlockedCIDRs {
-			fmt.Fprintf(&b, "%s -A CRIB_SANDBOX -d %s -j DROP 2>/dev/null\n", rule.binary, rule.cidr)
+			if rule.binary == "ip6tables" {
+				fmt.Fprintf(&b, "%s -A CRIB_SANDBOX -d %s -j DROP 2>/dev/null\n", rule.binary, rule.cidr)
+			}
+		}
+		for _, rule := range localNetworkBlockedCIDRs {
+			if rule.binary == "iptables" {
+				fmt.Fprintf(&b, "%s -A CRIB_SANDBOX -d %s -j DROP 2>/dev/null\n", rule.binary, rule.cidr)
+			}
 		}
 	}
 
 	// Ensure exactly one jump rule in OUTPUT (check before adding).
-	for _, bin := range []string{"iptables", "ip6tables"} {
+	// ip6tables first, iptables last for exit code.
+	for _, bin := range []string{"ip6tables", "iptables"} {
 		fmt.Fprintf(&b, "%s -C OUTPUT -j CRIB_SANDBOX 2>/dev/null || %s -A OUTPUT -j CRIB_SANDBOX 2>/dev/null\n", bin, bin)
 	}
 

@@ -353,9 +353,9 @@ subdirectories:
 
 | Plugin | State directory | Sensitive artifacts |
 |--------|----------------|---------------------|
-| `codingagents` | `plugins/coding-agents/claude-code/` | `credentials.json` |
+| `coding-agents` | `plugins/coding-agents/claude-code/` | `credentials.json` |
 | `ssh` | `plugins/ssh/` | `config`, `*.pub` |
-| `shellhistory` | `plugins/shell-history/` | `.shell_history` (may contain credentials, e.g. `export TOKEN=...`) |
+| `shell-history` | `plugins/shell-history/` | `.shell_history` (may contain credentials, e.g. `export TOKEN=...`) |
 | `packagecache` | (uses named volumes, no staged files) | n/a |
 
 The plugin maps discovered artifacts to container paths using

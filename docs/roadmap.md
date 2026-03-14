@@ -13,7 +13,7 @@ Detect project type (Ruby, Node, Go, etc.) from conventions and generate a worki
 
 ### Agent sandboxing plugin
 
-Restrict what coding agents can do inside dev containers using [`bubblewrap`](https://github.com/containers/bubblewrap). Filesystem isolation (read-only root, writable workspace only), automatic credential protection, and network restrictions (RFC 1918, cloud metadata endpoints, cloud provider IP ranges). Works with any agent (Claude Code, [`pi`](https://pi.dev/), Aider, Goose). See the [guide](/crib/guides/sandbox/) and [ADR 002](https://github.com/fgrehm/crib/blob/main/docs/decisions/002-sandbox-plugin.md).
+Restrict what coding agents can do inside dev containers using [`bubblewrap`](https://github.com/containers/bubblewrap). Filesystem isolation (read-only root, writable workspace only), automatic credential protection, and network restrictions (RFC 1918, cloud metadata endpoints). Works with any agent (Claude Code, [`pi`](https://pi.dev/), Aider, Goose). See the [guide](/crib/guides/sandbox/) and [ADR 002](https://github.com/fgrehm/crib/blob/main/docs/decisions/002-sandbox-plugin.md).
 
 ### Transparent command dispatch
 

@@ -84,10 +84,10 @@ Known plugin artifacts and their default sandbox treatment:
 
 | Plugin | Artifacts | Default sandbox rule |
 |--------|-----------|----------------------|
-| `codingagents` | `~/.claude/` | deny-read |
+| `coding-agents` | `~/.claude/` | deny-read |
 | `ssh` | `~/.ssh/` | deny-read |
 | `ssh` | `/tmp/ssh-agent.sock` (`SSH_AUTH_SOCK`) | no restriction (see below) |
-| `shellhistory` | `~/.crib_history/` | deny-read (tmpfs) |
+| `shell-history` | `~/.crib_history/` | deny-read (tmpfs) |
 
 **SSH agent socket:** the private key never enters the container. The socket only exposes a signing oracle ("sign this data with key X"). A process cannot extract the key through the socket ([ref](https://smallstep.com/blog/ssh-agent-explained/)). However, it can *use* the key to authenticate (git push, SSH to servers). This is an accepted tradeoff, since agents need git access to be useful. Blocking the socket entirely would break git operations.
 

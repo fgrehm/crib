@@ -155,7 +155,7 @@ func TestPostContainerCreate_InvalidAliasNamesSkipped(t *testing.T) {
 		Runtime:         "docker",
 		Customizations: map[string]any{
 			"sandbox": map[string]any{
-				"aliases": []any{"valid-name", "bad;name", "../escape", "also bad"},
+				"aliases": []any{"valid-name", "bad;name", "../escape", "also bad", ".", "..", "-flag"},
 			},
 		},
 		ExecFunc: func(_ context.Context, _ []string, _ string) error {
@@ -181,7 +181,7 @@ func TestPostContainerCreate_InvalidAliasNamesSkipped(t *testing.T) {
 	if _, ok := copiedFiles["/home/vscode/.local/bin/valid-name"]; !ok {
 		t.Error("expected valid-name alias to be written")
 	}
-	for _, bad := range []string{"bad;name", "../escape", "also bad"} {
+	for _, bad := range []string{"bad;name", "../escape", "also bad", ".", "..", "-flag"} {
 		path := "/home/vscode/.local/bin/" + bad
 		if _, ok := copiedFiles[path]; ok {
 			t.Errorf("invalid alias %q should have been skipped", bad)

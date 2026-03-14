@@ -53,7 +53,7 @@ The sandbox makes the entire filesystem read-only, then selectively opens up wri
 | `/tmp` | read-write | Scratch space for temp files |
 | `~/.crib_history/` | deny-read | May contain credentials (`export TOKEN=...`) |
 | `~/.ssh/` | deny-read | Injected by the ssh plugin, contains host info |
-| `~/.claude/` | deny-read | Injected by the codingagents plugin |
+| `~/.claude/` | deny-read | Injected by the coding-agents plugin |
 
 The sandbox automatically discovers what other `crib` plugins have injected and applies appropriate restrictions. You don't need to manually list credential paths.
 
@@ -137,10 +137,10 @@ The sandbox plugin automatically scans `~/.crib/workspaces/{id}/plugins/*/` to d
 
 | Plugin | What it injected | Sandbox rule |
 |--------|-----------------|--------------|
-| `codingagents` | `~/.claude/` | deny-read |
+| `coding-agents` | `~/.claude/` | deny-read |
 | `ssh` | `~/.ssh/` | deny-read |
 | `ssh` | `/tmp/ssh-agent.sock` | allowed (see below) |
-| `shellhistory` | `~/.crib_history/` | deny-read |
+| `shell-history` | `~/.crib_history/` | deny-read |
 
 User-specified `denyRead`/`denyWrite`/`allowWrite` in the config are merged on top of these defaults.
 

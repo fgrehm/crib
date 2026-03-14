@@ -10,8 +10,8 @@ import (
 )
 
 // validAliasName restricts alias names to safe characters for shell commands
-// and file paths. Prevents injection via malicious devcontainer.json.
-var validAliasName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+// and file paths. Must start with alphanumeric (rejects ".", "..", "-flag").
+var validAliasName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // PostContainerCreate installs bubblewrap and generates wrapper scripts
 // inside the container. No-op when sandbox config is absent.
@@ -98,7 +98,7 @@ func execScriptViaFile(ctx context.Context, req *plugin.PostContainerCreateReque
 // excluding ~/.local/bin to avoid self-reference from our generated aliases.
 func resolveRealBinary(ctx context.Context, req *plugin.PostContainerCreateRequest, name, excludeDir string) (string, error) {
 	resolveCmd := fmt.Sprintf(
-		"PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -v -F '%s' | paste -sd ':') "+
+		"PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -v -x -F '%s' | paste -sd ':') "+
 			"command -v '%s' 2>/dev/null || true",
 		plugin.ShellQuote(excludeDir), name)
 	result, err := req.ExecOutputFunc(ctx, []string{"sh", "-c", resolveCmd}, "root")
