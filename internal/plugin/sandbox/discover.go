@@ -21,7 +21,7 @@ func discoverPluginArtifacts(workspaceDir, remoteUser string) []denyRule {
 
 	pluginsDir := filepath.Join(workspaceDir, "plugins")
 
-	// codingagents: ~/.claude/.credentials.json
+	// coding-agents: ~/.claude/.credentials.json
 	if dirExists(filepath.Join(pluginsDir, "coding-agents")) {
 		rules = append(rules, denyRule{
 			Path:     filepath.Join(remoteHome, ".claude"),
@@ -37,7 +37,7 @@ func discoverPluginArtifacts(workspaceDir, remoteUser string) []denyRule {
 		})
 	}
 
-	// shellhistory: ~/.crib_history/ (deny-read, agents shouldn't see command history)
+	// shell-history: ~/.crib_history/ (deny-read, agents shouldn't see command history)
 	if dirExists(filepath.Join(pluginsDir, "shell-history")) {
 		rules = append(rules, denyRule{
 			Path:     filepath.Join(remoteHome, ".crib_history"),

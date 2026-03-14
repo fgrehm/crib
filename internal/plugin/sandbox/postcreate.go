@@ -69,7 +69,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 			continue
 		}
 		aliasPath := localBin + "/" + alias
-		realPath, err := resolveRealBinary(ctx, req, alias, localBin)
+		realPath, err := resolveRealBinary(ctx, req, alias, localBin, req.RemoteUser)
 		if err != nil || realPath == "" {
 			continue
 		}
@@ -96,12 +96,13 @@ func execScriptViaFile(ctx context.Context, req *plugin.PostContainerCreateReque
 
 // resolveRealBinary finds the real path of a binary inside the container,
 // excluding ~/.local/bin to avoid self-reference from our generated aliases.
-func resolveRealBinary(ctx context.Context, req *plugin.PostContainerCreateRequest, name, excludeDir string) (string, error) {
+// Runs as the specified user so the lookup sees the user's PATH.
+func resolveRealBinary(ctx context.Context, req *plugin.PostContainerCreateRequest, name, excludeDir, user string) (string, error) {
 	resolveCmd := fmt.Sprintf(
 		"PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -v -x -F '%s' | paste -sd ':') "+
 			"command -v '%s' 2>/dev/null || true",
 		plugin.ShellQuote(excludeDir), name)
-	result, err := req.ExecOutputFunc(ctx, []string{"sh", "-c", resolveCmd}, "root")
+	result, err := req.ExecOutputFunc(ctx, []string{"sh", "-c", resolveCmd}, user)
 	if err != nil {
 		return "", err
 	}

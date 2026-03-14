@@ -121,7 +121,7 @@ func TestGenerateWrapperScript_Basic(t *testing.T) {
 	}
 	script := generateWrapperScript(pol)
 
-	if !strings.Contains(script, "#!/usr/bin/env bash") {
+	if !strings.Contains(script, "#!/bin/sh") {
 		t.Error("missing shebang")
 	}
 	if !strings.Contains(script, "--ro-bind / /") {
@@ -186,7 +186,7 @@ func TestGenerateWrapperScript_QuotedPaths(t *testing.T) {
 func TestGenerateAliasScript(t *testing.T) {
 	script := generateAliasScript("claude", "/usr/local/bin/claude", "/home/vscode/.local/bin/sandbox")
 
-	if !strings.Contains(script, "#!/usr/bin/env bash") {
+	if !strings.Contains(script, "#!/bin/sh") {
 		t.Error("missing shebang")
 	}
 	if !strings.Contains(script, "[crib sandbox] Running claude in sandboxed mode") {
