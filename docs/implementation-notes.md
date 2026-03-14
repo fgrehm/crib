@@ -391,9 +391,10 @@ unprivileged user namespaces to function.
 - **Alpine and hardened images**: may need `--privileged` or
   `--cap-add=SYS_ADMIN` on the outer container.
 
-The `sandbox` plugin should detect whether `bubblewrap` works at post-create
-time and warn (not fail) if it doesn't. This avoids breaking container creation
-for images that don't support nested namespaces.
+The `sandbox` plugin currently does not probe whether `bubblewrap` works at
+post-create time. If namespaces are blocked, `bwrap` fails at runtime when
+the agent is launched (not at container setup time). A future improvement
+could add a smoke test and warn (not fail) if it doesn't work.
 
 Claude Code's sandbox runtime offers
 [`enableWeakerNestedSandbox`](https://code.claude.com/docs/en/sandboxing#security-limitations)

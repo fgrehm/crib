@@ -55,7 +55,7 @@ Also blocked by `blockLocalNetwork` to prevent lateral movement to other service
 
 ## Cloud provider IP ranges (machine-readable)
 
-Major cloud providers publish their IP ranges in machine-readable format. The `sandbox` plugin uses these when `blockCloudProviders` is enabled to block outbound access to cloud infrastructure beyond just metadata endpoints. The ranges are version-controlled and embedded in the `crib` binary with a `lastUpdated` timestamp, rather than fetched at runtime. A periodic update script pulls fresh data from these sources and commits the changes.
+Major cloud providers publish their IP ranges in machine-readable format. These are documented here for reference; a future version of the sandbox plugin may use them to block outbound access to cloud infrastructure beyond metadata endpoints (see [ADR 002](../decisions/002-sandbox-plugin.md) v2 scope).
 
 | Provider | URL | Format |
 |----------|-----|--------|

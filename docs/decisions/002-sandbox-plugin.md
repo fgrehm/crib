@@ -58,7 +58,6 @@ In `devcontainer.json`, under `customizations.crib.sandbox`:
 
         // Network restrictions.
         "blockLocalNetwork": true,   // block RFC 1918, link-local, metadata endpoints
-        "blockCloudProviders": false, // block outbound to known cloud provider IP ranges
 
         // Agent command aliases (optional).
         // Creates wrapper scripts in ~/.local/bin/ that print a "sandboxed"
@@ -220,13 +219,13 @@ Ubuntu 23.10+ added AppArmor-based restrictions on unprivileged user namespaces 
 
 On Debian and older Ubuntu, unprivileged user namespaces work out of the box. Alpine and hardened images may need `--privileged` or `--cap-add=SYS_ADMIN` on the outer container.
 
-The `sandbox` plugin should detect whether `bubblewrap` works at post-create time and warn (not fail) if it doesn't. This avoids breaking container creation for images that don't support nested namespaces.
+The `sandbox` plugin currently does not probe whether `bubblewrap` works at post-create time. If namespaces are blocked, `bwrap` fails at runtime when the agent is launched (not at container setup time). A future improvement could add a smoke test and warn (not fail) if it doesn't work.
 
 Claude Code's sandbox runtime offers [`enableWeakerNestedSandbox`](https://code.claude.com/docs/en/sandboxing#security-limitations) for Docker environments without privileged namespaces, trading security for compatibility. Worth investigating whether a similar fallback is needed here.
 
 ### `iptables` in rootless mode
 
-`iptables` inside a container requires real root privileges. In rootless Docker/Podman, even `CAP_NET_ADMIN` may not be sufficient because the host user lacks real root. `blockLocalNetwork` may silently fail in rootless setups. The plugin should detect this and warn.
+`iptables` inside a container requires real root privileges. In rootless Docker/Podman, even `CAP_NET_ADMIN` may not be sufficient because the host user lacks real root. `blockLocalNetwork` may silently fail in rootless setups. Individual rule failures are suppressed (remaining rules are still attempted). If the entire network setup script fails, the plugin manager logs a warning and continues (fail-open).
 
 ### SSH agent usage (not extraction)
 

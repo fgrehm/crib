@@ -299,7 +299,6 @@ Restricts coding agents' filesystem and network access inside containers using [
       "sandbox": {
         "denyRead": ["~/.ssh", "~/.claude"],
         "blockLocalNetwork": true,
-        "blockCloudProviders": true,
         "aliases": ["claude", "pi", "aider"]
       }
     }

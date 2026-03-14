@@ -45,7 +45,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 
 	// 2. Apply network restrictions (once, container-wide).
 	// The script is copied to a temp file and executed to avoid ARG_MAX
-	// limits when blockCloudProviders generates ~1 MB of ipset rules.
+	// limits with large rule sets.
 	if cfg.BlockLocalNetwork {
 		netScript := generateNetworkScript(cfg)
 		if err := execScriptViaFile(ctx, req, netScript); err != nil {

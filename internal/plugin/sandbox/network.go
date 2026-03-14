@@ -36,10 +36,7 @@ var localNetworkBlockedCIDRs = []struct {
 // run for idempotency) with a single jump rule from OUTPUT.
 //
 // blockLocalNetwork uses plain iptables rules (~11 entries for RFC 1918,
-// link-local, metadata endpoints). blockCloudProviders uses ipset hash:net
-// sets loaded via "ipset restore" + a single iptables match rule per address
-// family. We keep iptables for the small local-network ruleset so that
-// users who only enable blockLocalNetwork don't need ipset installed.
+// link-local, metadata endpoints).
 func generateNetworkScript(cfg *sandboxConfig) string {
 	var b strings.Builder
 
