@@ -79,10 +79,10 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	wtDirs := detectWorktreeWritePaths(ctx, req)
 	existing := make(map[string]struct{}, len(pol.AllowWritePaths))
 	for _, p := range pol.AllowWritePaths {
-		existing[p] = struct{}{}
+		existing[filepath.Clean(p)] = struct{}{}
 	}
 	for _, d := range wtDirs {
-		if _, dup := existing[d]; dup {
+		if _, dup := existing[filepath.Clean(d)]; dup {
 			continue
 		}
 		pol.AllowWritePaths = append(pol.AllowWritePaths, d)
@@ -164,8 +164,12 @@ func resolveRealBinary(ctx context.Context, req *plugin.PostContainerCreateReque
 	// creates ~/.local/bin/claude as a symlink to ~/.local/share/claude/...,
 	// so readlink -f gives us the real binary path that won't self-reference
 	// when we overwrite the symlink with our alias wrapper.
+	//
+	// Filter excludeDir from PATH so that a wrapper from a previous run
+	// doesn't shadow the real binary, keeping alias updates deterministic.
 	resolveCmd := fmt.Sprintf(
-		"p=$(command -v '%s' 2>/dev/null) && readlink -f \"$p\" || true", name)
+		"p=$(PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -Fxv '%s' | tr '\\n' ':') command -v '%s' 2>/dev/null) && readlink -f \"$p\" || true",
+		excludeDir, name)
 	result, err := req.ExecOutputFunc(ctx, []string{"sh", "-c", resolveCmd}, user)
 	if err != nil {
 		return "", err
