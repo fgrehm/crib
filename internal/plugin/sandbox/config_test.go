@@ -41,6 +41,7 @@ func TestParseConfig_Full(t *testing.T) {
 			"denyRead":          []any{"~/.ssh/config"},
 			"denyWrite":         []any{"~/.ssh", "~/.claude"},
 			"allowWrite":        []any{"/var/log"},
+			"hideFiles":         []any{".env.staging", "config/secrets.yml"},
 			"blockLocalNetwork": true,
 			"aliases":           []any{"claude", "pi", "aider"},
 		},
@@ -59,6 +60,9 @@ func TestParseConfig_Full(t *testing.T) {
 	}
 	if len(cfg.AllowWrite) != 1 || cfg.AllowWrite[0] != "/var/log" {
 		t.Errorf("unexpected allowWrite: %v", cfg.AllowWrite)
+	}
+	if len(cfg.HideFiles) != 2 || cfg.HideFiles[0] != ".env.staging" {
+		t.Errorf("unexpected hideFiles: %v", cfg.HideFiles)
 	}
 	if len(cfg.Aliases) != 3 {
 		t.Errorf("expected 3 aliases, got %d", len(cfg.Aliases))

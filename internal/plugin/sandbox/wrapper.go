@@ -14,6 +14,7 @@ type policy struct {
 	RemoteHome      string
 	DenyPaths       []denyRule // from discovery + user config
 	AllowWritePaths []string   // extra writable paths from user config
+	HiddenFiles     []string   // individual files masked with /dev/null
 }
 
 // buildPolicy merges discovered plugin artifacts with user config into a
@@ -103,6 +104,13 @@ func generateWrapperScript(pol *policy) string {
 		} else {
 			fmt.Fprintf(&b, "  --ro-bind-try '%s' '%s' \\\n", ep, ep)
 		}
+	}
+
+	// Hidden files: mask individual files with /dev/null so reads return empty.
+	// Uses --ro-bind-try so missing files don't break the sandbox.
+	for _, f := range pol.HiddenFiles {
+		ef := plugin.ShellQuote(f)
+		fmt.Fprintf(&b, "  --ro-bind-try /dev/null '%s' \\\n", ef)
 	}
 
 	b.WriteString("  -- \"$@\"\n")

@@ -55,7 +55,14 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// 3. Build the sandbox policy.
 	pol := buildPolicy(cfg, req.WorkspaceDir, req.RemoteUser, req.WorkspaceFolder)
 
-	// 3b. Auto-detect git worktrees and add their base dirs as writable.
+	// 3b. Apply user-configured hideFiles (paths relative to workspace folder).
+	for _, rel := range cfg.HideFiles {
+		abs := req.WorkspaceFolder + "/" + rel
+		pol.HiddenFiles = append(pol.HiddenFiles, abs)
+		slog.Info("sandbox: hiding file", "path", abs)
+	}
+
+	// 3c. Auto-detect git worktrees and add their base dirs as writable.
 	// Non-fatal: git may not be installed or workspace may not be a repo.
 	wtDirs := detectWorktreeWritePaths(ctx, req)
 	for _, d := range wtDirs {

@@ -149,6 +149,51 @@ func TestPostContainerCreate_WithAliases(t *testing.T) {
 	}
 }
 
+func TestPostContainerCreate_HideFilesConfig(t *testing.T) {
+	wsDir := t.TempDir()
+	copiedFiles := map[string]string{}
+
+	p := New()
+	req := &plugin.PostContainerCreateRequest{
+		WorkspaceID:     "test-ws",
+		WorkspaceDir:    wsDir,
+		ContainerID:     "abc123",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspaces/project",
+		Runtime:         "docker",
+		Customizations: map[string]any{
+			"sandbox": map[string]any{
+				"hideFiles": []any{".env.staging", "config/secrets.yml"},
+			},
+		},
+		ExecFunc: func(_ context.Context, _ []string, _ string) error {
+			return nil
+		},
+		ExecOutputFunc: func(_ context.Context, _ []string, _ string) (string, error) {
+			return "", nil // no auto-detected files
+		},
+		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
+			copiedFiles[dest] = string(content)
+			return nil
+		},
+	}
+
+	if err := p.PostContainerCreate(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wrapper, ok := copiedFiles["/home/vscode/.local/bin/sandbox"]
+	if !ok {
+		t.Fatal("expected sandbox wrapper to be copied")
+	}
+	if !strings.Contains(wrapper, "--ro-bind-try /dev/null '/workspaces/project/.env.staging'") {
+		t.Errorf("sandbox wrapper should hide user-configured .env.staging, got:\n%s", wrapper)
+	}
+	if !strings.Contains(wrapper, "--ro-bind-try /dev/null '/workspaces/project/config/secrets.yml'") {
+		t.Errorf("sandbox wrapper should hide user-configured config/secrets.yml, got:\n%s", wrapper)
+	}
+}
+
 func TestPostContainerCreate_WorktreeAutoDetection(t *testing.T) {
 	wsDir := t.TempDir()
 	copiedFiles := map[string]string{}
