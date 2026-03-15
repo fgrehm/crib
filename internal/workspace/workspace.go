@@ -15,6 +15,9 @@ type Workspace struct {
 	// from the project root (e.g., ".devcontainer/devcontainer.json").
 	DevContainerPath string `json:"devContainerPath,omitempty"`
 
+	// CribVersion is the version of crib that last touched this workspace.
+	CribVersion string `json:"cribVersion,omitempty"`
+
 	// CreatedAt is when this workspace was first created.
 	CreatedAt time.Time `json:"createdAt"`
 

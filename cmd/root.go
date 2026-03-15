@@ -238,11 +238,31 @@ func currentWorkspace(store *workspace.Store, create bool) (*workspace.Workspace
 			ID:               rr.WorkspaceID,
 			Source:           rr.ProjectRoot,
 			DevContainerPath: rr.RelativeConfigPath,
+			CribVersion:      Version,
 			CreatedAt:        now,
 			LastUsedAt:       now,
 		}
 		if err := store.Save(ws); err != nil {
 			return nil, fmt.Errorf("saving workspace: %w", err)
+		}
+	} else {
+		// Refresh fields that may have drifted from stored state.
+		var changed bool
+		if ws.DevContainerPath != rr.RelativeConfigPath {
+			logger.Info("devcontainer config path changed",
+				"old", ws.DevContainerPath, "new", rr.RelativeConfigPath)
+			ws.DevContainerPath = rr.RelativeConfigPath
+			changed = true
+		}
+		if ws.CribVersion != Version {
+			ws.CribVersion = Version
+			changed = true
+		}
+		if changed {
+			ws.LastUsedAt = time.Now()
+			if err := store.Save(ws); err != nil {
+				logger.Warn("failed to save refreshed workspace", "error", err)
+			}
 		}
 	}
 
