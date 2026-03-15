@@ -59,15 +59,24 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	for _, rel := range cfg.HideFiles {
 		abs := req.WorkspaceFolder + "/" + rel
 		pol.HiddenFiles = append(pol.HiddenFiles, abs)
-		slog.Info("sandbox: hiding file", "path", abs)
+		slog.Debug("sandbox: hiding file", "path", abs)
 	}
 
 	// 3c. Auto-detect git worktrees and add their base dirs as writable.
 	// Non-fatal: git may not be installed or workspace may not be a repo.
+	// Deduplicate against existing AllowWritePaths (user may have configured
+	// the same path via allowWrite in devcontainer.json).
 	wtDirs := detectWorktreeWritePaths(ctx, req)
+	existing := make(map[string]struct{}, len(pol.AllowWritePaths))
+	for _, p := range pol.AllowWritePaths {
+		existing[p] = struct{}{}
+	}
 	for _, d := range wtDirs {
+		if _, dup := existing[d]; dup {
+			continue
+		}
 		pol.AllowWritePaths = append(pol.AllowWritePaths, d)
-		slog.Info("sandbox: auto-detected git worktree directory", "path", d)
+		slog.Debug("sandbox: auto-detected git worktree directory", "path", d)
 	}
 
 	// 4. Generate and write the sandbox wrapper script.
