@@ -41,6 +41,11 @@ dockerfile/, workspace/}`. No cycles.
 - Container naming: `crib-{workspace-id}`, labels: `crib.workspace=<id>`.
 - State stored in `~/.crib/workspaces/{id}/`.
 - Runtime detection: `CRIB_RUNTIME` env var > podman > docker.
+- Workspace state tracks `CribVersion` (refreshed on every access via
+  `currentWorkspace()` in `cmd/root.go`). The field is recorded but no
+  version-dependent logic exists yet. When adding migrations, snapshot
+  invalidation, or breaking state changes, use `ws.CribVersion` to gate
+  behavior by the version that last touched the workspace.
 
 ## Build and Test
 
