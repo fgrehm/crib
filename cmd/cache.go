@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/fgrehm/crib/internal/driver/oci"
+	"github.com/fgrehm/crib/internal/feature"
 	"github.com/fgrehm/crib/internal/plugin/packagecache"
 	"github.com/fgrehm/crib/internal/workspace"
 	"github.com/spf13/cobra"
@@ -236,10 +237,37 @@ func inferWorkspaceID() (string, error) {
 	}
 }
 
+var cacheCleanFeaturesCmd = &cobra.Command{
+	Use:   "clean-features",
+	Short: "Remove cached DevContainer Features",
+	Args:  noArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		u := newUI()
+
+		fc, err := feature.NewFeatureCache()
+		if err != nil {
+			return err
+		}
+
+		if fc.IsEmpty() {
+			u.Dim("Feature cache is already empty")
+			return nil
+		}
+
+		if err := fc.Clean(); err != nil {
+			return fmt.Errorf("cleaning feature cache: %w", err)
+		}
+
+		u.Success("Feature cache cleared")
+		return nil
+	},
+}
+
 func init() {
 	cacheListCmd.Flags().BoolVar(&cacheListAllFlag, "all", false, "list cache volumes for all workspaces")
 	cacheCleanCmd.Flags().BoolVar(&cacheCleanAllFlag, "all", false, "remove cache volumes for all workspaces")
 	cacheCleanCmd.Flags().BoolVarP(&cacheCleanForceFlag, "force", "f", false, "skip confirmation prompt for --all")
 	cacheCmd.AddCommand(cacheListCmd)
 	cacheCmd.AddCommand(cacheCleanCmd)
+	cacheCmd.AddCommand(cacheCleanFeaturesCmd)
 }

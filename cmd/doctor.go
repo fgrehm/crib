@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/fgrehm/crib/internal/feature"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,12 @@ var doctorCmd = &cobra.Command{
 		}
 		if result.ComposeOK {
 			u.Success("Docker Compose is available")
+		}
+
+		// Feature cache info.
+		if fc, fcErr := feature.NewFeatureCache(); fcErr == nil && !fc.IsEmpty() {
+			u.Dim(fmt.Sprintf("Feature cache at %s", fc.BaseDir()))
+			u.Dim("  To clear: crib cache clean-features")
 		}
 
 		if len(result.Issues) == 0 {

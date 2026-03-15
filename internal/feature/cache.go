@@ -73,6 +73,34 @@ func (c *FeatureCache) Store(key string, populate func(dir string) error) (strin
 	return p, nil
 }
 
+// BaseDir returns the absolute path to the feature cache directory.
+func (c *FeatureCache) BaseDir() string {
+	return c.baseDir
+}
+
+// IsEmpty returns true if the cache directory contains no entries.
+func (c *FeatureCache) IsEmpty() bool {
+	entries, err := os.ReadDir(c.baseDir)
+	return err != nil || len(entries) == 0
+}
+
+// Clean removes all cached feature entries.
+func (c *FeatureCache) Clean() error {
+	entries, err := os.ReadDir(c.baseDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("reading feature cache: %w", err)
+	}
+	for _, entry := range entries {
+		if err := os.RemoveAll(filepath.Join(c.baseDir, entry.Name())); err != nil {
+			return fmt.Errorf("removing %q: %w", entry.Name(), err)
+		}
+	}
+	return nil
+}
+
 // ociCacheKey converts an OCI ref like "ghcr.io/org/repo:tag" to a safe
 // filesystem path key like "ghcr.io/org/repo/tag".
 func ociCacheKey(ref string) string {
