@@ -63,6 +63,10 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 		if rel == "" || rel == "." {
 			continue
 		}
+		if filepath.IsAbs(rel) {
+			slog.Debug("sandbox: hideFiles entry must be relative, skipping", "path", rel)
+			continue
+		}
 		abs := filepath.Clean(filepath.Join(wsFolder, rel))
 		if !strings.HasPrefix(abs, wsFolder+"/") {
 			slog.Debug("sandbox: hideFiles path escapes workspace, skipping", "path", rel)
@@ -168,7 +172,7 @@ func resolveRealBinary(ctx context.Context, req *plugin.PostContainerCreateReque
 	// Filter excludeDir from PATH so that a wrapper from a previous run
 	// doesn't shadow the real binary, keeping alias updates deterministic.
 	resolveCmd := fmt.Sprintf(
-		"p=$(PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -Fxv '%s' | paste -sd ':') command -v '%s' 2>/dev/null) && readlink -f \"$p\" || true",
+		"p=$(PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -Fxv '%s' | paste -sd ':') command -v '%s' 2>/dev/null) && { readlink -f \"$p\" 2>/dev/null || echo \"$p\"; } || true",
 		plugin.ShellQuote(excludeDir), plugin.ShellQuote(name))
 	result, err := req.ExecOutputFunc(ctx, []string{"sh", "-c", resolveCmd}, user)
 	if err != nil {
