@@ -155,16 +155,29 @@ func detectWorktreeWritePaths(ctx context.Context, req *plugin.PostContainerCrea
 }
 
 // resolveRealBinary finds the real path of a binary inside the container,
-// excluding ~/.local/bin to avoid self-reference from our generated aliases.
+// following symlinks to get the canonical path. If the canonical path lands
+// inside excludeDir (e.g. our own alias from a previous run), returns empty.
 // Runs as the specified user so the lookup sees the user's PATH.
 func resolveRealBinary(ctx context.Context, req *plugin.PostContainerCreateRequest, name, excludeDir, user string) (string, error) {
+	// Resolve the binary and follow symlinks. Claude Code's native installer
+	// creates ~/.local/bin/claude as a symlink to ~/.local/share/claude/...,
+	// so readlink -f gives us the real binary path that won't self-reference
+	// when we overwrite the symlink with our alias wrapper.
 	resolveCmd := fmt.Sprintf(
-		"PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -v -x -F '%s' | paste -sd ':') "+
-			"command -v '%s' 2>/dev/null || true",
-		plugin.ShellQuote(excludeDir), name)
+		"p=$(command -v '%s' 2>/dev/null) && readlink -f \"$p\" || true", name)
 	result, err := req.ExecOutputFunc(ctx, []string{"sh", "-c", resolveCmd}, user)
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(result), nil
+	resolved := strings.TrimSpace(result)
+	if resolved == "" {
+		return "", nil
+	}
+	// If the resolved path is still inside the alias directory, it is our own
+	// generated script from a previous run (not a symlink). Skip to avoid
+	// self-reference.
+	if strings.HasPrefix(resolved, excludeDir+"/") {
+		return "", nil
+	}
+	return resolved, nil
 }

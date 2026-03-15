@@ -27,8 +27,8 @@ func TestDiscoverPluginArtifacts_AllPlugins(t *testing.T) {
 		t.Fatalf("expected 3 rules, got %d", len(rules))
 	}
 
-	// codingagents -> ~/.claude
-	if rules[0].Path != "/home/vscode/.claude" || !rules[0].DenyRead {
+	// codingagents -> ~/.claude (deny-write, not deny-read: agent needs to read its own config)
+	if rules[0].Path != "/home/vscode/.claude" || rules[0].DenyRead {
 		t.Errorf("unexpected codingagents rule: %+v", rules[0])
 	}
 

@@ -118,9 +118,10 @@ func TestPostContainerCreate_WithAliases(t *testing.T) {
 			if len(cmd) > 2 {
 				cmdStr = cmd[2]
 			}
-			// Simulate: claude exists at /usr/local/bin/claude, missing-tool does not.
-			if strings.Contains(cmdStr, "claude") {
-				return "/usr/local/bin/claude\n", nil
+			// Simulate: claude exists, readlink -f resolves the symlink.
+			// The resolve command is: p=$(command -v 'claude' ...) && readlink -f "$p"
+			if strings.Contains(cmdStr, "'claude'") {
+				return "/home/vscode/.local/share/claude/claude-v2\n", nil
 			}
 			return "", nil
 		},
@@ -367,7 +368,7 @@ func TestPostContainerCreate_InvalidAliasNamesSkipped(t *testing.T) {
 			return nil
 		},
 		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
-			if len(cmd) > 2 && strings.Contains(cmd[2], "valid-name") {
+			if len(cmd) > 2 && strings.Contains(cmd[2], "'valid-name'") {
 				return "/usr/bin/valid-name\n", nil
 			}
 			return "", nil
