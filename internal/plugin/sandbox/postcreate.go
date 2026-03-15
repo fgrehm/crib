@@ -58,12 +58,13 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 
 	// 3b. Apply user-configured hideFiles (paths relative to workspace folder).
 	// Validate that resolved paths stay within the workspace.
+	wsFolder := filepath.Clean(req.WorkspaceFolder)
 	for _, rel := range cfg.HideFiles {
 		if rel == "" || rel == "." {
 			continue
 		}
-		abs := filepath.Clean(filepath.Join(req.WorkspaceFolder, rel))
-		if !strings.HasPrefix(abs, req.WorkspaceFolder+"/") {
+		abs := filepath.Clean(filepath.Join(wsFolder, rel))
+		if !strings.HasPrefix(abs, wsFolder+"/") {
 			slog.Debug("sandbox: hideFiles path escapes workspace, skipping", "path", rel)
 			continue
 		}

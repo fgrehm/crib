@@ -40,7 +40,11 @@ func worktreeBaseDirs(worktreePaths []string, workspaceFolder string) []string {
 		if strings.HasPrefix(wt, wsClean+"/") {
 			continue // inside workspace folder, already writable
 		}
-		parentSet[filepath.Dir(wt)] = struct{}{}
+		parent := filepath.Dir(wt)
+		if parent == "/" {
+			continue // too broad; would make entire filesystem writable
+		}
+		parentSet[parent] = struct{}{}
 	}
 
 	if len(parentSet) == 0 {

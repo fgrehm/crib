@@ -265,7 +265,7 @@ What the sandbox enforces regardless of Claude's permission settings:
 | Concern | What the sandbox does |
 |---------|----------------------|
 | Filesystem writes | Limited to workspace folder, worktree dirs, and `/tmp` |
-| Credential files | `~/.ssh/`, `~/.claude/`, `~/.crib_history/` hidden from the agent |
+| Credential files | `~/.ssh/` and `~/.crib_history/` hidden; `~/.claude/` read-only (agent needs its own config) |
 | Network | Local network and cloud metadata endpoints blocked (when `blockLocalNetwork` is on) |
 | SSH keys | Agent can use keys for signing (git push) but cannot read private key material |
 
