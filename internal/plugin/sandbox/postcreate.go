@@ -168,8 +168,8 @@ func resolveRealBinary(ctx context.Context, req *plugin.PostContainerCreateReque
 	// Filter excludeDir from PATH so that a wrapper from a previous run
 	// doesn't shadow the real binary, keeping alias updates deterministic.
 	resolveCmd := fmt.Sprintf(
-		"p=$(PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -Fxv '%s' | tr '\\n' ':') command -v '%s' 2>/dev/null) && readlink -f \"$p\" || true",
-		excludeDir, name)
+		"p=$(PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -Fxv '%s' | paste -sd ':') command -v '%s' 2>/dev/null) && readlink -f \"$p\" || true",
+		plugin.ShellQuote(excludeDir), plugin.ShellQuote(name))
 	result, err := req.ExecOutputFunc(ctx, []string{"sh", "-c", resolveCmd}, user)
 	if err != nil {
 		return "", err

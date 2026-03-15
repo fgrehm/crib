@@ -42,7 +42,10 @@ func worktreeBaseDirs(worktreePaths []string, workspaceFolder string) []string {
 		}
 		parent := filepath.Dir(wt)
 		if parent == "/" {
-			continue // too broad; would make entire filesystem writable
+			// Parent is root: adding "/" would make the entire filesystem
+			// writable. Grant write access to the worktree path itself instead.
+			parentSet[wt] = struct{}{}
+			continue
 		}
 		parentSet[parent] = struct{}{}
 	}
