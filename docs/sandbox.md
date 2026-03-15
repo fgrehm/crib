@@ -50,6 +50,7 @@ The sandbox makes the entire filesystem read-only, then selectively opens up wri
 |------|--------|-----|
 | `/` (everything) | read-only | Default for all paths not listed below |
 | `workspaceFolder` | read-write | The agent needs to edit project files |
+| git worktree dirs | read-write | Auto-detected sibling worktree directories |
 | `/tmp` | read-write | Scratch space for temp files |
 | `~/.crib_history/` | deny-read | May contain credentials (`export TOKEN=...`) |
 | `~/.ssh/` | deny-read | Injected by the ssh plugin, contains host info |
@@ -143,6 +144,18 @@ The sandbox plugin automatically scans `~/.crib/workspaces/{id}/plugins/*/` to d
 | `shell-history` | `~/.crib_history/` | deny-read |
 
 User-specified `denyRead`/`denyWrite`/`allowWrite` in the config are merged on top of these defaults.
+
+### Git worktree detection
+
+If your workflow uses [git worktrees](https://git-scm.com/docs/git-worktree), the sandbox automatically detects them. At container setup time, the plugin runs `git worktree list` inside the container. When worktrees exist outside the workspace folder (the common pattern with sibling directories like `/workspaces/project-worktrees/`), the plugin adds their parent directory as a writable path.
+
+This means a sandboxed agent can read and write to worktree checkouts without any manual configuration. The detection is logged at debug level:
+
+```
+sandbox: auto-detected git worktree directory  path=/workspaces/project-worktrees
+```
+
+If git is not installed or the workspace is not a git repository, detection is silently skipped. You can always add writable paths manually via `allowWrite` if needed.
 
 ### SSH agent socket
 
