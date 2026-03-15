@@ -278,6 +278,46 @@ If you're on an older version, you can work around it by adding to your `devcont
 This creates a symlink from the DinD-mounted `/tmp` to the original mount point visible in PID 1's
 mount namespace.
 
+## Podman: slow networking or connection drops with `pasta`
+
+Rootless Podman 5.3+ uses [pasta](https://passt.top/passt/) as the default networking backend. It has known issues that can cause intermittent slowness or connection drops:
+
+- **Poor throughput** ([containers/podman#28219](https://github.com/containers/podman/issues/28219)): pasta can be significantly slower than host networking (up to 8x in some workloads).
+- **Random connection failures** ([containers/podman#27164](https://github.com/containers/podman/issues/27164)): outbound TCP connections randomly drop under pasta, causing timeouts in long-running processes.
+
+**Option 1: Use host networking** (recommended for dev containers)
+
+Host networking bypasses the userspace network layer entirely. In rootless Podman, `--network=host` is still isolated by the user namespace, so it is not a security downgrade.
+
+```jsonc
+// devcontainer.json
+{
+  "runArgs": ["--network=host"]
+}
+```
+
+**Option 2: Switch to `slirp4netns`**
+
+The older [slirp4netns](https://github.com/rootless-containers/slirp4netns) backend adds a bit more latency but avoids the pasta bugs above.
+
+Per-container:
+
+```jsonc
+// devcontainer.json
+{
+  "runArgs": ["--network=slirp4netns"]
+}
+```
+
+Or globally in `~/.config/containers/containers.conf`:
+
+```toml
+[network]
+default_rootless_network_cmd = "slirp4netns"
+```
+
+These are upstream Podman/pasta issues, not crib bugs. Check the linked GitHub issues for status updates.
+
 ## `crib exec` can't find tools installed by mise/asdf/nvm/rbenv
 
 If `crib exec -- ruby -v` fails with "not found" but `crib shell` followed by `ruby -v` works,
