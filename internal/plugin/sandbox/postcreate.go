@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -54,6 +55,14 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// 3. Build the sandbox policy.
 	pol := buildPolicy(cfg, req.WorkspaceDir, req.RemoteUser, req.WorkspaceFolder)
 
+	// 3b. Auto-detect git worktrees and add their base dirs as writable.
+	// Non-fatal: git may not be installed or workspace may not be a repo.
+	wtDirs := detectWorktreeWritePaths(ctx, req)
+	for _, d := range wtDirs {
+		pol.AllowWritePaths = append(pol.AllowWritePaths, d)
+		slog.Info("sandbox: auto-detected git worktree directory", "path", d)
+	}
+
 	// 4. Generate and write the sandbox wrapper script.
 	sandboxPath := localBin + "/sandbox"
 	wrapperContent := generateWrapperScript(pol)
@@ -102,6 +111,21 @@ func execScriptViaFile(ctx context.Context, req *plugin.PostContainerCreateReque
 	execErr := req.ExecFunc(ctx, []string{"sh", tmpScript}, "root")
 	_ = req.ExecFunc(ctx, []string{"rm", "-f", tmpScript}, "root")
 	return execErr
+}
+
+// detectWorktreeWritePaths runs `git worktree list --porcelain` inside the
+// container and returns directories that need write access for worktree
+// checkouts. Returns nil when no external worktrees are found or when git
+// is unavailable.
+func detectWorktreeWritePaths(ctx context.Context, req *plugin.PostContainerCreateRequest) []string {
+	out, err := req.ExecOutputFunc(ctx, []string{
+		"git", "-C", req.WorkspaceFolder, "worktree", "list", "--porcelain",
+	}, req.RemoteUser)
+	if err != nil {
+		return nil
+	}
+	paths := parseWorktreePaths(out)
+	return worktreeBaseDirs(paths, req.WorkspaceFolder)
 }
 
 // resolveRealBinary finds the real path of a binary inside the container,

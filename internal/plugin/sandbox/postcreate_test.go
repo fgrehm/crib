@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -145,6 +146,102 @@ func TestPostContainerCreate_WithAliases(t *testing.T) {
 	// missing-tool should not have an alias.
 	if _, ok := copiedFiles["/home/vscode/.local/bin/missing-tool"]; ok {
 		t.Error("missing-tool should not have an alias written")
+	}
+}
+
+func TestPostContainerCreate_WorktreeAutoDetection(t *testing.T) {
+	wsDir := t.TempDir()
+	copiedFiles := map[string]string{}
+
+	porcelainOutput := "worktree /workspaces/project\n" +
+		"HEAD abc123\n" +
+		"branch refs/heads/main\n" +
+		"\n" +
+		"worktree /workspaces/project-worktrees/feature-a\n" +
+		"HEAD def456\n" +
+		"branch refs/heads/feature-a\n" +
+		"\n"
+
+	p := New()
+	req := &plugin.PostContainerCreateRequest{
+		WorkspaceID:     "test-ws",
+		WorkspaceDir:    wsDir,
+		ContainerID:     "abc123",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspaces/project",
+		Runtime:         "docker",
+		Customizations: map[string]any{
+			"sandbox": map[string]any{},
+		},
+		ExecFunc: func(_ context.Context, _ []string, _ string) error {
+			return nil
+		},
+		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
+			if len(cmd) >= 3 && cmd[0] == "git" && cmd[2] == "/workspaces/project" {
+				return porcelainOutput, nil
+			}
+			return "", nil
+		},
+		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
+			copiedFiles[dest] = string(content)
+			return nil
+		},
+	}
+
+	if err := p.PostContainerCreate(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wrapper, ok := copiedFiles["/home/vscode/.local/bin/sandbox"]
+	if !ok {
+		t.Fatal("expected sandbox wrapper to be copied")
+	}
+	if !strings.Contains(wrapper, "--bind-try '/workspaces/project-worktrees' '/workspaces/project-worktrees'") {
+		t.Errorf("sandbox wrapper should allow writes to worktree base dir, got:\n%s", wrapper)
+	}
+}
+
+func TestPostContainerCreate_WorktreeDetectionFailsGracefully(t *testing.T) {
+	wsDir := t.TempDir()
+	copiedFiles := map[string]string{}
+
+	p := New()
+	req := &plugin.PostContainerCreateRequest{
+		WorkspaceID:     "test-ws",
+		WorkspaceDir:    wsDir,
+		ContainerID:     "abc123",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspaces/project",
+		Runtime:         "docker",
+		Customizations: map[string]any{
+			"sandbox": map[string]any{},
+		},
+		ExecFunc: func(_ context.Context, _ []string, _ string) error {
+			return nil
+		},
+		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
+			if len(cmd) >= 3 && cmd[0] == "git" {
+				return "", fmt.Errorf("git not found")
+			}
+			return "", nil
+		},
+		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
+			copiedFiles[dest] = string(content)
+			return nil
+		},
+	}
+
+	if err := p.PostContainerCreate(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should still generate wrapper without worktree paths.
+	wrapper, ok := copiedFiles["/home/vscode/.local/bin/sandbox"]
+	if !ok {
+		t.Fatal("expected sandbox wrapper to be copied even when git fails")
+	}
+	if strings.Contains(wrapper, "worktree") {
+		t.Errorf("wrapper should not reference worktrees when git fails, got:\n%s", wrapper)
 	}
 }
 
