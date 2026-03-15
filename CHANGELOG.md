@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `aliases`: transparent wrappers that run agent commands through the sandbox
   - Auto-detection of git worktrees: sibling worktree directories are added
     as writable paths so sandboxed agents can operate on worktree checkouts
+  - `hideFiles`: mask individual files with `/dev/null` so the agent sees
+    empty content (for standalone secret files that the app doesn't need at
+    runtime)
   - Graceful degradation: network failures don't prevent filesystem sandboxing
 - **Plugin system**: `PostContainerCreator` interface for plugins that run commands
   inside containers after creation. `PostContainerCreateEnabler` companion interface
