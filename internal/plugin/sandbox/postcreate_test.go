@@ -194,6 +194,62 @@ func TestPostContainerCreate_HideFilesConfig(t *testing.T) {
 	}
 }
 
+func TestPostContainerCreate_HideFilesPathTraversal(t *testing.T) {
+	wsDir := t.TempDir()
+	copiedFiles := map[string]string{}
+
+	p := New()
+	req := &plugin.PostContainerCreateRequest{
+		WorkspaceID:     "test-ws",
+		WorkspaceDir:    wsDir,
+		ContainerID:     "abc123",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspaces/project",
+		Runtime:         "docker",
+		Customizations: map[string]any{
+			"sandbox": map[string]any{
+				"hideFiles": []any{
+					"legit.txt",
+					"../../etc/passwd",
+					"../escape",
+					".",
+					"",
+					"sub/../../../outside",
+				},
+			},
+		},
+		ExecFunc: func(_ context.Context, _ []string, _ string) error {
+			return nil
+		},
+		ExecOutputFunc: func(_ context.Context, _ []string, _ string) (string, error) {
+			return "", nil
+		},
+		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
+			copiedFiles[dest] = string(content)
+			return nil
+		},
+	}
+
+	if err := p.PostContainerCreate(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wrapper, ok := copiedFiles["/home/vscode/.local/bin/sandbox"]
+	if !ok {
+		t.Fatal("expected sandbox wrapper to be copied")
+	}
+	// Only legit.txt should be hidden.
+	if !strings.Contains(wrapper, "--ro-bind-try /dev/null '/workspaces/project/legit.txt'") {
+		t.Errorf("sandbox wrapper should hide legit.txt, got:\n%s", wrapper)
+	}
+	// Traversal paths must be rejected.
+	for _, bad := range []string{"etc/passwd", "../escape", "outside"} {
+		if strings.Contains(wrapper, bad) {
+			t.Errorf("sandbox wrapper should not contain path-traversal entry %q, got:\n%s", bad, wrapper)
+		}
+	}
+}
+
 func TestPostContainerCreate_WorktreeAutoDetection(t *testing.T) {
 	wsDir := t.TempDir()
 	copiedFiles := map[string]string{}

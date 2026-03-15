@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -56,8 +57,16 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	pol := buildPolicy(cfg, req.WorkspaceDir, req.RemoteUser, req.WorkspaceFolder)
 
 	// 3b. Apply user-configured hideFiles (paths relative to workspace folder).
+	// Validate that resolved paths stay within the workspace.
 	for _, rel := range cfg.HideFiles {
-		abs := req.WorkspaceFolder + "/" + rel
+		if rel == "" || rel == "." {
+			continue
+		}
+		abs := filepath.Clean(filepath.Join(req.WorkspaceFolder, rel))
+		if !strings.HasPrefix(abs, req.WorkspaceFolder+"/") {
+			slog.Debug("sandbox: hideFiles path escapes workspace, skipping", "path", rel)
+			continue
+		}
 		pol.HiddenFiles = append(pol.HiddenFiles, abs)
 		slog.Debug("sandbox: hiding file", "path", abs)
 	}
