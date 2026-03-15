@@ -45,6 +45,10 @@ Add `--json` or `--format json` flag to commands like `status`, `list` for scrip
 
 The current cache plugin has per-tool providers (`apt`, `pip`, `npm`, `go`, etc.) that each mount a volume to a specific path. The `downloads` provider adds a general-purpose cache at `~/.cache/crib` with `$CRIB_CACHE`. Consider a single `xdg-cache` provider that mounts a volume at `$XDG_CACHE_HOME` (`~/.cache`), which would cover all tools that follow the XDG Base Directory Spec without per-tool configuration. Recipes and scripts could cache downloads to standard paths like `~/.cache/neovim/` without knowing about crib. Tradeoff: less granular control (can't cache apt but not pip), but simpler and more portable. Could coexist with per-tool providers for cases like `apt` where the path isn't under `~/.cache`.
 
+### XDG-compliant cache location
+
+The feature cache lives at `~/.crib/feature-cache/` but should be under `$XDG_CACHE_HOME/crib/` (defaults to `~/.cache/crib/`). This aligns with the existing decision to use `~/.config/crib/` for config (XDG standard) and lets system cleanup tools (`bleachbit`, distro scripts) discover purgeable data. Needs a migration path for existing installs.
+
 ### Colored log output
 
 Color-code `crib logs` lines by service name when the terminal supports it, similar to `docker compose logs`. Useful for compose workspaces with multiple services where logs are interleaved.
@@ -89,9 +93,9 @@ Pass `CRIB_DEBUG=1` (or `DEVCONTAINER_BUILD_DEBUG`) into containers during build
 
 Write all build output to `~/.crib/workspaces/{id}/logs/{timestamp}-build.txt` for post-mortem debugging.
 
-### Version tracking in workspace state
+### ~~Version tracking in workspace state~~
 
-Record the crib version (semver, commit SHA, build timestamp) in workspace state so we can detect version mismatches and provide upgrade guidance. Surface in `crib doctor` when the workspace was created by a different version.
+~~Record the crib version (semver, commit SHA, build timestamp) in workspace state so we can detect version mismatches and provide upgrade guidance. Surface in `crib doctor` when the workspace was created by a different version.~~ Done. `CribVersion` field in `workspace.json`, refreshed on every workspace access.
 
 ### Log output scrubbing
 
