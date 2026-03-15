@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -66,5 +67,6 @@ func worktreeBaseDirs(worktreePaths []string, workspaceFolder string) []string {
 		}
 	}
 
+	sort.Strings(result)
 	return result
 }

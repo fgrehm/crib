@@ -122,6 +122,7 @@ func detectWorktreeWritePaths(ctx context.Context, req *plugin.PostContainerCrea
 		"git", "-C", req.WorkspaceFolder, "worktree", "list", "--porcelain",
 	}, req.RemoteUser)
 	if err != nil {
+		slog.Debug("sandbox: git worktree detection skipped", "error", err)
 		return nil
 	}
 	paths := parseWorktreePaths(out)

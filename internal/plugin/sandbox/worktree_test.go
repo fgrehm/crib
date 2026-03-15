@@ -1,7 +1,6 @@
 package sandbox
 
 import (
-	"sort"
 	"testing"
 )
 
@@ -95,7 +94,6 @@ func TestWorktreeBaseDirs_ScatteredWorktrees(t *testing.T) {
 		"/other/place/branch-b",
 	}
 	dirs := worktreeBaseDirs(paths, "/workspaces/web")
-	sort.Strings(dirs)
 	if len(dirs) != 2 {
 		t.Fatalf("expected 2 base dirs, got %d: %v", len(dirs), dirs)
 	}
