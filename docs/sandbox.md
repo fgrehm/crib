@@ -294,6 +294,19 @@ The sandbox restrictions are agent-agnostic. They apply to whatever process the 
 
 ## Limitations
 
+### Aliases and postCreateCommand installs
+
+Alias wrappers are generated during `PostContainerCreate`, which runs before
+lifecycle hooks (`postCreateCommand`, `onCreateCommand`, etc.). If your bootstrap
+script installs or updates the agent binary in a lifecycle hook (e.g.
+`postCreateCommand: bash bin/setup` where `bin/setup` runs the Claude Code
+installer), the installer will overwrite the alias wrapper crib just created.
+
+The workaround is to install the agent binary in the Dockerfile or a DevContainer
+Feature, so it is baked into the image before `PostContainerCreate` runs. If that
+isn't practical, use `sandbox <agent>` directly instead of relying on the alias.
+This may be improved in a future release.
+
 ### Ubuntu 24.04+
 
 Ubuntu 23.10+ added [AppArmor restrictions on unprivileged user namespaces](https://ubuntu.com/blog/ubuntu-23-10-restricted-unprivileged-user-namespaces) that [break `bubblewrap`](https://github.com/containers/bubblewrap/issues/632) even when the kernel sysctl is enabled. The sandbox plugin installs bubblewrap and generates the wrapper script, but doesn't probe whether bwrap actually works. If namespaces are blocked, bwrap will fail at runtime when the agent is launched (not at container setup time). On Debian and older Ubuntu, it works out of the box.
