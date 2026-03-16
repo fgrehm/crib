@@ -48,7 +48,7 @@ The sandbox makes the entire filesystem read-only, then selectively opens up wri
 | `/tmp` | read-write | Scratch space for temp files |
 | `~/.crib_history/` | deny-read | May contain credentials (`export TOKEN=...`) |
 | `~/.ssh/` | deny-read | Injected by the ssh plugin, contains host info |
-| `~/.claude/` | read-only | Claude Code needs to read its own config to authenticate |
+| `~/.claude/` | read-write | Claude Code needs write access to refresh OAuth tokens |
 
 The sandbox automatically discovers what other `crib` plugins have injected and applies appropriate restrictions. You don't need to manually list credential paths.
 
@@ -125,7 +125,7 @@ The sandbox plugin automatically scans `~/.crib/workspaces/{id}/plugins/*/` to d
 
 | Plugin | What it injected | Sandbox rule |
 |--------|-----------------|--------------|
-| `coding-agents` | `~/.claude/` | read-only (agent needs its own config) |
+| `coding-agents` | `~/.claude/` | read-write (agent needs to refresh OAuth tokens) |
 | `ssh` | `~/.ssh/` | deny-read |
 | `ssh` | `/tmp/ssh-agent.sock` | allowed (see below) |
 | `shell-history` | `~/.crib_history/` | deny-read |
@@ -234,7 +234,7 @@ What the sandbox enforces regardless of Claude's permission settings:
 | Concern | What the sandbox does |
 |---------|----------------------|
 | Filesystem writes | Limited to workspace folder, worktree dirs, and `/tmp` |
-| Credential files | `~/.ssh/` and `~/.crib_history/` hidden; `~/.claude/` read-only (agent needs its own config) |
+| Credential files | `~/.ssh/` and `~/.crib_history/` hidden; `~/.claude/` writable (agent needs to refresh tokens) |
 | Network | Local network and cloud metadata endpoints blocked (when `blockLocalNetwork` is on) |
 | SSH keys | Agent can use keys for signing (git push) but cannot read private key material |
 

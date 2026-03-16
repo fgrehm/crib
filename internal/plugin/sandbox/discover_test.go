@@ -8,9 +8,12 @@ import (
 
 func TestDiscoverPluginArtifacts_Empty(t *testing.T) {
 	wsDir := t.TempDir()
-	rules := discoverPluginArtifacts(wsDir, "vscode")
-	if len(rules) != 0 {
-		t.Errorf("expected 0 rules for empty workspace, got %d", len(rules))
+	disc := discoverPluginArtifacts(wsDir, "vscode")
+	if len(disc.DenyRules) != 0 {
+		t.Errorf("expected 0 deny rules for empty workspace, got %d", len(disc.DenyRules))
+	}
+	if len(disc.AllowWritePaths) != 0 {
+		t.Errorf("expected 0 allow-write paths for empty workspace, got %d", len(disc.AllowWritePaths))
 	}
 }
 
@@ -22,24 +25,25 @@ func TestDiscoverPluginArtifacts_AllPlugins(t *testing.T) {
 		}
 	}
 
-	rules := discoverPluginArtifacts(wsDir, "vscode")
-	if len(rules) != 3 {
-		t.Fatalf("expected 3 rules, got %d", len(rules))
+	disc := discoverPluginArtifacts(wsDir, "vscode")
+
+	// coding-agents -> ~/.claude (writable, agent needs to refresh OAuth tokens)
+	if len(disc.AllowWritePaths) != 1 || disc.AllowWritePaths[0] != "/home/vscode/.claude" {
+		t.Errorf("unexpected allow-write paths: %v", disc.AllowWritePaths)
 	}
 
-	// coding-agents -> ~/.claude (deny-write, not deny-read: agent needs to read its own config)
-	if rules[0].Path != "/home/vscode/.claude" || rules[0].DenyRead {
-		t.Errorf("unexpected coding-agents rule: %+v", rules[0])
+	if len(disc.DenyRules) != 2 {
+		t.Fatalf("expected 2 deny rules, got %d", len(disc.DenyRules))
 	}
 
 	// ssh -> ~/.ssh
-	if rules[1].Path != "/home/vscode/.ssh" || !rules[1].DenyRead {
-		t.Errorf("unexpected ssh rule: %+v", rules[1])
+	if disc.DenyRules[0].Path != "/home/vscode/.ssh" || !disc.DenyRules[0].DenyRead {
+		t.Errorf("unexpected ssh rule: %+v", disc.DenyRules[0])
 	}
 
 	// shellhistory -> ~/.crib_history (deny-read)
-	if rules[2].Path != "/home/vscode/.crib_history" || !rules[2].DenyRead {
-		t.Errorf("unexpected shellhistory rule: %+v", rules[2])
+	if disc.DenyRules[1].Path != "/home/vscode/.crib_history" || !disc.DenyRules[1].DenyRead {
+		t.Errorf("unexpected shellhistory rule: %+v", disc.DenyRules[1])
 	}
 }
 
@@ -49,12 +53,12 @@ func TestDiscoverPluginArtifacts_RootUser(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rules := discoverPluginArtifacts(wsDir, "root")
-	if len(rules) != 1 {
-		t.Fatalf("expected 1 rule, got %d", len(rules))
+	disc := discoverPluginArtifacts(wsDir, "root")
+	if len(disc.DenyRules) != 1 {
+		t.Fatalf("expected 1 deny rule, got %d", len(disc.DenyRules))
 	}
-	if rules[0].Path != "/root/.ssh" {
-		t.Errorf("expected /root/.ssh, got %s", rules[0].Path)
+	if disc.DenyRules[0].Path != "/root/.ssh" {
+		t.Errorf("expected /root/.ssh, got %s", disc.DenyRules[0].Path)
 	}
 }
 
@@ -64,11 +68,11 @@ func TestDiscoverPluginArtifacts_OnlySsh(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rules := discoverPluginArtifacts(wsDir, "vscode")
-	if len(rules) != 1 {
-		t.Fatalf("expected 1 rule, got %d", len(rules))
+	disc := discoverPluginArtifacts(wsDir, "vscode")
+	if len(disc.DenyRules) != 1 {
+		t.Fatalf("expected 1 deny rule, got %d", len(disc.DenyRules))
 	}
-	if rules[0].Path != "/home/vscode/.ssh" {
-		t.Errorf("expected /home/vscode/.ssh, got %s", rules[0].Path)
+	if disc.DenyRules[0].Path != "/home/vscode/.ssh" {
+		t.Errorf("expected /home/vscode/.ssh, got %s", disc.DenyRules[0].Path)
 	}
 }

@@ -80,7 +80,7 @@ Known plugin artifacts and their default sandbox treatment:
 
 | Plugin | Artifacts | Default sandbox rule |
 |--------|-----------|----------------------|
-| `coding-agents` | `~/.claude/` | deny-read |
+| `coding-agents` | `~/.claude/` | allow-write (agent needs to refresh OAuth tokens) |
 | `ssh` | `~/.ssh/` | deny-read |
 | `ssh` | `/tmp/ssh-agent.sock` (`SSH_AUTH_SOCK`) | no restriction (see below) |
 | `shell-history` | `~/.crib_history/` | deny-read (tmpfs) |

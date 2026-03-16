@@ -13,28 +13,34 @@ type denyRule struct {
 	DenyRead bool // true: --tmpfs (hide contents), false: --ro-bind (read-only)
 }
 
+// discoveryResult holds deny rules and extra writable paths discovered from
+// other plugins' staged artifacts.
+type discoveryResult struct {
+	DenyRules       []denyRule
+	AllowWritePaths []string
+}
+
 // discoverPluginArtifacts scans {workspaceDir}/plugins/*/ to find sensitive
-// files staged by other plugins. Returns deny rules for the sandbox wrapper.
-func discoverPluginArtifacts(workspaceDir, remoteUser string) []denyRule {
+// files staged by other plugins. Returns deny rules and allow-write paths
+// for the sandbox wrapper.
+func discoverPluginArtifacts(workspaceDir, remoteUser string) discoveryResult {
 	remoteHome := plugin.InferRemoteHome(remoteUser)
-	var rules []denyRule
+	var result discoveryResult
 
 	pluginsDir := filepath.Join(workspaceDir, "plugins")
 
-	// coding-agents: ~/.claude/ (read-only, not hidden).
-	// Claude Code needs to read its own credentials to authenticate API calls.
-	// Deny-write prevents a compromised agent from tampering with settings or
-	// credentials, while still allowing the binary to function.
+	// coding-agents: ~/.claude/ must be writable.
+	// Claude Code needs write access to refresh expired OAuth tokens and
+	// update local config. The root bind (--ro-bind / /) makes everything
+	// read-only by default, so we explicitly grant write access here.
 	if dirExists(filepath.Join(pluginsDir, "coding-agents")) {
-		rules = append(rules, denyRule{
-			Path:     filepath.Join(remoteHome, ".claude"),
-			DenyRead: false,
-		})
+		result.AllowWritePaths = append(result.AllowWritePaths,
+			filepath.Join(remoteHome, ".claude"))
 	}
 
 	// ssh: ~/.ssh/config and *.pub
 	if dirExists(filepath.Join(pluginsDir, "ssh")) {
-		rules = append(rules, denyRule{
+		result.DenyRules = append(result.DenyRules, denyRule{
 			Path:     filepath.Join(remoteHome, ".ssh"),
 			DenyRead: true,
 		})
@@ -42,13 +48,13 @@ func discoverPluginArtifacts(workspaceDir, remoteUser string) []denyRule {
 
 	// shell-history: ~/.crib_history/ (deny-read, agents shouldn't see command history)
 	if dirExists(filepath.Join(pluginsDir, "shell-history")) {
-		rules = append(rules, denyRule{
+		result.DenyRules = append(result.DenyRules, denyRule{
 			Path:     filepath.Join(remoteHome, ".crib_history"),
 			DenyRead: true,
 		})
 	}
 
-	return rules
+	return result
 }
 
 func dirExists(path string) bool {

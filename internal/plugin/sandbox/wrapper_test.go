@@ -33,8 +33,13 @@ func TestBuildPolicy_WithDiscovery(t *testing.T) {
 	cfg := &sandboxConfig{}
 	pol := buildPolicy(cfg, wsDir, "vscode", "/workspaces/project")
 
-	if len(pol.DenyPaths) != 2 {
-		t.Fatalf("expected 2 deny paths, got %d", len(pol.DenyPaths))
+	// coding-agents no longer produces a deny rule (it's an allow-write now)
+	if len(pol.DenyPaths) != 1 {
+		t.Fatalf("expected 1 deny path (ssh only), got %d", len(pol.DenyPaths))
+	}
+	// coding-agents -> allow-write for ~/.claude
+	if len(pol.AllowWritePaths) != 1 || pol.AllowWritePaths[0] != "/home/vscode/.claude" {
+		t.Errorf("expected allow-write for ~/.claude, got %v", pol.AllowWritePaths)
 	}
 }
 

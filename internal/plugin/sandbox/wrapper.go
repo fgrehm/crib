@@ -22,8 +22,8 @@ type policy struct {
 func buildPolicy(cfg *sandboxConfig, workspaceDir, remoteUser, workspaceFolder string) *policy {
 	remoteHome := plugin.InferRemoteHome(remoteUser)
 
-	// Auto-discovered deny rules from other plugins.
-	discovered := discoverPluginArtifacts(workspaceDir, remoteUser)
+	// Auto-discovered rules from other plugins.
+	disc := discoverPluginArtifacts(workspaceDir, remoteUser)
 
 	// Deduplicate by path: deny-read wins over deny-write.
 	seen := make(map[string]int) // path -> index in rules
@@ -39,7 +39,7 @@ func buildPolicy(cfg *sandboxConfig, workspaceDir, remoteUser, workspaceFolder s
 		rules = append(rules, r)
 	}
 
-	for _, r := range discovered {
+	for _, r := range disc.DenyRules {
 		addRule(r)
 	}
 	for _, p := range cfg.DenyRead {
@@ -50,7 +50,13 @@ func buildPolicy(cfg *sandboxConfig, workspaceDir, remoteUser, workspaceFolder s
 	}
 
 	// Extra writable paths (excluding any that conflict with deny rules).
+	// Merge auto-discovered paths with user-configured ones.
 	var allow []string
+	for _, p := range disc.AllowWritePaths {
+		if _, denied := seen[p]; !denied {
+			allow = append(allow, p)
+		}
+	}
 	for _, p := range cfg.AllowWrite {
 		expanded := expandHome(p, remoteHome)
 		if _, denied := seen[expanded]; !denied {
