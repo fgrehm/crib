@@ -3,6 +3,11 @@ title: Agent Sandboxing
 description: Restrict what coding agents can do inside your dev container.
 ---
 
+> [!WARNING]
+> The sandbox plugin is experimental and has not been through full QA yet. Behavior
+> may change and rough edges are expected. Feedback welcome via
+> [GitHub issues](https://github.com/fgrehm/crib/issues).
+
 A coding agent running inside a dev container has full access to everything in that container: your workspace files, forwarded SSH agent, cached credentials, and the network. The `sandbox` plugin locks that down so agents can only touch what they need.
 
 Works with any agent: Claude Code, [`pi`](https://pi.dev/), Aider, Goose, or anything else you run from the terminal.
