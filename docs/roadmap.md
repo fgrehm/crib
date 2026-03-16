@@ -11,10 +11,6 @@ Items move between sections as priorities shift.
 
 Detect project type (Ruby, Node, Go, etc.) from conventions and generate a working devcontainer config without the user writing one. See the [RFC](https://github.com/fgrehm/crib/blob/main/docs/rfcs/init.md) for the full design.
 
-### Agent sandboxing plugin
-
-Restrict what coding agents can do inside dev containers using [`bubblewrap`](https://github.com/containers/bubblewrap). Filesystem isolation (read-only root, writable workspace only), automatic credential protection, and network restrictions (RFC 1918, cloud metadata endpoints). Works with any agent (Claude Code, [`pi`](https://pi.dev/), Aider, Goose). See the [guide](/crib/guides/sandbox/) and [ADR 002](https://github.com/fgrehm/crib/blob/main/docs/decisions/002-sandbox-plugin.md).
-
 ### Transparent command dispatch
 
 Run `crib` commands from inside or outside the container, with automatic delegation.
@@ -119,9 +115,23 @@ SSH server inside containers via the plugin system, enabling native filesystem p
 
 The name "crib" is close to [cribl.io](https://cribl.io/), which muddies search results and makes it harder to find crib-specific troubleshooting material. Candidates: `devcrib`, `cribcontainers`, or something else entirely. This is a breaking change (binary name, Go module path, container labels, state directory) so it needs a migration plan.
 
-### Standalone sandbox package ("crib-cage")
+### Agent sandboxing plugin
 
-Extract the sandbox plugin's core logic (bubblewrap wrapper generation, network blocking, cloud IP ranges) into a reusable standalone tool or library. This would let other projects use the same sandboxing without depending on crib. The wrapper script generation, iptables rules, and cloud IP range data are all independent of crib's plugin system. Scope: CLI that generates bwrap wrapper scripts from a config file, publishable as a separate binary and Go module.
+Restrict coding agents' filesystem and network access inside dev containers.
+Built and shipped as part of v0.7.x, then reverted: the implementation used
+[`bubblewrap`](https://github.com/containers/bubblewrap) for filesystem isolation
+and `iptables` for network blocking, but both require capabilities unavailable in
+rootless Podman (unprivileged user namespaces and `NET_ADMIN`). See
+[ADR 002](decisions/002-sandbox-plugin.md) for the full design history.
+
+The viable path forward is [Linux Landlock LSM](https://landlock.io/): works without
+root or capabilities (kernel 5.13+), Go library available
+([go-landlock](https://github.com/landlock-lsm/go-landlock)), supports filesystem
+access control and TCP port restrictions (kernel 6.7+). Tradeoff: network restriction
+is port-based only — IP/CIDR blocking (RFC 1918 ranges, cloud metadata endpoints)
+is not possible, so `blockLocalNetwork` as designed cannot be reimplemented with
+Landlock alone. Revisit if there's demand or if a solution for IP-level network
+restriction without `NET_ADMIN` emerges.
 
 ### Reduce cyclomatic complexity hotspots
 

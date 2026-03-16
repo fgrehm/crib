@@ -53,12 +53,10 @@ routes to:
 Steps in order:
 1. Plugin file copies (`execPluginCopies`)
 2. Volume chown (if needed)
-3. Plugin post-container-create dispatch (`dispatchPostContainerCreate` in
-   `single.go`; e.g. sandbox installs bubblewrap)
-4. Remote user resolution
-5. Early save before lifecycle hooks (so `crib exec`/`crib shell` work)
-6. Lifecycle hooks or snapshot restore
-7. Final save after setup completes (with probed env)
+3. Remote user resolution
+4. Early save before lifecycle hooks (so `crib exec`/`crib shell` work)
+5. Lifecycle hooks or snapshot restore
+6. Final save after setup completes (with probed env)
 
 ## remoteEnv is injected at exec time, not baked in
 

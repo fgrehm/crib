@@ -45,11 +45,6 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 		}
 	}
 
-	// 1b. Plugin post-container-create hooks (e.g. sandbox installs bubblewrap).
-	if e.plugins != nil {
-		e.dispatchPostContainerCreate(ctx, ws, cfg, cc)
-	}
-
 	// 2. Resolve remote user (skip if already set, e.g. from restartSimple).
 	if cc.remoteUser == "" {
 		cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg)

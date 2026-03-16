@@ -1,7 +1,24 @@
 # ADR 002: Agent sandbox plugin
 
-**Status:** Draft
+**Status:** Reverted
 **Date:** 2026-03-12
+
+## Status
+
+**Reverted.** The initial implementation used `bubblewrap` for filesystem isolation
+and `iptables` for network blocking. Both require capabilities not available in
+rootless Podman (`NET_ADMIN`, unprivileged user namespaces), making the plugin
+unusable in the primary development environment.
+
+[Linux Landlock LSM](https://landlock.io/) is the viable path forward: it works
+without root or capabilities (kernel 5.13+), has a Go library
+([go-landlock](https://github.com/landlock-lsm/go-landlock)), and supports both
+filesystem access control and TCP port restrictions (kernel 6.7+). The tradeoff:
+network restriction is port-based only — IP/CIDR blocking (RFC 1918 ranges) is not
+supported, so `blockLocalNetwork` as designed cannot be reimplemented with Landlock
+alone.
+
+See the roadmap entry for the future direction.
 
 ## Context
 

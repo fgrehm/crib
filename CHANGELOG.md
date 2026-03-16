@@ -7,27 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **Sandbox plugin**: restrict coding agents' filesystem and network access inside
-  dev containers using [bubblewrap](https://github.com/containers/bubblewrap).
-  Configured via `customizations.crib.sandbox` in devcontainer.json. Features:
-  - Read-only root filesystem with writable workspace folder and `/tmp`
-  - Auto-discovery of sensitive plugin artifacts (`~/.ssh/`, `~/.claude/`,
-    `~/.crib_history/`) with deny-read rules
-  - User-configurable `denyRead`, `denyWrite`, `allowWrite` path lists
-  - `blockLocalNetwork`: blocks RFC 1918, cloud metadata endpoints, and other
-    private ranges via iptables OUTPUT chain rules
-  - Auto-detection of git worktrees: sibling worktree directories are added
-    as writable paths so sandboxed agents can operate on worktree checkouts
-  - `hideFiles`: mask individual files with `/dev/null` so the agent sees
-    empty content (for standalone secret files that the app doesn't need at
-    runtime)
-  - Graceful degradation: network failures don't prevent filesystem sandboxing
-- **Plugin system**: `PostContainerCreator` interface for plugins that run commands
-  inside containers after creation. `PostContainerCreateEnabler` companion interface
-  lets plugins suppress dispatch and progress messages when unconfigured.
-
 ## [0.7.0] - 2026-03-10
 
 ### Added

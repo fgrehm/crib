@@ -264,57 +264,6 @@ func (e *Engine) dispatchPlugins(ctx context.Context, ws *workspace.Workspace, c
 	return resp, nil
 }
 
-// dispatchPostContainerCreate runs the post-container-create event for all
-// plugins that implement PostContainerCreator. Called from finalize after
-// file copies and volume chown.
-func (e *Engine) dispatchPostContainerCreate(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext) {
-	// Use configRemoteUser (from devcontainer.json) rather than cc.remoteUser,
-	// which hasn't been resolved yet at this point in the finalize flow.
-	// When neither config nor cc provides a user, InferRemoteHome("") returns
-	// /root, which is correct: containers without an explicit remoteUser run
-	// as root by default.
-	remoteUser := cc.remoteUser
-	if remoteUser == "" {
-		remoteUser = configRemoteUser(cfg)
-	}
-
-	req := &plugin.PostContainerCreateRequest{
-		WorkspaceID:     ws.ID,
-		WorkspaceDir:    e.store.WorkspaceDir(ws.ID),
-		ContainerID:     cc.containerID,
-		RemoteUser:      remoteUser,
-		WorkspaceFolder: cc.workspaceFolder,
-		Customizations:  extractCribCustomizations(cfg),
-		Runtime:         e.runtimeName,
-		ExecFunc: func(ctx context.Context, cmd []string, user string) error {
-			return e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
-				cmd, nil, io.Discard, io.Discard, nil, user)
-		},
-		ExecOutputFunc: func(ctx context.Context, cmd []string, user string) (string, error) {
-			var buf bytes.Buffer
-			err := e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
-				cmd, nil, &buf, io.Discard, nil, user)
-			return buf.String(), err
-		},
-		CopyFileFunc: func(ctx context.Context, content []byte, destPath, mode, user string) error {
-			dir := plugin.ShellQuote(filepath.Dir(destPath))
-			dest := plugin.ShellQuote(destPath)
-			writeCmd := fmt.Sprintf("mkdir -p '%s' && cat > '%s'", dir, dest)
-			if mode != "" {
-				writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", plugin.ShellQuote(mode), dest)
-			}
-			if user != "" {
-				writeCmd += fmt.Sprintf(" && chown '%s' '%s' '%s'", plugin.ShellQuote(user), dir, dest)
-			}
-			return e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID,
-				[]string{"sh", "-c", writeCmd}, bytes.NewReader(content),
-				io.Discard, io.Discard, nil, "root")
-		},
-	}
-
-	e.plugins.RunPostContainerCreate(ctx, req)
-}
-
 // execPluginCopies copies staged files into the container via exec.
 // All values are shell-escaped before embedding in single-quoted arguments.
 func (e *Engine) execPluginCopies(ctx context.Context, cc containerContext, copies []plugin.FileCopy) {
