@@ -21,8 +21,7 @@ const sandboxDevcontainerJSON = `{
 		"crib": {
 			"sandbox": {
 				"denyRead": ["~/.secret-config"],
-				"blockLocalNetwork": true,
-				"aliases": ["cat"]
+				"blockLocalNetwork": true
 			}
 		}
 	}
@@ -75,27 +74,6 @@ func TestE2ESandboxInstallsAndGeneratesWrapper(t *testing.T) {
 	}
 	if !strings.Contains(out, "--bind /tmp /tmp") {
 		t.Errorf("sandbox wrapper missing writable /tmp bind, got:\n%s", out)
-	}
-}
-
-func TestE2ESandboxAliasWrapper(t *testing.T) {
-	if !hasRuntime() {
-		t.Fatal("container runtime not available or not working (docker or podman required)")
-	}
-
-	projectDir, cribHome := setupSandboxProject(t)
-
-	// Alias wrapper for "cat" should exist and be executable.
-	mustRunCrib(t, projectDir, cribHome, "exec", "--", "test", "-x", "/root/.local/bin/cat")
-
-	// Alias wrapper should contain the banner and reference the sandbox.
-	out := mustRunCrib(t, projectDir, cribHome, "exec", "--",
-		"sh", "-c", "cat /root/.local/bin/cat")
-	if !strings.Contains(out, "[crib sandbox]") {
-		t.Errorf("alias wrapper missing '[crib sandbox]' banner, got:\n%s", out)
-	}
-	if !strings.Contains(out, "/root/.local/bin/sandbox") {
-		t.Errorf("alias wrapper missing sandbox path, got:\n%s", out)
 	}
 }
 
