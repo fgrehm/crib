@@ -121,6 +121,23 @@ func TestWorktreeBaseDirs_NestedParentsDeduped(t *testing.T) {
 	}
 }
 
+func TestWorktreeBaseDirs_RootLevelWorktree(t *testing.T) {
+	// Worktree directly under /: parent would be "/" which must not be added
+	// as a writable path (that would make the entire filesystem writable).
+	// The worktree path itself should be used instead.
+	paths := []string{
+		"/workspaces/project",
+		"/branch-x",
+	}
+	dirs := worktreeBaseDirs(paths, "/workspaces/project")
+	if len(dirs) != 1 {
+		t.Fatalf("expected 1 base dir, got %d: %v", len(dirs), dirs)
+	}
+	if dirs[0] != "/branch-x" {
+		t.Errorf("expected /branch-x (worktree path itself), got %s", dirs[0])
+	}
+}
+
 func TestWorktreeBaseDirs_Empty(t *testing.T) {
 	dirs := worktreeBaseDirs(nil, "/workspaces/project")
 	if len(dirs) != 0 {
