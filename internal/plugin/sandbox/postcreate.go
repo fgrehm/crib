@@ -5,15 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/fgrehm/crib/internal/plugin"
 )
-
-// validAliasName restricts alias names to safe characters for shell commands
-// and file paths. Must start with alphanumeric (rejects ".", "..", "-flag").
-var validAliasName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // PostContainerCreate installs bubblewrap and generates wrapper scripts
 // inside the container. No-op when sandbox config is absent.
@@ -100,22 +95,6 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 		return fmt.Errorf("writing sandbox wrapper: %w", err)
 	}
 
-	// 5. Generate alias wrappers.
-	for _, alias := range cfg.Aliases {
-		if !validAliasName.MatchString(alias) {
-			continue
-		}
-		aliasPath := localBin + "/" + alias
-		realPath, err := resolveRealBinary(ctx, req, alias, localBin, req.RemoteUser)
-		if err != nil || realPath == "" {
-			continue
-		}
-		aliasContent := generateAliasScript(alias, realPath, sandboxPath)
-		if err := req.CopyFileFunc(ctx, []byte(aliasContent), aliasPath, "0755", owner); err != nil {
-			return fmt.Errorf("writing alias %s: %w", alias, err)
-		}
-	}
-
 	// Surface network setup failure after wrapper generation so the plugin
 	// manager logs it as a warning (fail-open).
 	if netErr != nil {
@@ -157,36 +136,4 @@ func detectWorktreeWritePaths(ctx context.Context, req *plugin.PostContainerCrea
 	}
 	paths := parseWorktreePaths(out)
 	return worktreeBaseDirs(paths, req.WorkspaceFolder)
-}
-
-// resolveRealBinary finds the real path of a binary inside the container,
-// following symlinks to get the canonical path. If the canonical path lands
-// inside excludeDir (e.g. our own alias from a previous run), returns empty.
-// Runs as the specified user so the lookup sees the user's PATH.
-func resolveRealBinary(ctx context.Context, req *plugin.PostContainerCreateRequest, name, excludeDir, user string) (string, error) {
-	// Resolve the binary and follow symlinks. Claude Code's native installer
-	// creates ~/.local/bin/claude as a symlink to ~/.local/share/claude/...,
-	// so readlink -f gives us the real binary path that won't self-reference
-	// when we overwrite the symlink with our alias wrapper.
-	//
-	// Filter excludeDir from PATH so that a wrapper from a previous run
-	// doesn't shadow the real binary, keeping alias updates deterministic.
-	resolveCmd := fmt.Sprintf(
-		"p=$(PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -Fxv '%s' | paste -sd ':') command -v '%s' 2>/dev/null) && { readlink -f \"$p\" 2>/dev/null || echo \"$p\"; } || true",
-		plugin.ShellQuote(excludeDir), plugin.ShellQuote(name))
-	result, err := req.ExecOutputFunc(ctx, []string{"sh", "-c", resolveCmd}, user)
-	if err != nil {
-		return "", err
-	}
-	resolved := strings.TrimSpace(result)
-	if resolved == "" {
-		return "", nil
-	}
-	// If the resolved path is still inside the alias directory, it is our own
-	// generated script from a previous run (not a symlink). Skip to avoid
-	// self-reference.
-	if strings.HasPrefix(resolved, excludeDir+"/") {
-		return "", nil
-	}
-	return resolved, nil
 }

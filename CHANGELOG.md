@@ -18,7 +18,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - User-configurable `denyRead`, `denyWrite`, `allowWrite` path lists
   - `blockLocalNetwork`: blocks RFC 1918, cloud metadata endpoints, and other
     private ranges via iptables OUTPUT chain rules
-  - `aliases`: transparent wrappers that run agent commands through the sandbox
   - Auto-detection of git worktrees: sibling worktree directories are added
     as writable paths so sandboxed agents can operate on worktree checkouts
   - `hideFiles`: mask individual files with `/dev/null` so the agent sees

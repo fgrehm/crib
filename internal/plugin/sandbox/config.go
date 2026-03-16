@@ -8,7 +8,6 @@ type sandboxConfig struct {
 	AllowWrite        []string // extra writable paths beyond workspace + /tmp
 	HideFiles         []string // extra files to mask (relative to workspace folder)
 	BlockLocalNetwork bool
-	Aliases           []string // agent commands to wrap (e.g. "claude", "pi")
 }
 
 // parseConfig extracts sandbox config from customizations.crib.
@@ -32,7 +31,6 @@ func parseConfig(customizations map[string]any) *sandboxConfig {
 	cfg.DenyWrite = toStringSlice(m["denyWrite"])
 	cfg.AllowWrite = toStringSlice(m["allowWrite"])
 	cfg.HideFiles = toStringSlice(m["hideFiles"])
-	cfg.Aliases = toStringSlice(m["aliases"])
 
 	if v, ok := m["blockLocalNetwork"].(bool); ok {
 		cfg.BlockLocalNetwork = v

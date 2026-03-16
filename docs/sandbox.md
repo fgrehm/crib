@@ -21,28 +21,17 @@ Add the sandbox config to your `devcontainer.json`:
   "customizations": {
     "crib": {
       "sandbox": {
-        "blockLocalNetwork": true,
-        "aliases": ["claude", "pi"]
+        "blockLocalNetwork": true
       }
     }
   }
 }
 ```
 
-Run `crib up` (or `crib rebuild` if the container already exists), then start your agent:
+Run `crib up` (or `crib rebuild` if the container already exists), then start your agent through the sandbox:
 
 ```bash
-# Explicitly sandboxed (runs "sandbox claude" inside the container):
-crib run sandbox claude
-
-# Or just use the alias (same thing, automatically wrapped):
-crib run claude
-```
-
-Inside the container, the alias prints a banner so you know the sandbox is active:
-
-```
-[crib sandbox] Running claude in sandboxed mode
+crib run -- sandbox claude
 ```
 
 ## What gets restricted
@@ -94,10 +83,7 @@ All options go under `customizations.crib.sandbox` in `devcontainer.json`:
         "hideFiles": [],             // individual files to mask (relative to workspace)
 
         // Network restrictions.
-        "blockLocalNetwork": true,   // block RFC 1918 + metadata endpoints
-
-        // Agent aliases.
-        "aliases": ["claude", "pi", "aider"]
+        "blockLocalNetwork": true    // block RFC 1918 + metadata endpoints
       }
     }
   }
@@ -124,23 +110,6 @@ The `hideFiles` option masks specific files so the agent sees empty content when
 Under the hood, each listed file is replaced with `/dev/null` via `bwrap --ro-bind-try`. If the file doesn't exist, the entry is silently skipped.
 
 **Important tradeoff**: file hiding applies to the agent's entire process tree, including any child processes the agent spawns. If you hide `.env` or `config/master.key`, commands like `rails runner`, `rake`, or `bundle exec` that the agent runs will also be unable to read those files, breaking application boot. Use `hideFiles` only for files that no child process needs at runtime (standalone API key files, `.netrc`, token files, etc.). For files like `.env` that the application reads at startup, use agent-level restrictions (e.g. Claude Code's `permissions.deny` in [settings.json](https://docs.anthropic.com/en/docs/claude-code/settings)) instead.
-
-### Aliases
-
-The `aliases` list creates wrapper scripts in `~/.local/bin/` inside the container. Each wrapper:
-
-1. Prints `[crib sandbox] Running {name} in sandboxed mode`
-2. Launches the real binary through the `sandbox` wrapper
-
-The real binary path is resolved at container setup time (skipping `~/.local/bin/` to avoid self-reference). If the real binary isn't found, the alias is silently skipped.
-
-Without aliases, you can always use the `sandbox` command directly:
-
-```bash
-sandbox claude
-sandbox pi --model gemini-2.5-pro
-sandbox aider --model sonnet
-```
 
 ## How it works
 
@@ -189,9 +158,7 @@ This is an intentional tradeoff. Agents need git access to be useful. If you wan
 {
   "customizations": {
     "crib": {
-      "sandbox": {
-        "aliases": ["claude"]
-      }
+      "sandbox": {}
     }
   }
 }
@@ -207,7 +174,6 @@ The agent can read the full filesystem but only write to the workspace and `/tmp
     "crib": {
       "sandbox": {
         "blockLocalNetwork": true,
-        "aliases": ["claude", "pi", "aider"],
         "denyWrite": ["~/.config"]
       }
     }
@@ -225,7 +191,6 @@ Filesystem isolation plus network protection against metadata endpoint access an
     "crib": {
       "sandbox": {
         "blockLocalNetwork": true,
-        "aliases": ["claude", "pi", "aider"],
         "denyRead": ["/tmp/ssh-agent.sock"],
         "denyWrite": ["~/.config", "~/.local"]
       }
@@ -251,7 +216,6 @@ Claude Code's `--dangerously-skip-permissions` flag (sometimes called "yolo mode
     "crib": {
       "sandbox": {
         "blockLocalNetwork": true,
-        "aliases": ["claude"],
         "denyWrite": ["~/.config", "~/.local"]
       }
     }
@@ -259,10 +223,10 @@ Claude Code's `--dangerously-skip-permissions` flag (sometimes called "yolo mode
 }
 ```
 
-Then run Claude Code in autonomous mode:
+Then run Claude Code in autonomous mode through the sandbox:
 
 ```bash
-crib run claude --dangerously-skip-permissions
+crib run -- sandbox claude --dangerously-skip-permissions
 ```
 
 What the sandbox enforces regardless of Claude's permission settings:
@@ -283,29 +247,16 @@ What the sandbox does **not** cover:
 
 ### Other agents
 
-The same pattern works with any agent that supports unattended operation. Run it through the sandbox alias:
+The same pattern works with any agent that supports unattended operation:
 
 ```bash
-crib run pi --dangerously-skip-permissions
-crib run aider --yes  # aider's equivalent flag
+crib run -- sandbox pi --dangerously-skip-permissions
+crib run -- sandbox aider --yes  # aider's equivalent flag
 ```
 
 The sandbox restrictions are agent-agnostic. They apply to whatever process the wrapper launches.
 
 ## Limitations
-
-### Aliases and postCreateCommand installs
-
-Alias wrappers are generated during `PostContainerCreate`, which runs before
-lifecycle hooks (`postCreateCommand`, `onCreateCommand`, etc.). If your bootstrap
-script installs or updates the agent binary in a lifecycle hook (e.g.
-`postCreateCommand: bash bin/setup` where `bin/setup` runs the Claude Code
-installer), the installer will overwrite the alias wrapper crib just created.
-
-The workaround is to install the agent binary in the Dockerfile or a DevContainer
-Feature, so it is baked into the image before `PostContainerCreate` runs. If that
-isn't practical, use `sandbox <agent>` directly instead of relying on the alias.
-This may be improved in a future release.
 
 ### Ubuntu 24.04+
 

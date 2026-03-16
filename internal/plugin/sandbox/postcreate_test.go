@@ -92,64 +92,6 @@ func TestPostContainerCreate_InstallsAndGeneratesWrapper(t *testing.T) {
 	}
 }
 
-func TestPostContainerCreate_WithAliases(t *testing.T) {
-	wsDir := t.TempDir()
-
-	copiedFiles := map[string]string{}
-
-	p := New()
-	req := &plugin.PostContainerCreateRequest{
-		WorkspaceID:     "test-ws",
-		WorkspaceDir:    wsDir,
-		ContainerID:     "abc123",
-		RemoteUser:      "vscode",
-		WorkspaceFolder: "/workspaces/project",
-		Runtime:         "docker",
-		Customizations: map[string]any{
-			"sandbox": map[string]any{
-				"aliases": []any{"claude", "missing-tool"},
-			},
-		},
-		ExecFunc: func(_ context.Context, _ []string, _ string) error {
-			return nil
-		},
-		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
-			cmdStr := ""
-			if len(cmd) > 2 {
-				cmdStr = cmd[2]
-			}
-			// Simulate: claude exists, readlink -f resolves the symlink.
-			// The resolve command is: p=$(command -v 'claude' ...) && readlink -f "$p"
-			if strings.Contains(cmdStr, "'claude'") {
-				return "/home/vscode/.local/share/claude/claude-v2\n", nil
-			}
-			return "", nil
-		},
-		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
-			copiedFiles[dest] = string(content)
-			return nil
-		},
-	}
-
-	if err := p.PostContainerCreate(context.Background(), req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Should have written an alias for claude.
-	alias, ok := copiedFiles["/home/vscode/.local/bin/claude"]
-	if !ok {
-		t.Fatal("expected claude alias to be written")
-	}
-	if !strings.Contains(alias, "[crib sandbox]") {
-		t.Errorf("alias should contain sandbox banner, got:\n%s", alias)
-	}
-
-	// missing-tool should not have an alias.
-	if _, ok := copiedFiles["/home/vscode/.local/bin/missing-tool"]; ok {
-		t.Error("missing-tool should not have an alias written")
-	}
-}
-
 func TestPostContainerCreate_HideFilesConfig(t *testing.T) {
 	wsDir := t.TempDir()
 	copiedFiles := map[string]string{}
@@ -344,53 +286,5 @@ func TestPostContainerCreate_WorktreeDetectionFailsGracefully(t *testing.T) {
 	}
 	if strings.Contains(wrapper, "worktree") {
 		t.Errorf("wrapper should not reference worktrees when git fails, got:\n%s", wrapper)
-	}
-}
-
-func TestPostContainerCreate_InvalidAliasNamesSkipped(t *testing.T) {
-	wsDir := t.TempDir()
-	copiedFiles := map[string]string{}
-
-	p := New()
-	req := &plugin.PostContainerCreateRequest{
-		WorkspaceID:     "test-ws",
-		WorkspaceDir:    wsDir,
-		ContainerID:     "abc123",
-		RemoteUser:      "vscode",
-		WorkspaceFolder: "/workspaces/project",
-		Runtime:         "docker",
-		Customizations: map[string]any{
-			"sandbox": map[string]any{
-				"aliases": []any{"valid-name", "bad;name", "../escape", "also bad", ".", "..", "-flag"},
-			},
-		},
-		ExecFunc: func(_ context.Context, _ []string, _ string) error {
-			return nil
-		},
-		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
-			if len(cmd) > 2 && strings.Contains(cmd[2], "'valid-name'") {
-				return "/usr/bin/valid-name\n", nil
-			}
-			return "", nil
-		},
-		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
-			copiedFiles[dest] = string(content)
-			return nil
-		},
-	}
-
-	if err := p.PostContainerCreate(context.Background(), req); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Only valid-name should have an alias.
-	if _, ok := copiedFiles["/home/vscode/.local/bin/valid-name"]; !ok {
-		t.Error("expected valid-name alias to be written")
-	}
-	for _, bad := range []string{"bad;name", "../escape", "also bad", ".", "..", "-flag"} {
-		path := "/home/vscode/.local/bin/" + bad
-		if _, ok := copiedFiles[path]; ok {
-			t.Errorf("invalid alias %q should have been skipped", bad)
-		}
 	}
 }

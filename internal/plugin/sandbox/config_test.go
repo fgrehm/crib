@@ -30,9 +30,7 @@ func TestParseConfig_Empty(t *testing.T) {
 	if cfg.BlockLocalNetwork {
 		t.Error("expected blockLocalNetwork=false by default")
 	}
-	if len(cfg.Aliases) != 0 {
-		t.Error("expected empty aliases")
-	}
+
 }
 
 func TestParseConfig_Full(t *testing.T) {
@@ -43,7 +41,6 @@ func TestParseConfig_Full(t *testing.T) {
 			"allowWrite":        []any{"/var/log"},
 			"hideFiles":         []any{".env.staging", "config/secrets.yml"},
 			"blockLocalNetwork": true,
-			"aliases":           []any{"claude", "pi", "aider"},
 		},
 	})
 	if cfg == nil {
@@ -64,9 +61,7 @@ func TestParseConfig_Full(t *testing.T) {
 	if len(cfg.HideFiles) != 2 || cfg.HideFiles[0] != ".env.staging" {
 		t.Errorf("unexpected hideFiles: %v", cfg.HideFiles)
 	}
-	if len(cfg.Aliases) != 3 {
-		t.Errorf("expected 3 aliases, got %d", len(cfg.Aliases))
-	}
+
 }
 
 func TestToStringSlice_NilInput(t *testing.T) {

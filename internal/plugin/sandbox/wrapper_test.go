@@ -127,9 +127,6 @@ func TestGenerateWrapperScript_Basic(t *testing.T) {
 	if !strings.Contains(script, "WARNING: sandbox plugin is experimental") {
 		t.Error("missing experimental warning")
 	}
-	if !strings.Contains(script, "CRIB_SANDBOX_ALIAS") {
-		t.Error("missing CRIB_SANDBOX_ALIAS check")
-	}
 	if !strings.Contains(script, "--ro-bind / /") {
 		t.Error("missing ro-bind root")
 	}
@@ -211,30 +208,5 @@ func TestGenerateWrapperScript_WithHiddenFiles(t *testing.T) {
 	idxArgs := strings.Index(script, "-- \"$@\"")
 	if idxHidden > idxArgs {
 		t.Error("hidden file entries should appear before passthrough args")
-	}
-}
-
-func TestGenerateAliasScript(t *testing.T) {
-	script := generateAliasScript("claude", "/usr/local/bin/claude", "/home/vscode/.local/bin/sandbox")
-
-	if !strings.Contains(script, "#!/bin/sh") {
-		t.Error("missing shebang")
-	}
-	if !strings.Contains(script, "WARNING: sandbox plugin is experimental") {
-		t.Error("missing experimental warning")
-	}
-	if !strings.Contains(script, "[crib sandbox] Running claude in sandboxed mode") {
-		t.Error("missing banner message")
-	}
-	if !strings.Contains(script, "CRIB_SANDBOX_ALIAS=1 exec '/home/vscode/.local/bin/sandbox' '/usr/local/bin/claude'") {
-		t.Error("missing exec with CRIB_SANDBOX_ALIAS and sandbox and real binary")
-	}
-}
-
-func TestGenerateAliasScript_QuotedPaths(t *testing.T) {
-	script := generateAliasScript("claude", "/opt/it's/claude", "/home/user/.local/bin/sandbox")
-
-	if !strings.Contains(script, "exec '/home/user/.local/bin/sandbox' '/opt/it'\\''s/claude'") {
-		t.Error("real binary path not properly escaped")
 	}
 }

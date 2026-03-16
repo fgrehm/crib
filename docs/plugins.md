@@ -142,8 +142,7 @@ For the full guide, see [Agent Sandboxing](/crib/guides/sandbox/).
   "customizations": {
     "crib": {
       "sandbox": {
-        "blockLocalNetwork": true,
-        "aliases": ["claude", "pi", "aider"]
+        "blockLocalNetwork": true
       }
     }
   }
@@ -155,7 +154,6 @@ For the full guide, see [Agent Sandboxing](/crib/guides/sandbox/).
 - Makes the filesystem read-only except for the workspace folder and `/tmp`
 - Automatically denies reads on credentials injected by other plugins (SSH config, Claude tokens, shell history)
 - Optionally blocks outbound traffic to private networks and [cloud metadata endpoints](/crib/reference/cloud-metadata-endpoints/)
-- Creates aliases in `~/.local/bin/` that transparently wrap agent commands and print a `[crib sandbox]` banner
 
 ---
 
