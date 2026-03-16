@@ -36,7 +36,8 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// Filesystem sandboxing (bwrap) works independently.
 	var netErr error
 	if cfg.BlockLocalNetwork {
-		iptablesInstall := "command -v iptables >/dev/null 2>&1 || { " +
+		iptablesInstall := "export PATH=\"/usr/sbin:/sbin:$PATH\"; " +
+			"command -v iptables >/dev/null 2>&1 || { " +
 			"command -v apt-get >/dev/null 2>&1 && " +
 			"apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq iptables >/dev/null 2>&1; }"
 		if err := req.ExecFunc(ctx, []string{"sh", "-c", iptablesInstall}, "root"); err != nil {

@@ -67,7 +67,7 @@ func TestGenerateNetworkScript_BlockLocalNetwork(t *testing.T) {
 	// All iptables rules should suppress errors (2>/dev/null).
 	for line := range strings.SplitSeq(strings.TrimSpace(script), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "export PATH=") {
 			continue
 		}
 		if !strings.HasSuffix(line, "2>/dev/null") {

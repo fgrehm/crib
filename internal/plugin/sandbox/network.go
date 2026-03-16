@@ -40,6 +40,9 @@ var localNetworkBlockedCIDRs = []struct {
 func generateNetworkScript(cfg *sandboxConfig) string {
 	var b strings.Builder
 
+	// Ensure iptables/ip6tables are in PATH (they live in /usr/sbin on Debian).
+	b.WriteString("export PATH=\"/usr/sbin:/sbin:$PATH\"\n")
+
 	// IPv6 rules first (best-effort: ip6tables may not exist in all containers).
 	// IPv4 rules last so the script's exit code reflects iptables success.
 	for _, bin := range []string{"ip6tables", "iptables"} {
