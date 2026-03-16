@@ -183,6 +183,31 @@ func TestGenerateWrapperScript_QuotedPaths(t *testing.T) {
 	}
 }
 
+func TestGenerateWrapperScript_WithHiddenFiles(t *testing.T) {
+	pol := &policy{
+		WorkspaceFolder: "/workspaces/project",
+		RemoteHome:      "/home/vscode",
+		HiddenFiles: []string{
+			"/workspaces/project/.env",
+			"/workspaces/project/config/master.key",
+		},
+	}
+	script := generateWrapperScript(pol)
+
+	if !strings.Contains(script, "--ro-bind-try /dev/null '/workspaces/project/.env'") {
+		t.Error("missing /dev/null bind for .env")
+	}
+	if !strings.Contains(script, "--ro-bind-try /dev/null '/workspaces/project/config/master.key'") {
+		t.Error("missing /dev/null bind for master.key")
+	}
+	// Hidden file entries should appear before the passthrough args.
+	idxHidden := strings.Index(script, "--ro-bind-try /dev/null")
+	idxArgs := strings.Index(script, "-- \"$@\"")
+	if idxHidden > idxArgs {
+		t.Error("hidden file entries should appear before passthrough args")
+	}
+}
+
 func TestGenerateAliasScript(t *testing.T) {
 	script := generateAliasScript("claude", "/usr/local/bin/claude", "/home/vscode/.local/bin/sandbox")
 

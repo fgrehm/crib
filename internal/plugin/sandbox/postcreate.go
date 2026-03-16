@@ -3,6 +3,8 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -54,6 +56,43 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// 3. Build the sandbox policy.
 	pol := buildPolicy(cfg, req.WorkspaceDir, req.RemoteUser, req.WorkspaceFolder)
 
+	// 3b. Apply user-configured hideFiles (paths relative to workspace folder).
+	// Validate that resolved paths stay within the workspace.
+	wsFolder := filepath.Clean(req.WorkspaceFolder)
+	for _, rel := range cfg.HideFiles {
+		if rel == "" || rel == "." {
+			continue
+		}
+		if filepath.IsAbs(rel) {
+			slog.Debug("sandbox: hideFiles entry must be relative, skipping", "path", rel)
+			continue
+		}
+		abs := filepath.Clean(filepath.Join(wsFolder, rel))
+		if !strings.HasPrefix(abs, wsFolder+"/") {
+			slog.Debug("sandbox: hideFiles path escapes workspace, skipping", "path", rel)
+			continue
+		}
+		pol.HiddenFiles = append(pol.HiddenFiles, abs)
+		slog.Debug("sandbox: hiding file", "path", abs)
+	}
+
+	// 3c. Auto-detect git worktrees and add their base dirs as writable.
+	// Non-fatal: git may not be installed or workspace may not be a repo.
+	// Deduplicate against existing AllowWritePaths (user may have configured
+	// the same path via allowWrite in devcontainer.json).
+	wtDirs := detectWorktreeWritePaths(ctx, req)
+	existing := make(map[string]struct{}, len(pol.AllowWritePaths))
+	for _, p := range pol.AllowWritePaths {
+		existing[filepath.Clean(p)] = struct{}{}
+	}
+	for _, d := range wtDirs {
+		if _, dup := existing[filepath.Clean(d)]; dup {
+			continue
+		}
+		pol.AllowWritePaths = append(pol.AllowWritePaths, d)
+		slog.Debug("sandbox: auto-detected git worktree directory", "path", d)
+	}
+
 	// 4. Generate and write the sandbox wrapper script.
 	sandboxPath := localBin + "/sandbox"
 	wrapperContent := generateWrapperScript(pol)
@@ -104,17 +143,50 @@ func execScriptViaFile(ctx context.Context, req *plugin.PostContainerCreateReque
 	return execErr
 }
 
+// detectWorktreeWritePaths runs `git worktree list --porcelain` inside the
+// container and returns directories that need write access for worktree
+// checkouts. Returns nil when no external worktrees are found or when git
+// is unavailable.
+func detectWorktreeWritePaths(ctx context.Context, req *plugin.PostContainerCreateRequest) []string {
+	out, err := req.ExecOutputFunc(ctx, []string{
+		"git", "-C", req.WorkspaceFolder, "worktree", "list", "--porcelain",
+	}, req.RemoteUser)
+	if err != nil {
+		slog.Debug("sandbox: git worktree detection skipped", "error", err)
+		return nil
+	}
+	paths := parseWorktreePaths(out)
+	return worktreeBaseDirs(paths, req.WorkspaceFolder)
+}
+
 // resolveRealBinary finds the real path of a binary inside the container,
-// excluding ~/.local/bin to avoid self-reference from our generated aliases.
+// following symlinks to get the canonical path. If the canonical path lands
+// inside excludeDir (e.g. our own alias from a previous run), returns empty.
 // Runs as the specified user so the lookup sees the user's PATH.
 func resolveRealBinary(ctx context.Context, req *plugin.PostContainerCreateRequest, name, excludeDir, user string) (string, error) {
+	// Resolve the binary and follow symlinks. Claude Code's native installer
+	// creates ~/.local/bin/claude as a symlink to ~/.local/share/claude/...,
+	// so readlink -f gives us the real binary path that won't self-reference
+	// when we overwrite the symlink with our alias wrapper.
+	//
+	// Filter excludeDir from PATH so that a wrapper from a previous run
+	// doesn't shadow the real binary, keeping alias updates deterministic.
 	resolveCmd := fmt.Sprintf(
-		"PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -v -x -F '%s' | paste -sd ':') "+
-			"command -v '%s' 2>/dev/null || true",
-		plugin.ShellQuote(excludeDir), name)
+		"p=$(PATH=$(echo \"$PATH\" | tr ':' '\\n' | grep -Fxv '%s' | paste -sd ':') command -v '%s' 2>/dev/null) && { readlink -f \"$p\" 2>/dev/null || echo \"$p\"; } || true",
+		plugin.ShellQuote(excludeDir), plugin.ShellQuote(name))
 	result, err := req.ExecOutputFunc(ctx, []string{"sh", "-c", resolveCmd}, user)
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(result), nil
+	resolved := strings.TrimSpace(result)
+	if resolved == "" {
+		return "", nil
+	}
+	// If the resolved path is still inside the alias directory, it is our own
+	// generated script from a previous run (not a symlink). Skip to avoid
+	// self-reference.
+	if strings.HasPrefix(resolved, excludeDir+"/") {
+		return "", nil
+	}
+	return resolved, nil
 }

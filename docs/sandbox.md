@@ -50,10 +50,11 @@ The sandbox makes the entire filesystem read-only, then selectively opens up wri
 |------|--------|-----|
 | `/` (everything) | read-only | Default for all paths not listed below |
 | `workspaceFolder` | read-write | The agent needs to edit project files |
+| git worktree dirs | read-write | Auto-detected sibling worktree directories |
 | `/tmp` | read-write | Scratch space for temp files |
 | `~/.crib_history/` | deny-read | May contain credentials (`export TOKEN=...`) |
 | `~/.ssh/` | deny-read | Injected by the ssh plugin, contains host info |
-| `~/.claude/` | deny-read | Injected by the `coding-agents` plugin |
+| `~/.claude/` | read-only | Claude Code needs to read its own config to authenticate |
 
 The sandbox automatically discovers what other `crib` plugins have injected and applies appropriate restrictions. You don't need to manually list credential paths.
 
@@ -82,9 +83,10 @@ All options go under `customizations.crib.sandbox` in `devcontainer.json`:
       "sandbox": {
         // Filesystem restrictions.
         // workspaceFolder and /tmp are always writable.
-        "denyRead": [],              // extra paths to block reads on
-        "denyWrite": [],             // extra paths to block writes on
+        "denyRead": [],              // extra directory paths to block reads on
+        "denyWrite": [],             // extra directory paths to block writes on
         "allowWrite": [],            // extra writable paths beyond workspace + /tmp
+        "hideFiles": [],             // individual files to mask (relative to workspace)
 
         // Network restrictions.
         "blockLocalNetwork": true,   // block RFC 1918 + metadata endpoints
@@ -99,12 +101,24 @@ All options go under `customizations.crib.sandbox` in `devcontainer.json`:
 
 ### Path syntax
 
-Paths in `denyRead`, `denyWrite`, and `allowWrite` must be **directories** (bubblewrap's `--tmpfs` and `--bind` operate on mount points, not individual files). To deny access to a specific file, deny the parent directory.
+Paths in `denyRead`, `denyWrite`, and `allowWrite` must be **directories** (bubblewrap's `--tmpfs` and `--bind` operate on mount points, not individual files).
 
 | Prefix | Meaning | Example |
 |--------|---------|---------|
 | `~/` | Relative to container user's home | `~/.ssh` |
 | `/` | Absolute path inside the container | `/etc/secrets` |
+
+### Hiding individual files
+
+The `hideFiles` option masks specific files so the agent sees empty content when reading them. Paths are **relative to the workspace folder**:
+
+```jsonc
+"hideFiles": [".netrc", "secrets/api-key.txt"]
+```
+
+Under the hood, each listed file is replaced with `/dev/null` via `bwrap --ro-bind-try`. If the file doesn't exist, the entry is silently skipped.
+
+**Important tradeoff**: file hiding applies to the agent's entire process tree, including any child processes the agent spawns. If you hide `.env` or `config/master.key`, commands like `rails runner`, `rake`, or `bundle exec` that the agent runs will also be unable to read those files, breaking application boot. Use `hideFiles` only for files that no child process needs at runtime (standalone API key files, `.netrc`, token files, etc.). For files like `.env` that the application reads at startup, use agent-level restrictions (e.g. Claude Code's `permissions.deny` in [settings.json](https://docs.anthropic.com/en/docs/claude-code/settings)) instead.
 
 ### Aliases
 
@@ -137,12 +151,24 @@ The sandbox plugin automatically scans `~/.crib/workspaces/{id}/plugins/*/` to d
 
 | Plugin | What it injected | Sandbox rule |
 |--------|-----------------|--------------|
-| `coding-agents` | `~/.claude/` | deny-read |
+| `coding-agents` | `~/.claude/` | read-only (agent needs its own config) |
 | `ssh` | `~/.ssh/` | deny-read |
 | `ssh` | `/tmp/ssh-agent.sock` | allowed (see below) |
 | `shell-history` | `~/.crib_history/` | deny-read |
 
 User-specified `denyRead`/`denyWrite`/`allowWrite` in the config are merged on top of these defaults.
+
+### Git worktree detection
+
+If your workflow uses [git worktrees](https://git-scm.com/docs/git-worktree), the sandbox automatically detects them. At container setup time, the plugin runs `git worktree list` inside the container. When worktrees exist outside the workspace folder (the common pattern with sibling directories like `/workspaces/project-worktrees/`), the plugin adds their parent directory as a writable path.
+
+This means a sandboxed agent can read and write to worktree checkouts without any manual configuration. The detection is logged at debug level:
+
+```
+sandbox: auto-detected git worktree directory  path=/workspaces/project-worktrees
+```
+
+If git is not installed or the workspace is not a git repository, detection is silently skipped. You can always add writable paths manually via `allowWrite` if needed.
 
 ### SSH agent socket
 
@@ -204,6 +230,62 @@ Filesystem isolation plus network protection against metadata endpoint access an
 ```
 
 Blocks metadata endpoints and RFC 1918 ranges, SSH agent access, and writes to config directories. The agent can only write to the workspace and `/tmp`.
+
+## Running agents in autonomous mode
+
+The sandbox makes it safer to run coding agents with reduced permission prompts. By containing filesystem access and network reach at the OS level, you get a safety net that the agent cannot bypass, even when you relax the agent's own permission model.
+
+### Claude Code
+
+Claude Code's `--dangerously-skip-permissions` flag (sometimes called "yolo mode") disables all interactive permission prompts, letting the agent run commands and edit files without confirmation. Combining it with the crib sandbox gives you autonomous operation with OS-level guardrails:
+
+```jsonc
+// devcontainer.json
+{
+  "customizations": {
+    "crib": {
+      "sandbox": {
+        "blockLocalNetwork": true,
+        "aliases": ["claude"],
+        "denyWrite": ["~/.config", "~/.local"]
+      }
+    }
+  }
+}
+```
+
+Then run Claude Code in autonomous mode:
+
+```bash
+crib run claude --dangerously-skip-permissions
+```
+
+What the sandbox enforces regardless of Claude's permission settings:
+
+| Concern | What the sandbox does |
+|---------|----------------------|
+| Filesystem writes | Limited to workspace folder, worktree dirs, and `/tmp` |
+| Credential files | `~/.ssh/` and `~/.crib_history/` hidden; `~/.claude/` read-only (agent needs its own config) |
+| Network | Local network and cloud metadata endpoints blocked (when `blockLocalNetwork` is on) |
+| SSH keys | Agent can use keys for signing (git push) but cannot read private key material |
+
+What the sandbox does **not** cover:
+
+- **Reading project files**: the agent can read everything in the workspace, including `.env`, `config/master.key`, and other secrets checked into (or gitignored within) the project. Use the agent's own `permissions.deny` settings to restrict reads on specific files.
+- **Git operations**: the agent can commit, push, and create branches. It has full git access to the repository.
+- **External API calls**: outbound internet traffic (except local network) is allowed. The agent can call any public API.
+- **Process spawning**: the agent can run any command available in the container, subject to the filesystem restrictions above.
+
+### Other agents
+
+The same pattern works with any agent that supports unattended operation. Run it through the sandbox alias:
+
+```bash
+crib run pi --dangerously-skip-permissions
+crib run aider --yes  # aider's equivalent flag
+```
+
+The sandbox restrictions are agent-agnostic. They apply to whatever process the wrapper launches.
 
 ## Limitations
 

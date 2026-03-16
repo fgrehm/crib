@@ -21,11 +21,14 @@ func discoverPluginArtifacts(workspaceDir, remoteUser string) []denyRule {
 
 	pluginsDir := filepath.Join(workspaceDir, "plugins")
 
-	// coding-agents: ~/.claude/.credentials.json
+	// coding-agents: ~/.claude/ (read-only, not hidden).
+	// Claude Code needs to read its own credentials to authenticate API calls.
+	// Deny-write prevents a compromised agent from tampering with settings or
+	// credentials, while still allowing the binary to function.
 	if dirExists(filepath.Join(pluginsDir, "coding-agents")) {
 		rules = append(rules, denyRule{
 			Path:     filepath.Join(remoteHome, ".claude"),
-			DenyRead: true,
+			DenyRead: false,
 		})
 	}
 

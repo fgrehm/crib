@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,9 +118,10 @@ func TestPostContainerCreate_WithAliases(t *testing.T) {
 			if len(cmd) > 2 {
 				cmdStr = cmd[2]
 			}
-			// Simulate: claude exists at /usr/local/bin/claude, missing-tool does not.
-			if strings.Contains(cmdStr, "claude") {
-				return "/usr/local/bin/claude\n", nil
+			// Simulate: claude exists, readlink -f resolves the symlink.
+			// The resolve command is: p=$(command -v 'claude' ...) && readlink -f "$p"
+			if strings.Contains(cmdStr, "'claude'") {
+				return "/home/vscode/.local/share/claude/claude-v2\n", nil
 			}
 			return "", nil
 		},
@@ -148,6 +150,203 @@ func TestPostContainerCreate_WithAliases(t *testing.T) {
 	}
 }
 
+func TestPostContainerCreate_HideFilesConfig(t *testing.T) {
+	wsDir := t.TempDir()
+	copiedFiles := map[string]string{}
+
+	p := New()
+	req := &plugin.PostContainerCreateRequest{
+		WorkspaceID:     "test-ws",
+		WorkspaceDir:    wsDir,
+		ContainerID:     "abc123",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspaces/project",
+		Runtime:         "docker",
+		Customizations: map[string]any{
+			"sandbox": map[string]any{
+				"hideFiles": []any{".env.staging", "config/secrets.yml"},
+			},
+		},
+		ExecFunc: func(_ context.Context, _ []string, _ string) error {
+			return nil
+		},
+		ExecOutputFunc: func(_ context.Context, _ []string, _ string) (string, error) {
+			return "", nil // no auto-detected files
+		},
+		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
+			copiedFiles[dest] = string(content)
+			return nil
+		},
+	}
+
+	if err := p.PostContainerCreate(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wrapper, ok := copiedFiles["/home/vscode/.local/bin/sandbox"]
+	if !ok {
+		t.Fatal("expected sandbox wrapper to be copied")
+	}
+	if !strings.Contains(wrapper, "--ro-bind-try /dev/null '/workspaces/project/.env.staging'") {
+		t.Errorf("sandbox wrapper should hide user-configured .env.staging, got:\n%s", wrapper)
+	}
+	if !strings.Contains(wrapper, "--ro-bind-try /dev/null '/workspaces/project/config/secrets.yml'") {
+		t.Errorf("sandbox wrapper should hide user-configured config/secrets.yml, got:\n%s", wrapper)
+	}
+}
+
+func TestPostContainerCreate_HideFilesPathTraversal(t *testing.T) {
+	wsDir := t.TempDir()
+	copiedFiles := map[string]string{}
+
+	p := New()
+	req := &plugin.PostContainerCreateRequest{
+		WorkspaceID:     "test-ws",
+		WorkspaceDir:    wsDir,
+		ContainerID:     "abc123",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspaces/project",
+		Runtime:         "docker",
+		Customizations: map[string]any{
+			"sandbox": map[string]any{
+				"hideFiles": []any{
+					"legit.txt",
+					"../../etc/passwd",
+					"../escape",
+					".",
+					"",
+					"sub/../../../outside",
+				},
+			},
+		},
+		ExecFunc: func(_ context.Context, _ []string, _ string) error {
+			return nil
+		},
+		ExecOutputFunc: func(_ context.Context, _ []string, _ string) (string, error) {
+			return "", nil
+		},
+		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
+			copiedFiles[dest] = string(content)
+			return nil
+		},
+	}
+
+	if err := p.PostContainerCreate(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wrapper, ok := copiedFiles["/home/vscode/.local/bin/sandbox"]
+	if !ok {
+		t.Fatal("expected sandbox wrapper to be copied")
+	}
+	// Only legit.txt should be hidden.
+	if !strings.Contains(wrapper, "--ro-bind-try /dev/null '/workspaces/project/legit.txt'") {
+		t.Errorf("sandbox wrapper should hide legit.txt, got:\n%s", wrapper)
+	}
+	// Traversal paths must be rejected.
+	for _, bad := range []string{"etc/passwd", "../escape", "outside"} {
+		if strings.Contains(wrapper, bad) {
+			t.Errorf("sandbox wrapper should not contain path-traversal entry %q, got:\n%s", bad, wrapper)
+		}
+	}
+}
+
+func TestPostContainerCreate_WorktreeAutoDetection(t *testing.T) {
+	wsDir := t.TempDir()
+	copiedFiles := map[string]string{}
+
+	porcelainOutput := "worktree /workspaces/project\n" +
+		"HEAD abc123\n" +
+		"branch refs/heads/main\n" +
+		"\n" +
+		"worktree /workspaces/project-worktrees/feature-a\n" +
+		"HEAD def456\n" +
+		"branch refs/heads/feature-a\n" +
+		"\n"
+
+	p := New()
+	req := &plugin.PostContainerCreateRequest{
+		WorkspaceID:     "test-ws",
+		WorkspaceDir:    wsDir,
+		ContainerID:     "abc123",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspaces/project",
+		Runtime:         "docker",
+		Customizations: map[string]any{
+			"sandbox": map[string]any{},
+		},
+		ExecFunc: func(_ context.Context, _ []string, _ string) error {
+			return nil
+		},
+		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
+			if len(cmd) >= 3 && cmd[0] == "git" && cmd[2] == "/workspaces/project" {
+				return porcelainOutput, nil
+			}
+			return "", nil
+		},
+		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
+			copiedFiles[dest] = string(content)
+			return nil
+		},
+	}
+
+	if err := p.PostContainerCreate(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wrapper, ok := copiedFiles["/home/vscode/.local/bin/sandbox"]
+	if !ok {
+		t.Fatal("expected sandbox wrapper to be copied")
+	}
+	if !strings.Contains(wrapper, "--bind-try '/workspaces/project-worktrees' '/workspaces/project-worktrees'") {
+		t.Errorf("sandbox wrapper should allow writes to worktree base dir, got:\n%s", wrapper)
+	}
+}
+
+func TestPostContainerCreate_WorktreeDetectionFailsGracefully(t *testing.T) {
+	wsDir := t.TempDir()
+	copiedFiles := map[string]string{}
+
+	p := New()
+	req := &plugin.PostContainerCreateRequest{
+		WorkspaceID:     "test-ws",
+		WorkspaceDir:    wsDir,
+		ContainerID:     "abc123",
+		RemoteUser:      "vscode",
+		WorkspaceFolder: "/workspaces/project",
+		Runtime:         "docker",
+		Customizations: map[string]any{
+			"sandbox": map[string]any{},
+		},
+		ExecFunc: func(_ context.Context, _ []string, _ string) error {
+			return nil
+		},
+		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
+			if len(cmd) >= 3 && cmd[0] == "git" {
+				return "", fmt.Errorf("git not found")
+			}
+			return "", nil
+		},
+		CopyFileFunc: func(_ context.Context, content []byte, dest, _, _ string) error {
+			copiedFiles[dest] = string(content)
+			return nil
+		},
+	}
+
+	if err := p.PostContainerCreate(context.Background(), req); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should still generate wrapper without worktree paths.
+	wrapper, ok := copiedFiles["/home/vscode/.local/bin/sandbox"]
+	if !ok {
+		t.Fatal("expected sandbox wrapper to be copied even when git fails")
+	}
+	if strings.Contains(wrapper, "worktree") {
+		t.Errorf("wrapper should not reference worktrees when git fails, got:\n%s", wrapper)
+	}
+}
+
 func TestPostContainerCreate_InvalidAliasNamesSkipped(t *testing.T) {
 	wsDir := t.TempDir()
 	copiedFiles := map[string]string{}
@@ -169,7 +368,7 @@ func TestPostContainerCreate_InvalidAliasNamesSkipped(t *testing.T) {
 			return nil
 		},
 		ExecOutputFunc: func(_ context.Context, cmd []string, _ string) (string, error) {
-			if len(cmd) > 2 && strings.Contains(cmd[2], "valid-name") {
+			if len(cmd) > 2 && strings.Contains(cmd[2], "'valid-name'") {
 				return "/usr/bin/valid-name\n", nil
 			}
 			return "", nil
