@@ -14,7 +14,7 @@ internal/
   engine/      -> Core orchestration (up/down/restart, lifecycle hooks)
   driver/      -> Container runtime abstraction (Docker/Podman)
   compose/     -> Docker Compose / Podman Compose helper
-  plugin/      -> Plugin system (codingagents, packagecache, sandbox, shellhistory, ssh)
+  plugin/      -> Plugin system (codingagents, packagecache, shellhistory, ssh)
   workspace/   -> Workspace state (~/.crib/workspaces/)
   dockerfile/  -> Dockerfile parsing and rewriting
 ```
@@ -34,27 +34,14 @@ dockerfile/, workspace/}`. No cycles.
 ## Plugin System
 
 Bundled plugins live in `internal/plugin/{name}/`. The engine dispatches them
-at two lifecycle points:
-
-- **PreContainerRun**: before container creation. Returns mounts, env, copies.
-- **PostContainerCreate**: after container creation. Runs commands inside the
-  container via `ExecFunc`/`CopyFileFunc` closures (no driver import needed).
+at the **PreContainerRun** lifecycle point: before container creation. Returns
+mounts, env, copies.
 
 ### Error handling
 
 Plugins are **fail-open by design**. The plugin manager logs errors as warnings
 and continues. One broken plugin must never block container creation. This is
-intentional, not a bug. Within a plugin, some steps can be independently
-non-fatal (e.g. network blocking fails but filesystem sandboxing still works).
-
-### remoteUser in PostContainerCreate
-
-`PostContainerCreateRequest.RemoteUser` comes from `configRemoteUser(cfg)`
-(devcontainer.json's `remoteUser` or `containerUser`), not from the resolved
-container user. This is correct: the container user hasn't been probed yet at
-this point in the `finalize()` flow. When no user is configured, it defaults to
-`""`, and `InferRemoteHome("")` returns `/root` (containers without an explicit
-user run as root).
+intentional, not a bug.
 
 ### Plugin naming convention
 

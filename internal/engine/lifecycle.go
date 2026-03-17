@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"strings"
 
 	"golang.org/x/sync/errgroup"
 
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/driver"
+	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
@@ -188,11 +188,15 @@ func (r *lifecycleRunner) execHookCmd(ctx context.Context, hookStage, hookName s
 	}
 
 	// Build the command string for the shell wrapper.
+	// Single-element cmdParts are shell strings (from "cmd" or ["cmd"]):
+	// pass as-is so the shell can parse flags, pipes, and redirects.
+	// Multi-element cmdParts are exec-style (from ["cmd", "arg1", "arg2"]):
+	// shell-quote each argument to preserve spaces and metacharacters.
 	var cmdStr string
 	if len(cmdParts) == 1 {
 		cmdStr = cmdParts[0]
 	} else {
-		cmdStr = strings.Join(cmdParts, " ")
+		cmdStr = plugin.ShellQuoteJoin(cmdParts)
 	}
 
 	// Wrap with user switch and working directory.
