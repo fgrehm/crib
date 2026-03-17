@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -89,22 +90,11 @@ Use -- to separate crib flags from the container command:
 		}
 
 		// Wrap the user's command in a login shell: $SHELL -lc 'cmd arg1 arg2'
-		escaped := shellQuoteJoin(args)
+		escaped := plugin.ShellQuoteJoin(args)
 		execArgs = append(execArgs, container.ID, shellPath, "-lc", escaped)
 
 		return syscall.Exec(runtimeBin, execArgs, os.Environ())
 	},
-}
-
-// shellQuoteJoin joins args into a single shell-safe string.
-// Each argument is single-quoted with internal single quotes escaped.
-func shellQuoteJoin(args []string) string {
-	quoted := make([]string, len(args))
-	for i, a := range args {
-		// Replace ' with '\'' (end quote, escaped quote, start quote).
-		quoted[i] = "'" + strings.ReplaceAll(a, "'", "'\\''") + "'"
-	}
-	return strings.Join(quoted, " ")
 }
 
 func init() {

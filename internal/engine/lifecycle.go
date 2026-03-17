@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"strings"
 
 	"golang.org/x/sync/errgroup"
 
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/driver"
+	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
@@ -196,11 +196,7 @@ func (r *lifecycleRunner) execHookCmd(ctx context.Context, hookStage, hookName s
 	if len(cmdParts) == 1 {
 		cmdStr = cmdParts[0]
 	} else {
-		quoted := make([]string, len(cmdParts))
-		for i, a := range cmdParts {
-			quoted[i] = "'" + strings.ReplaceAll(a, "'", "'\\''") + "'"
-		}
-		cmdStr = strings.Join(quoted, " ")
+		cmdStr = plugin.ShellQuoteJoin(cmdParts)
 	}
 
 	// Wrap with user switch and working directory.
