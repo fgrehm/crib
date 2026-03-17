@@ -135,11 +135,12 @@ func TestRunHook_Sequential_String(t *testing.T) {
 }
 
 func TestRunHook_Sequential_Array(t *testing.T) {
-	// Array-form hook (single "" key with multiple elements) joins them and runs once.
+	// Array-form hook: each element is shell-quoted before joining.
+	// Arguments with spaces must arrive as single tokens inside sh -c.
 	mock := &mockDriver{}
 	r, _, _ := newTestRunner(t, mock)
 
-	hook := config.LifecycleHook{"": {"echo", "hello"}}
+	hook := config.LifecycleHook{"": {"echo", "hello world"}}
 	if err := r.runHook(context.Background(), "postCreateCommand", hook, ""); err != nil {
 		t.Fatalf("runHook: %v", err)
 	}
@@ -147,9 +148,13 @@ func TestRunHook_Sequential_Array(t *testing.T) {
 	if len(mock.execCalls) != 1 {
 		t.Fatalf("expected 1 exec call, got %d", len(mock.execCalls))
 	}
-	got := strings.Join(mock.execCalls[0].cmd, " ")
-	if !strings.Contains(got, "echo hello") {
-		t.Errorf("exec cmd = %q, want to contain echo hello", got)
+	// cmd is ["sh", "-c", "<script>"]; the script must single-quote each arg.
+	script := mock.execCalls[0].cmd[2]
+	if !strings.Contains(script, "'echo'") {
+		t.Errorf("script = %q, want 'echo' quoted", script)
+	}
+	if !strings.Contains(script, "'hello world'") {
+		t.Errorf("script = %q, want 'hello world' as a single quoted token", script)
 	}
 }
 
@@ -271,7 +276,9 @@ func collectProgress(msgs *[]string) func(string) {
 // indexOfMsg returns the first index where pred matches, or -1.
 func indexOfMsg(msgs []string, pred func(string) bool) int {
 	for i, m := range msgs {
-		if pred(m) { return i }
+		if pred(m) {
+			return i
+		}
 	}
 	return -1
 }
