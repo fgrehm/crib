@@ -133,6 +133,12 @@ is not possible, so `blockLocalNetwork` as designed cannot be reimplemented with
 Landlock alone. Revisit if there's demand or if a solution for IP-level network
 restriction without `NET_ADMIN` emerges.
 
+### Reconsider `stop` / `down` semantics
+
+`crib stop` is an alias for `crib down`, which removes the container rather than pausing it. This is surprising: users expect `stop` to be non-destructive (like `docker stop`), but it tears down the container and clears hook markers, causing all lifecycle hooks to re-run on the next `crib up`. Named compose volumes survive, but anything in the container's writable layer is gone, and setup commands like `db:seed` re-run unconditionally.
+
+Options to consider: split `stop` (pause, preserve container) from `down` (remove), make hook-marker clearing opt-in, or at minimum update the command description and docs to set the right expectations. The driver already has `StopContainer`/`StartContainer` methods, so a non-destructive stop is feasible.
+
 ### Reduce cyclomatic complexity hotspots
 
 CI gates at gocyclo > 40 (the ratchet that prevents things from getting worse). Several engine functions exceed 15, the practical threshold for maintainability: `upCompose` (38), `syncRemoteUserUID` (29), `generateComposeOverride` (26), `Doctor` (23), `detectConfigChange` (22), `extractTar` (19), `upSingle` (18), `restartRecreateSingle` (18). These should be broken into focused helpers before they become harder to change.
