@@ -23,30 +23,38 @@ There are three main ways to use `devcontainer.json` without VS Code:
 |---|---|---|---|
 | **Language** | Go | TypeScript (Node.js) | Go |
 | **Binary** | Native | Bundled Node.js | Native |
-| **Workspace from CWD** | ✅ Day one | ✅ [v0.82.0](https://github.com/devcontainers/cli/issues/29) | ❌ Named workspaces |
-| **`shell` command** | ✅ (detects `zsh`/`bash`/`sh`) | ❌ (`exec` only) | ✅ (via SSH) |
-| **[Smart restart](/crib/guides/smart-restart/)** | ✅ (change detection) | ❌ | ❌ |
-| **Plugin system** | ✅ (`ssh`, `shell-history`, `coding-agents`) | ❌ | ❌ (providers, not plugins) |
-| **Stop (keep container)** | ❌ (`stop` = `down`) | ✅ `stop` | ✅ `stop` |
-| **Stop + remove** | ✅ `down` / `stop` | ✅ `down` | ✅ `delete` |
-| **`build --push`** | ❌ | ✅ | ❌ |
-| **`read-configuration`** | ❌ | ✅ (JSON output) | ❌ |
-| **Feature/template testing** | ❌ | ✅ | ❌ |
-| **Dotfiles support** | _Can be implemented with plugins_ | ✅ (`--dotfiles-*`) | ✅ |
-| **macOS / Windows** | [Works, not primary target](/crib/guides/macos-windows/) | ✅ | ✅ |
-| **Podman (rootless)** | ✅ First-class | Partial | Partial |
-| **SSH into container** | [Being considered](/crib/contributing/roadmap/) | ❌ | ✅ (agent injection) |
-| **Remote/cloud backends** | ❌ Local only | ❌ Local only | ✅ (providers) |
-| **IDE integration** | ❌ By design (_could be a plugin_) | ✅ (VS Code, Codespaces) | ✅ (VS Code, JetBrains) |
-| **Status** | Active (v0.4.0, Mar 2026) | Active | Abandoned (Apr 2025) |
+| **Workspace from CWD** | Yes | Yes ([v0.82.0](https://github.com/devcontainers/cli/issues/29)) | No (named workspaces) |
+| **`shell` command** | Yes (detects `zsh`/`bash`/`sh`) | No (`exec` only) | Yes (via SSH) |
+| **[Smart restart](/crib/guides/smart-restart/)** | Yes (change detection) | No | No |
+| **Plugin system** | Yes (`ssh`, `shell-history`, `coding-agents`) | No | No (providers, not plugins) |
+| **Stop (keep container)** | No (`stop` = `down`) | Yes | Yes |
+| **Stop + remove** | `down` / `stop` | `down` | `delete` |
+| **`build --push`** | No | Yes | No |
+| **`read-configuration`** | No | Yes (JSON output) | No |
+| **Feature/template testing** | No | Yes | No |
+| **Dotfiles support** | _Can be implemented with plugins_ | Yes (`--dotfiles-*`) | Yes |
+| **macOS / Windows** | [Works, not primary target](/crib/guides/macos-windows/) | Yes | Yes |
+| **Podman (rootless)** | First-class | Partial | Partial |
+| **SSH into container** | [Being considered](/crib/contributing/roadmap/) | No | Yes (agent injection) |
+| **Remote/cloud backends** | No (local only) | No (local only) | Yes (providers) |
+| **IDE integration** | No (by design) | Yes (VS Code, Codespaces) | Yes (VS Code, JetBrains) |
+| **Status** | Active | Active | Abandoned (Apr 2025) |
 
-## When to use what
+## Picking the right tool
 
-**Use `crib` if** you want a terminal-first workflow, care about Podman support, and want plugins that handle SSH forwarding, shell history, and AI coding tool credentials without touching your `devcontainer.json`.
+| Your situation | Best fit |
+|---|---|
+| Terminal-first developer on Linux | `crib` |
+| Podman (rootless) is your runtime | `crib` |
+| Want SSH forwarding, shell history, AI tool credentials without per-project config | `crib` (built-in plugins) |
+| Need CI prebuilds (`build --push`) | `devcontainers/cli` |
+| Need to parse devcontainer config programmatically | `devcontainers/cli` (`read-configuration`) |
+| Authoring or testing Features/templates | `devcontainers/cli` |
+| Need remote backends (cloud VMs, Kubernetes) | DevPod (or its [community fork](https://github.com/skevetter/devpod)) |
+| Team already uses DevPod and it works | Keep using it |
+| Want native filesystem performance on macOS | DevPod (volume-based) or VS Code Dev Containers |
 
-**Use `devcontainers/cli` if** you need CI prebuilds (`build --push`), scripting integration (`read-configuration`), or are authoring features/templates. It's also the safest choice for maximum spec compliance since it *is* the reference implementation.
-
-**Use DevPod if** you need remote backends (cloud VMs, Kubernetes) and your team already has it working. The SSH-into-container approach gives native filesystem performance on macOS. Note that the original project has had no updates since April 2025, though a [community fork](https://github.com/skevetter/devpod) is carrying it forward.
+You can also mix tools: use `devcontainers/cli` in CI to prebuild images and `crib` locally for day-to-day development. They read the same `devcontainer.json`.
 
 ## Architecture differences
 
@@ -64,16 +72,22 @@ This is the fundamental difference that affects everything else:
 
 | | `crib` | `devcontainers/cli` | DevPod |
 |---|---|---|---|
-| Agent injected | ❌ | ❌ | ✅ (Go binary) |
-| SSH server | ❌ | ❌ | ✅ (started by agent) |
+| Agent injected | No | No | Yes (Go binary) |
+| SSH server | No | No | Yes (started by agent) |
 | Extra processes | None | None | Agent daemon, SSH |
 | Setup method | `docker exec` | `docker exec` | Agent via SSH/gRPC |
 
 `crib` aims for nothing inside the container you didn't ask for (though bundled plugins are enabled by default and can inject mounts, env vars, and files). DevPod's model is "full remote development environment." Neither is wrong, they serve different use cases.
 
-## Plugin system vs Features vs Providers
+## Extensibility: plugins vs Features vs providers
 
-These three extensibility models solve different problems:
+| | DevContainer Features | `crib` plugins | DevPod providers |
+|---|---|---|---|
+| **When** | Image build time | Container creation time | Container placement |
+| **What** | Install tools into the image | Inject mounts, env vars, files | Control where the container runs |
+| **Scope** | Per-project (`devcontainer.json`) | Automatic for all workspaces | Per-workspace |
+| **Examples** | Node, Go, Docker-in-Docker | SSH forwarding, shell history, Claude credentials | Local Docker, AWS, Kubernetes |
+| **Supported by** | All tools | `crib` only | DevPod only |
 
 **DevContainer Features** (all tools support these) are OCI-distributed install scripts that run at image build time. They add tools to the image (`node`, `go`, Docker-in-Docker). They can't do anything at container creation or runtime.
 
@@ -83,7 +97,7 @@ These three extensibility models solve different problems:
 
 The gap that `crib` plugins fill: with `devcontainers/cli`, if you want SSH forwarding or persistent history, you write it into your `devcontainer.json` (mounts, env vars, lifecycle hooks). With `crib`, plugins handle it automatically for every workspace. Less boilerplate, works everywhere without per-project config.
 
-## What `crib` doesn't have (and whether it matters)
+## Scope differences
 
 **`build --push` for CI prebuilds.** If you're prebaking images in CI, `devcontainers/cli` is the right tool. `crib` focuses on the local development workflow. You could use `devcontainers/cli` in CI and `crib` locally, they read the same `devcontainer.json`.
 
@@ -92,6 +106,16 @@ The gap that `crib` plugins fill: with `devcontainers/cli`, if you want SSH forw
 **Feature/template testing tools.** You can [test Features locally with `crib`](/crib/guides/authoring-features/#testing-locally-with-crib), but for automated test suites and template scaffolding, use `devcontainers/cli`'s `features test` and `templates apply`.
 
 **Stopping without removing the container.** `crib`'s `down` (and its `stop` alias) always removes the container. This is a deliberate choice, lifecycle hook markers are cleared so the next `up` is clean. If you need to pause a container without removing it, use `docker stop` directly.
+
+## Switching to crib
+
+If you're already using `devcontainer.json`, switching to `crib` is straightforward. `crib` reads the same config files, so there's no migration needed for the project configuration itself.
+
+**From `devcontainers/cli`:** Replace `devcontainer up` with `crib up`, `devcontainer exec` with `crib exec` (or `crib run` for commands that need shell init). The config is the same. If you use `--dotfiles-*` flags, you'll need to handle dotfiles through a lifecycle hook or a future plugin instead.
+
+**From DevPod:** Replace `devpod up <name>` with `cd <project> && crib up`. DevPod uses named workspaces while `crib` resolves from the current directory. If you relied on DevPod's SSH access for editor integration, you'll switch to bind-mount editing from the host. If you used DevPod providers for remote backends, `crib` doesn't have an equivalent (it's local only).
+
+In all cases, your `devcontainer.json`, Dockerfiles, compose files, and Features carry over unchanged.
 
 ## Links
 

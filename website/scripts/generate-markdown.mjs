@@ -1,14 +1,19 @@
-// Generates llms-full.txt (concatenated docs) and llms.txt (index with links)
-// by reading all doc pages, stripping frontmatter and MDX/Starlight syntax.
+// Generates:
+//   - public/{slug}.md         — individual cleaned Markdown files for each page
+//   - public/llms-full.txt     — all pages concatenated into one file
+//   - public/llms.txt          — index with links to the .md files
+//
+// Strips frontmatter and MDX/Starlight syntax so the output is plain Markdown.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const docsDir = resolve(__dirname, "../src/content/docs");
-const fullOutFile = resolve(__dirname, "../public/llms-full.txt");
-const indexOutFile = resolve(__dirname, "../public/llms.txt");
+const publicDir = resolve(__dirname, "../public");
+const fullOutFile = resolve(publicDir, "llms-full.txt");
+const indexOutFile = resolve(publicDir, "llms.txt");
 
 const baseUrl = "https://fgrehm.github.io/crib";
 
@@ -17,13 +22,15 @@ const pages = [
   "overview.md",
   "installation.md",
   "commands.md",
+  "examples.md",
+  "comparison.md",
   "guides/workspaces.md",
   "guides/lifecycle-hooks.md",
   "guides/smart-restart.md",
   "guides/plugins.md",
   "guides/custom-config.md",
   "guides/macos-windows.md",
-  "guides/comparison.md",
+  "reference/commands.md",
   "reference/troubleshooting.md",
   "reference/changelog.md",
   "contributing/development.md",
@@ -118,23 +125,38 @@ function pageSlug(page) {
   return page.replace(/\.mdx?$/, "").replace(/\/$/, "");
 }
 
-// --- Generate llms-full.txt ---
-
-const header = `# crib
-
-> Dev containers without the ceremony. A CLI tool that reads .devcontainer configs, builds the container, and gets out of the way. Supports Docker and Podman.
-
-Full documentation: ${baseUrl}/
-Source code: https://github.com/fgrehm/crib`;
+// --- Read and clean all pages ---
 
 const pageMeta = pages.map((slug) => {
   const filePath = resolve(docsDir, slug);
   const raw = readFileSync(filePath, "utf-8");
-  return { slug, ...extractFrontmatter(raw) };
+  const { title, description, body } = extractFrontmatter(raw);
+  const cleaned = cleanMdx(body);
+  return { slug, title, description, cleaned };
 });
 
-const sections = pageMeta.map(({ title, body }) => {
-  const cleaned = cleanMdx(body);
+// --- Generate individual .md files ---
+
+let mdCount = 0;
+for (const { slug, title, cleaned } of pageMeta) {
+  const outPath = resolve(publicDir, slug);
+  mkdirSync(dirname(outPath), { recursive: true });
+  const content = `# ${title}\n\n${cleaned}\n`;
+  writeFileSync(outPath, content);
+  mdCount++;
+}
+console.log(`Generated ${mdCount} individual .md files in public/`);
+
+// --- Generate llms-full.txt ---
+
+const header = `# crib
+
+> Just Enough Devcontainers. A CLI tool that reads .devcontainer configs, builds the container, and gets out of the way. Supports Docker and Podman.
+
+Full documentation: ${baseUrl}/
+Source code: https://github.com/fgrehm/crib`;
+
+const sections = pageMeta.map(({ title, cleaned }) => {
   return `## ${title}\n\n${cleaned}`;
 });
 
@@ -146,7 +168,7 @@ console.log(`Generated ${fullOutFile} (${pages.length} pages)`);
 
 const indexHeader = `# crib
 
-> Dev containers without the ceremony. A CLI tool that reads .devcontainer configs, builds the container, and gets out of the way. Supports Docker and Podman.
+> Just Enough Devcontainers. A CLI tool that reads .devcontainer configs, builds the container, and gets out of the way. Supports Docker and Podman.
 
 crib is a devcontainer CLI tool. It reads \`.devcontainer/devcontainer.json\` configs, builds the container (image-based, Dockerfile-based, or Docker Compose-based), and manages the full lifecycle: creating, starting, stopping, rebuilding, and removing dev containers. No agents, no SSH, no IDE integration, just the CLI.
 
@@ -165,9 +187,9 @@ for (const { slug, title, description } of pageMeta) {
     indexLines.push(`\n## ${label}\n`);
   }
 
-  const url = `${baseUrl}/${pageSlug(slug)}/`;
+  const mdUrl = `${baseUrl}/${pageSlug(slug)}.md`;
   const desc = description ? `: ${description}` : "";
-  indexLines.push(`- [${title}](${url})${desc}`);
+  indexLines.push(`- [${title}](${mdUrl})${desc}`);
 }
 
 indexLines.push(`\n## Source Code\n`);

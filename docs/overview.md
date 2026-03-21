@@ -17,6 +17,17 @@ Linux is the primary platform. [macOS and Windows work too](/crib/guides/macos-w
 - **Docker and Podman as first-class runtimes.** Auto-detected, configurable via `CRIB_RUNTIME`.
 - **Human-readable naming.** Containers show up as `crib-myproject-a1b2c3d` in `docker ps`, not opaque hashes. The short suffix makes workspace IDs unique across different directories with the same name.
 
+## Terminology
+
+These terms appear throughout the docs:
+
+- **dev container** - A Docker or Podman container configured for development, defined by a `devcontainer.json` file. The generic concept (two words, lowercase).
+- **workspace** - A crib-managed instance of a dev container, tied to a specific project directory. Each workspace has an ID, a state directory under `~/.crib/workspaces/`, and a container named `crib-{workspace-id}`.
+- **remote user** - The user account inside the container that runs lifecycle hooks and commands. Set via `remoteUser` in `devcontainer.json`. Defaults to the image's default user (often `root`).
+- **container user** - The user the container process runs as (set by `containerUser` or the image's `USER` directive). Usually the same as `remoteUser`, but they can differ.
+- **DevContainer Features** - Reusable units of installation logic (OCI artifacts) that add tools to a dev container. Defined by the [devcontainer spec](https://containers.dev/implementors/features/).
+- **lifecycle hooks** - Commands that run at specific points during container setup (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, `postAttachCommand`, `shutdownAction`).
+
 ## Why
 
 The [devcontainer spec](https://containers.dev/) is a good idea. A JSON file describes your development environment, and tooling builds a container from it. But the existing tools layer on complexity that gets in the way.
@@ -25,7 +36,7 @@ The [devcontainer spec](https://containers.dev/) is a good idea. A JSON file des
 
 Then [DevPod seems to be effectively abandoned](https://github.com/loft-sh/devpod/issues/1915) when Loft Labs shifted focus to vCluster. The project stopped receiving updates in April 2025, with no official statement and no path forward for the community.
 
-`crib` takes a different approach: do less, but do it well. Read the devcontainer config, build the image, run the container, set up the user and lifecycle hooks, done. No agents, no SSH, no providers, no IDE assumptions. Just Docker (or Podman) doing what Docker does. For a detailed breakdown, see the [comparison with alternatives](/crib/guides/comparison/).
+`crib` takes a different approach: do less, but do it well. Read the devcontainer config, build the image, run the container, set up the user and lifecycle hooks, done. No agents, no SSH, no providers, no IDE assumptions. Just Docker (or Podman) doing what Docker does. For a detailed breakdown, see the [comparison with alternatives](/crib/comparison/).
 
 ## Background
 
