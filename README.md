@@ -4,24 +4,19 @@
 
 # crib
 
-Devcontainers without the ceremony.
+Just Enough Devcontainers.
 
 Your `devcontainer.json`, minus the IDE. crib builds the container and stays out of your way.
 
-**[Documentation](https://fgrehm.github.io/crib/)** · **[Comparison with alternatives](https://fgrehm.github.io/crib/guides/comparison/)**
+**[Documentation](https://fgrehm.github.io/crib/)** · **[Comparison with alternatives](https://fgrehm.github.io/crib/comparison/)**
 
 > **Note:** This is the `main` branch where active development happens.
 > Docs here may describe unreleased features. For documentation matching
 > the latest release, see the [`stable`](https://github.com/fgrehm/crib/tree/stable) branch.
 
-```
-cd my-project
-crib up        # build and start the devcontainer
-crib shell     # drop into a shell
-crib restart   # restart (picks up config changes)
-crib down      # stop and remove the container
-crib remove    # remove container and workspace state
-```
+<p align="center">
+  <img src="./demo.gif" alt="crib demo" width="800">
+</p>
 
 ## Installation
 

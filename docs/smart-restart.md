@@ -22,3 +22,21 @@ crib restart   # recreates the container, skips creation hooks
 # Changed the base image or added a feature?
 crib restart   # tells you to run 'crib rebuild' instead
 ```
+
+## When to use restart vs rebuild
+
+Use **`crib restart`** when you changed:
+- Environment variables (`remoteEnv`, `containerEnv`)
+- Volume mounts or bind mounts
+- Port mappings (`forwardPorts`, `appPort`)
+- `runArgs` or `remoteUser`
+- Docker Compose service config (environment, volumes, ports)
+
+Use **`crib rebuild`** when you changed:
+- The base image (`image` or `FROM` in Dockerfile)
+- The Dockerfile itself
+- DevContainer Features (added, removed, or changed options)
+- Build arguments (`build.args`)
+- Anything that affects the built image
+
+**Rule of thumb:** if the change affects how the container runs, use `restart`. If it affects what the image contains, use `rebuild`.

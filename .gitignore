@@ -12,6 +12,7 @@ website/dist/
 website/.astro/
 website/public/llms.txt
 website/public/llms-full.txt
+website/public/**/*.md
 
 # crib generated build artifacts
 .crib-Dockerfile

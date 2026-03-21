@@ -69,6 +69,8 @@ export default defineConfig({
             { label: "Overview", slug: "overview" },
             { label: "Installation", slug: "installation" },
             { label: "Commands", slug: "commands" },
+            { label: "Examples", slug: "examples" },
+            { label: "Comparison", slug: "comparison" },
           ],
         },
         {
@@ -87,12 +89,12 @@ export default defineConfig({
               slug: "guides/custom-config",
             },
             { label: "macOS & Windows", slug: "guides/macos-windows" },
-            { label: "Comparison", slug: "guides/comparison" },
           ],
         },
         {
           label: "Reference",
           items: [
+            { label: "Command Reference", slug: "reference/commands" },
             { label: "Troubleshooting", slug: "reference/troubleshooting" },
             { label: "CHANGELOG", slug: "reference/changelog" },
           ],

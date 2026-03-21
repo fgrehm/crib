@@ -116,10 +116,20 @@ In workspace mode:
 This is the right choice when:
 - Your team shares a Claude organization account that requires SSO or a different login than your personal account
 - You want credentials scoped to a specific project workspace
+- You don't have Claude Code installed on the host
 
 :::note[First use]
 After switching to workspace mode, run `claude` inside the container and authenticate. From that point on, credentials persist automatically.
 :::
+
+### Choosing a mode
+
+| Scenario | Mode |
+|---|---|
+| Personal Claude account, CLI installed on host | Host (default) |
+| Team/org account with SSO | Workspace |
+| Claude not installed on host | Workspace |
+| Credentials should stay per-project | Workspace |
 
 ### Credential cleanup
 
