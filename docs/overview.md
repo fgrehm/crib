@@ -9,6 +9,10 @@ description: What crib is, why it exists, and the philosophy behind it.
 Linux is the primary platform. [macOS and Windows work too](/crib/guides/macos-windows/), with caveats.
 :::
 
+## Demo
+
+<p align="center"><img src="/crib/demo.gif" alt="crib demo" width="800" /></p>
+
 ## Principles
 
 - **Implicit workspace resolution.** `cd` into a project directory and run commands. `crib` walks up from your current directory to find `.devcontainer/devcontainer.json`. No workspace names to remember.

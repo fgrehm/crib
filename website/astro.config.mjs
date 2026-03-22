@@ -89,13 +89,13 @@ export default defineConfig({
               slug: "guides/custom-config",
             },
             { label: "macOS & Windows", slug: "guides/macos-windows" },
+            { label: "Troubleshooting", slug: "guides/troubleshooting" },
           ],
         },
         {
           label: "Reference",
           items: [
             { label: "Command Reference", slug: "reference/commands" },
-            { label: "Troubleshooting", slug: "reference/troubleshooting" },
             { label: "CHANGELOG", slug: "reference/changelog" },
           ],
         },
