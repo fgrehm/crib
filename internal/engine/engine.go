@@ -392,6 +392,8 @@ func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerCon
 		cd := configDir(ws)
 		composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 		wsResult.ComposeFilesHash = computeComposeFilesHash(composeFiles)
+	} else {
+		wsResult.ComposeFilesHash = ""
 	}
 
 	if err := e.store.SaveResult(ws.ID, wsResult); err != nil {
