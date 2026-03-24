@@ -38,4 +38,10 @@ type Result struct {
 	// that declare entrypoints (e.g. docker-in-docker). Used by restart
 	// paths to know whether to override the container entrypoint.
 	HasFeatureEntrypoints bool `json:"hasFeatureEntrypoints,omitempty"`
+
+	// ComposeFilesHash is a hash of the compose file contents at the time
+	// the result was saved. Used by restart to detect changes inside compose
+	// files (volumes, ports, etc.) that are invisible to devcontainer.json
+	// config comparison.
+	ComposeFilesHash string `json:"composeFilesHash,omitempty"`
 }

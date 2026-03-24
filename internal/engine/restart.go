@@ -73,6 +73,20 @@ func (e *Engine) Restart(ctx context.Context, ws *workspace.Workspace) (*Restart
 
 	change := detectConfigChange(&storedCfg, cfg)
 
+	// If devcontainer.json looks unchanged, check compose file contents.
+	// detectConfigChange only compares the compose file list, not their
+	// contents. A volume, port, or env change inside a compose file would
+	// otherwise be missed.
+	if change == changeNone && len(cfg.DockerComposeFile) > 0 && storedResult.ComposeFilesHash != "" {
+		cd := configDir(ws)
+		composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
+		currentHash := computeComposeFilesHash(composeFiles)
+		if currentHash != storedResult.ComposeFilesHash {
+			e.logger.Debug("compose file contents changed", "stored", storedResult.ComposeFilesHash, "current", currentHash)
+			change = changeSafe
+		}
+	}
+
 	b := e.newBackend(ws, cfg, workspaceFolder)
 
 	switch change {

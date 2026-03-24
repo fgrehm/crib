@@ -83,6 +83,58 @@ func lastLine(out string) string {
 	return ""
 }
 
+// TestE2EComposeRestartOnFileChange verifies that "crib restart" detects
+// a volume change inside a compose file and recreates the container, even
+// though devcontainer.json itself hasn't changed.
+func TestE2EComposeRestartOnFileChange(t *testing.T) {
+	if !hasRuntime() {
+		t.Fatal("container runtime not available or not working (docker or podman required)")
+	}
+	if !hasCompose() {
+		t.Fatal("docker compose or podman compose not available")
+	}
+
+	projectDir := setupComposeProject(t)
+	cribHome := t.TempDir()
+
+	t.Cleanup(func() {
+		cmd := cribCmd(projectDir, cribHome, "remove", "--force")
+		_ = cmd.Run()
+	})
+
+	// Initial up.
+	mustRunCrib(t, projectDir, cribHome, "up")
+
+	// Restart with no changes: should be a simple restart.
+	out := mustRunCrib(t, projectDir, cribHome, "restart")
+	if strings.Contains(strings.ToLower(out), "recreated") {
+		t.Errorf("restart without changes: want simple restart, got recreate; output: %q", out)
+	}
+
+	// Modify compose file: add a volume.
+	composeFile := filepath.Join(projectDir, ".devcontainer", "docker-compose.yml")
+	updated := composeDockerCompose + `    volumes:
+      - appdata:/data
+volumes:
+  appdata:
+`
+	if err := os.WriteFile(composeFile, []byte(updated), 0o644); err != nil {
+		t.Fatalf("writing updated compose file: %v", err)
+	}
+
+	// Restart should detect the compose file change and recreate.
+	out = mustRunCrib(t, projectDir, cribHome, "restart")
+	if !strings.Contains(strings.ToLower(out), "recreated") {
+		t.Errorf("restart after compose change: want 'recreated' in output, got %q", out)
+	}
+
+	// Container should still be running after recreate.
+	out = mustRunCrib(t, projectDir, cribHome, "status")
+	if !strings.Contains(strings.ToLower(out), "running") {
+		t.Errorf("status after restart recreate: want 'running', got %q", out)
+	}
+}
+
 func TestE2ECompose(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")

@@ -1,7 +1,11 @@
 package engine
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"os"
 	"reflect"
+	"sort"
 
 	"github.com/fgrehm/crib/internal/config"
 )
@@ -180,4 +184,41 @@ func buildOptsEqual(a, b *config.ConfigBuildOptions) bool {
 
 func featuresEqual(a, b map[string]any) bool {
 	return reflect.DeepEqual(a, b)
+}
+
+// computeComposeFilesHash computes a hash of the contents of all compose files.
+// This catches changes inside compose files (volumes, ports, env, etc.) that
+// are invisible to detectConfigChange, which only compares devcontainer.json
+// fields.
+//
+// Limitation: this is a raw content hash, not a parsed comparison. Any change
+// in the compose files (including build-affecting fields like "build:" or
+// "image:") is classified as changeSafe (recreate without rebuild). If build
+// config changed, the recreated container will still use the old image. Run
+// "crib rebuild" to pick up compose build changes.
+func computeComposeFilesHash(files []string) string {
+	if len(files) == 0 {
+		return ""
+	}
+
+	// Sort for stable ordering regardless of config order.
+	sorted := make([]string, len(files))
+	copy(sorted, files)
+	sort.Strings(sorted)
+
+	h := sha256.New()
+	for _, f := range sorted {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			// Include the error so a missing file still changes the hash.
+			h.Write([]byte("err:" + f + ":" + err.Error()))
+			continue
+		}
+		// Include filename as separator to avoid collisions when file
+		// contents are moved between files.
+		h.Write([]byte(f))
+		h.Write([]byte{0})
+		h.Write(data)
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)[:8])
 }

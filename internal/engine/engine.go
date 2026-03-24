@@ -388,6 +388,12 @@ func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerCon
 	wsResult.RemoteUser = result.RemoteUser
 	wsResult.HasFeatureEntrypoints = result.HasFeatureEntrypoints
 
+	if len(cfg.DockerComposeFile) > 0 {
+		cd := configDir(ws)
+		composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
+		wsResult.ComposeFilesHash = computeComposeFilesHash(composeFiles)
+	}
+
 	if err := e.store.SaveResult(ws.ID, wsResult); err != nil {
 		e.logger.Warn("failed to save workspace result", "error", err)
 	}
