@@ -186,14 +186,15 @@ func featuresEqual(a, b map[string]any) bool {
 	return reflect.DeepEqual(a, b)
 }
 
-// computeComposeFilesHash computes a hash of the contents of all compose files.
-// This catches changes inside compose files (volumes, ports, env, etc.) that
-// are invisible to detectConfigChange, which only compares devcontainer.json
-// fields.
+// computeComposeFilesHash computes a short fingerprint (truncated SHA-256) of
+// the contents of all compose files. This catches changes inside compose files
+// (volumes, ports, env, etc.) that are invisible to detectConfigChange, which
+// only compares devcontainer.json fields. The fingerprint is 16 hex characters
+// (8 bytes), matching the truncation used by computeHookHash.
 //
-// Limitation: this is a raw content hash, not a parsed comparison. Any change
-// in the compose files (including build-affecting fields like "build:" or
-// "image:") is classified as changeSafe (recreate without rebuild). If build
+// Limitation: this is a raw content fingerprint, not a parsed comparison. Any
+// change in the compose files (including build-affecting fields like "build:"
+// or "image:") is classified as changeSafe (recreate without rebuild). If build
 // config changed, the recreated container will still use the old image. Run
 // "crib rebuild" to pick up compose build changes.
 func computeComposeFilesHash(files []string) string {

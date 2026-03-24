@@ -39,9 +39,9 @@ type Result struct {
 	// paths to know whether to override the container entrypoint.
 	HasFeatureEntrypoints bool `json:"hasFeatureEntrypoints,omitempty"`
 
-	// ComposeFilesHash is a hash of the compose file contents at the time
-	// the result was saved. Used by restart to detect changes inside compose
-	// files (volumes, ports, etc.) that are invisible to devcontainer.json
-	// config comparison.
+	// ComposeFilesHash is a short fingerprint (truncated SHA-256) of the
+	// compose file contents at the time the result was saved. Used by restart
+	// to detect changes inside compose files (volumes, ports, etc.) that are
+	// invisible to devcontainer.json config comparison.
 	ComposeFilesHash string `json:"composeFilesHash,omitempty"`
 }
