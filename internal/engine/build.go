@@ -391,7 +391,13 @@ func featureToMetadata(f *feature.FeatureSet) *config.ImageMetadata {
 	m.Init = f.Config.Init
 	m.Privileged = f.Config.Privileged
 	m.Mounts = f.Config.Mounts
-	m.ContainerEnv = f.Config.ContainerEnv
+	// ContainerEnv is intentionally excluded. Feature containerEnv values
+	// are baked into the image as ENV instructions during the Dockerfile
+	// build (see feature.GenerateDockerfile). Including them here would
+	// cause them to also be passed as runtime -e flags / compose
+	// environment, overriding the image's correctly-expanded values with
+	// unexpanded literals (e.g. ${PATH} would resolve against the host
+	// instead of the container).
 	m.OnCreateCommand = f.Config.OnCreateCommand
 	m.PostCreateCommand = f.Config.PostCreateCommand
 	m.PostStartCommand = f.Config.PostStartCommand
