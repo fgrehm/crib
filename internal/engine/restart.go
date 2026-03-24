@@ -73,6 +73,26 @@ func (e *Engine) Restart(ctx context.Context, ws *workspace.Workspace) (*Restart
 
 	change := detectConfigChange(&storedCfg, cfg)
 
+	// If devcontainer.json looks unchanged, check compose file contents.
+	// detectConfigChange only compares the compose file list, not their
+	// contents. A volume, port, or env change inside a compose file would
+	// otherwise be missed.
+	if change == changeNone && len(cfg.DockerComposeFile) > 0 {
+		cd := configDir(ws)
+		composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
+		currentHash := computeComposeFilesHash(composeFiles)
+		if storedResult.ComposeFilesHash == "" {
+			// Pre-existing workspace with no stored hash (created before
+			// compose content tracking was added). Treat as changed so the
+			// hash gets persisted on this restart.
+			e.logger.Debug("no stored compose files hash, forcing recreate to persist hash")
+			change = changeSafe
+		} else if currentHash != storedResult.ComposeFilesHash {
+			e.logger.Debug("compose file contents changed", "stored", storedResult.ComposeFilesHash, "current", currentHash)
+			change = changeSafe
+		}
+	}
+
 	b := e.newBackend(ws, cfg, workspaceFolder)
 
 	switch change {

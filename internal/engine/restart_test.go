@@ -163,6 +163,68 @@ func TestDetectConfigChange_ComposeServiceChanged(t *testing.T) {
 	}
 }
 
+func TestComputeComposeFilesHash_StableAcrossCalls(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "docker-compose.yml")
+	if err := os.WriteFile(f, []byte("services:\n  app:\n    image: ubuntu\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h1 := computeComposeFilesHash([]string{f})
+	h2 := computeComposeFilesHash([]string{f})
+	if h1 != h2 {
+		t.Errorf("hash not stable: %q != %q", h1, h2)
+	}
+	if h1 == "" {
+		t.Error("expected non-empty hash")
+	}
+}
+
+func TestComputeComposeFilesHash_ChangesOnContentChange(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "docker-compose.yml")
+	if err := os.WriteFile(f, []byte("services:\n  app:\n    image: ubuntu\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h1 := computeComposeFilesHash([]string{f})
+
+	if err := os.WriteFile(f, []byte("services:\n  app:\n    image: ubuntu\n    volumes:\n      - data:/data\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h2 := computeComposeFilesHash([]string{f})
+
+	if h1 == h2 {
+		t.Error("hash should change when file content changes")
+	}
+}
+
+func TestComputeComposeFilesHash_MultipleFiles(t *testing.T) {
+	dir := t.TempDir()
+	f1 := filepath.Join(dir, "docker-compose.yml")
+	f2 := filepath.Join(dir, "docker-compose.override.yml")
+	if err := os.WriteFile(f1, []byte("services:\n  app:\n    image: ubuntu\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f2, []byte("services:\n  app:\n    volumes:\n      - data:/data\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Order should not matter.
+	h1 := computeComposeFilesHash([]string{f1, f2})
+	h2 := computeComposeFilesHash([]string{f2, f1})
+	if h1 != h2 {
+		t.Errorf("hash should be order-independent: %q != %q", h1, h2)
+	}
+}
+
+func TestComputeComposeFilesHash_EmptyFiles(t *testing.T) {
+	if got := computeComposeFilesHash(nil); got != "" {
+		t.Errorf("expected empty string for nil files, got %q", got)
+	}
+	if got := computeComposeFilesHash([]string{}); got != "" {
+		t.Errorf("expected empty string for empty files, got %q", got)
+	}
+}
+
 func mustLoadResult(t *testing.T, store *workspace.Store, wsID string) *workspace.Result {
 	t.Helper()
 	r, err := store.LoadResult(wsID)

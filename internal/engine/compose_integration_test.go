@@ -389,6 +389,140 @@ func checkFileContent(ctx context.Context, e *Engine, wsID, containerID, path, e
 	return nil
 }
 
+// TestIntegrationComposeRestartDetectsFileContentChange verifies that changing
+// a volume (or any content) inside a compose file triggers a container recreate
+// during restart, even though devcontainer.json hasn't changed.
+func TestIntegrationComposeRestartDetectsFileContentChange(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, store := newTestEngineWithCompose(t)
+
+	projectDir := t.TempDir()
+	wsID := "test-compose-restart-content"
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	composeFile := filepath.Join(devcontainerDir, "compose.yml")
+	composeContent := `services:
+  app:
+    image: alpine:3.20
+    command: ["sleep", "infinity"]
+`
+	if err := os.WriteFile(composeFile, []byte(composeContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	configContent := `{
+		"dockerComposeFile": "compose.yml",
+		"service": "app",
+		"overrideCommand": true
+	}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
+
+	// Initial Up.
+	result1, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	// Verify compose files hash was stored.
+	stored, err := store.LoadResult(wsID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+	if stored.ComposeFilesHash == "" {
+		t.Fatal("ComposeFilesHash should be set after Up")
+	}
+
+	// Modify compose file (add a volume).
+	composeContentV2 := `services:
+  app:
+    image: alpine:3.20
+    command: ["sleep", "infinity"]
+    volumes:
+      - appdata:/data
+volumes:
+  appdata:
+`
+	if err := os.WriteFile(composeFile, []byte(composeContentV2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restart should detect the change and recreate.
+	restartResult, err := e.Restart(ctx, ws)
+	if err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+
+	if !restartResult.Recreated {
+		t.Error("Restart should have set Recreated=true after compose file change")
+	}
+
+	if restartResult.ContainerID == result1.ContainerID {
+		t.Error("expected different container ID after recreate")
+	}
+
+	// Verify hash was updated.
+	stored2, err := store.LoadResult(wsID)
+	if err != nil {
+		t.Fatalf("LoadResult after restart: %v", err)
+	}
+	if stored2.ComposeFilesHash == stored.ComposeFilesHash {
+		t.Error("ComposeFilesHash should have changed after restart with new compose content")
+	}
+}
+
+// TestIntegrationComposeRestartNoChangeSimple verifies that restart does a
+// simple restart (no recreate) when compose file contents haven't changed.
+func TestIntegrationComposeRestartNoChangeSimple(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngineWithCompose(t)
+
+	projectDir := t.TempDir()
+	wsID := "test-compose-restart-nochange"
+	ws := writeComposeDevcontainer(t, projectDir, wsID)
+
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
+
+	// Initial Up.
+	if _, err := e.Up(ctx, ws, UpOptions{}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	// Restart without any changes should be simple (no recreate).
+	restartResult, err := e.Restart(ctx, ws)
+	if err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+
+	if restartResult.Recreated {
+		t.Error("Restart should not recreate when nothing changed")
+	}
+}
+
 // TestIntegrationComposeImageNamePersisted verifies that the ImageName field
 // is saved in the workspace result after a compose Up.
 func TestIntegrationComposeImageNamePersisted(t *testing.T) {

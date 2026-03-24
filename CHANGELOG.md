@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `crib restart` now detects changes inside Docker Compose files (volumes,
+  ports, environment, etc.) and recreates the container. Previously, only
+  changes to `devcontainer.json` fields were detected, so editing a compose
+  file's volumes had no effect until a full `crib rebuild`.
+
 ## [0.7.0] - 2026-03-10
 
 ### Added

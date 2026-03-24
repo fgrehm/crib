@@ -118,6 +118,12 @@ Color-code `crib logs` lines by service name when the terminal supports it, simi
 
 Detect when a container is unhealthy or stuck and surface it in `crib status` / `crib ps`.
 
+#### Dockerfile content change detection in smart restart
+
+`crib restart` detects changes to devcontainer.json fields and compose file contents, but not changes to files referenced by those configs. If a Dockerfile used by a compose `build:` section or by `devcontainer.json`'s `dockerfile` field changes (e.g. a Ruby version bump in `FROM`), `restart` doesn't notice and does a simple restart instead of suggesting `crib rebuild`.
+
+Options: hash Dockerfile contents alongside compose files, parse compose YAML to discover referenced Dockerfiles and `.env` files, or add a lighter-weight mtime check. The tricky part is knowing which files to track (Dockerfiles, `.dockerignore`, build context files, `.env` files) without reimplementing `docker build`'s dependency graph.
+
 ### Housekeeping
 
 #### XDG-based cache provider
