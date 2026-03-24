@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Feature `containerEnv` values (e.g. `PATH=/nvm/bin:${PATH}` from the node
+  feature) were applied twice: correctly as `ENV` instructions in the Dockerfile
+  (where Docker expands `${PATH}` at build time), then incorrectly as `-e` flags
+  at runtime (where `${PATH}` resolves against the host). On macOS the host PATH
+  is completely different from the container PATH, breaking command resolution.
 - `crib restart` now detects changes inside Docker Compose files (volumes,
   ports, environment, etc.) and recreates the container. Previously, only
   changes to `devcontainer.json` fields were detected, so editing a compose

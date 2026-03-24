@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/config"
+	"github.com/fgrehm/crib/internal/driver"
 	"github.com/fgrehm/crib/internal/feature"
 	"github.com/fgrehm/crib/internal/workspace"
 )
@@ -56,6 +58,38 @@ func TestFeatureToMetadata(t *testing.T) {
 	}
 	if len(m.ContainerEnv) != 0 {
 		t.Errorf("ContainerEnv should be empty (baked into image, not runtime metadata), got %v", m.ContainerEnv)
+	}
+}
+
+// Regression: feature containerEnv like PATH=/nvm/bin:${PATH} is baked into
+// the image as a Dockerfile ENV instruction. featureToMetadata must NOT copy
+// it to ImageMetadata, because metadata containerEnv gets passed as runtime
+// -e flags (single) or compose environment (compose), which would override
+// the image's correctly-expanded PATH with an unexpanded literal.
+func TestFeatureToMetadata_ContainerEnvExcluded(t *testing.T) {
+	f := &feature.FeatureSet{
+		Config: &feature.FeatureConfig{
+			ID: "node",
+			ContainerEnv: map[string]string{
+				"PATH": "/usr/local/share/nvm/versions/node/v22/bin:${PATH}",
+			},
+		},
+	}
+
+	m := featureToMetadata(f)
+
+	if len(m.ContainerEnv) != 0 {
+		t.Errorf("featureToMetadata should exclude ContainerEnv (baked into image), got %v", m.ContainerEnv)
+	}
+
+	// Verify the metadata doesn't leak into runtime opts.
+	opts := &driver.RunOptions{}
+	applyFeatureMetadata(opts, []*config.ImageMetadata{m}, nil)
+
+	for _, env := range opts.Env {
+		if strings.HasPrefix(env, "PATH=") {
+			t.Errorf("feature containerEnv PATH leaked into runtime opts: %s", env)
+		}
 	}
 }
 
