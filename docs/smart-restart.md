@@ -42,6 +42,18 @@ Use **`crib rebuild`** when you changed:
 
 **Rule of thumb:** if the change affects how the container runs, use `restart`. If it affects what the image contains, use `rebuild`.
 
-:::note
-Compose file change detection uses a content hash, not a parsed comparison. If you change build-related fields in a compose file (like `build:` or `image:`), `restart` will recreate the container but will not rebuild the image. Use `crib rebuild` to pick up compose build changes.
-:::
+## What restart doesn't detect
+
+`restart` compares devcontainer.json fields and compose file contents, but it does not read files referenced by those configs. If you change the contents of a Dockerfile used by your compose `build:` section (e.g. upgrading a Ruby version in `FROM ruby:3.3` to `FROM ruby:3.4`), `restart` won't notice because the compose YAML itself didn't change. The same applies to Dockerfiles referenced by `dockerfile` in devcontainer.json.
+
+In these cases, use `crib rebuild`:
+
+```bash
+# Changed FROM ruby:3.3 to FROM ruby:3.4 in your Dockerfile?
+crib rebuild   # full image rebuild + container recreation
+
+# Changed a volume in docker-compose.yml?
+crib restart   # container recreation, no rebuild needed
+```
+
+Compose file change detection also uses a content fingerprint, not a parsed comparison. If you change build-related fields in a compose file (like `build:` or `image:`), `restart` will recreate the container but will not rebuild the image. Use `crib rebuild` for those too.
