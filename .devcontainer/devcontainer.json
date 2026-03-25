@@ -13,12 +13,5 @@
 	},
 	"containerEnv": {
 		"CRIB_RUNTIME": "docker"
-	},
-	"customizations": {
-		"crib": {
-			"coding-agents": {
-				"credentials": "workspace"
-			}
-		}
 	}
 }
