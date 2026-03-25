@@ -10,6 +10,7 @@ import (
 
 	"github.com/fgrehm/crib/internal/compose"
 	"github.com/fgrehm/crib/internal/config"
+	"github.com/fgrehm/crib/internal/feature"
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
@@ -706,6 +707,35 @@ func TestGenerateComposeOverride_FeatureEnvMergedWithConfigAndPlugin(t *testing.
 	}
 	if !strings.Contains(content, "HISTFILE:") {
 		t.Errorf("expected HISTFILE from plugin, got:\n%s", content)
+	}
+}
+
+// Regression: feature containerEnv (e.g. PATH=/nvm/bin:${PATH}) is baked into
+// the image via Dockerfile ENV. featureToMetadata must exclude it so
+// writeFeatureOverrides doesn't write it into the compose environment section,
+// which would override the image's correctly-expanded values.
+func TestWriteFeatureOverrides_ExcludesFeatureContainerEnv(t *testing.T) {
+	f := &feature.FeatureSet{
+		Config: &feature.FeatureConfig{
+			ID: "node",
+			ContainerEnv: map[string]string{
+				"PATH": "/usr/local/share/nvm/current/bin:${PATH}",
+			},
+			CapAdd: []string{"SYS_PTRACE"},
+		},
+	}
+
+	metadata := []*config.ImageMetadata{featureToMetadata(f)}
+
+	var b strings.Builder
+	env, _ := writeFeatureOverrides(&b, metadata, nil)
+
+	if len(env) != 0 {
+		t.Errorf("feature containerEnv should not appear in compose env, got %v", env)
+	}
+	// Other metadata (capAdd) should still be written.
+	if !strings.Contains(b.String(), "SYS_PTRACE") {
+		t.Errorf("expected SYS_PTRACE in compose override, got:\n%s", b.String())
 	}
 }
 
