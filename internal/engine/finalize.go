@@ -104,15 +104,16 @@ func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace,
 
 	// Merge feature hooks with user hooks once (used for both storage and dispatch).
 	var hooks *hookSet
-	if len(opts.imageMetadata) > 0 {
+	switch {
+	case len(opts.imageMetadata) > 0:
 		merged := config.MergeConfiguration(cfg, opts.imageMetadata)
 		hooks = hookSetFromMerged(merged)
 		// Store feature-only hooks so the resume/restart path can dispatch them
 		// without re-resolving features from OCI registries.
 		e.storeFeatureHooks(ws.ID, merged, cfg)
-	} else if opts.storedResult != nil {
+	case opts.storedResult != nil:
 		hooks = hookSetWithStoredFeatures(cfg, opts.storedResult)
-	} else {
+	default:
 		hooks = hookSetFromConfig(cfg)
 	}
 
