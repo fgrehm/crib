@@ -286,16 +286,6 @@ func resolveConfigEnvFromStored(cfg *config.DevContainerConfig, storedEnv map[st
 func (e *Engine) runResumeHooks(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext) error {
 	stored, _ := e.store.LoadResult(ws.ID)
 	hooks := hookSetWithStoredFeatures(cfg, stored)
-	return e.runResumeHooksWithSet(ctx, ws, cc, hooks)
-}
-
-// runResumeHooksWithSet runs resume hooks with a pre-built hookSet.
-func (e *Engine) runResumeHooksWithSet(ctx context.Context, ws *workspace.Workspace, cc containerContext, hooks *hookSet) error {
-	runner := e.newLifecycleRunner(ws, cc, nil)
-	// The runner needs remoteEnv for exec -e flags. Load from stored result
-	// if not already in the hookSet caller's context.
-	if stored, _ := e.store.LoadResult(ws.ID); stored != nil {
-		runner.remoteEnv = stored.RemoteEnv
-	}
+	runner := e.newLifecycleRunner(ws, cc, cfg.RemoteEnv)
 	return runner.runResumeHooks(ctx, hooks, cc.workspaceFolder)
 }

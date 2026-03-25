@@ -70,7 +70,7 @@ func TestComputeHookHash_EmptyHooks(t *testing.T) {
 func TestHasCreateTimeHooks(t *testing.T) {
 	t.Run("no hooks", func(t *testing.T) {
 		cfg := &config.DevContainerConfig{}
-		if hasCreateTimeHooks(cfg) {
+		if hasCreateTimeHooks(cfg, nil) {
 			t.Error("expected false for no hooks")
 		}
 	})
@@ -78,7 +78,7 @@ func TestHasCreateTimeHooks(t *testing.T) {
 	t.Run("onCreate", func(t *testing.T) {
 		cfg := &config.DevContainerConfig{}
 		cfg.OnCreateCommand = config.LifecycleHook{"": {"echo hi"}}
-		if !hasCreateTimeHooks(cfg) {
+		if !hasCreateTimeHooks(cfg, nil) {
 			t.Error("expected true for onCreate")
 		}
 	})
@@ -86,7 +86,7 @@ func TestHasCreateTimeHooks(t *testing.T) {
 	t.Run("postCreate", func(t *testing.T) {
 		cfg := &config.DevContainerConfig{}
 		cfg.PostCreateCommand = config.LifecycleHook{"": {"echo hi"}}
-		if !hasCreateTimeHooks(cfg) {
+		if !hasCreateTimeHooks(cfg, nil) {
 			t.Error("expected true for postCreate")
 		}
 	})
@@ -94,7 +94,7 @@ func TestHasCreateTimeHooks(t *testing.T) {
 	t.Run("postStart only", func(t *testing.T) {
 		cfg := &config.DevContainerConfig{}
 		cfg.PostStartCommand = config.LifecycleHook{"": {"echo hi"}}
-		if hasCreateTimeHooks(cfg) {
+		if hasCreateTimeHooks(cfg, nil) {
 			t.Error("expected false for postStart only")
 		}
 	})

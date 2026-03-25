@@ -88,7 +88,8 @@ func (e *Engine) finalizeFromSnapshotPath(ctx context.Context, ws *workspace.Wor
 	// Run only resume-flow hooks (create-time effects are in the snapshot).
 	// Include stored feature hooks so features' postStart/postAttach run too.
 	hooks := hookSetWithStoredFeatures(cfg, opts.storedResult)
-	if err := e.runResumeHooksWithSet(ctx, ws, cc, hooks); err != nil {
+	runner := e.newLifecycleRunner(ws, cc, cfg.RemoteEnv)
+	if err := runner.runResumeHooks(ctx, hooks, cc.workspaceFolder); err != nil {
 		e.logger.Warn("resume hooks failed", "error", err)
 	}
 
@@ -101,17 +102,23 @@ func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace,
 	envb := NewEnvBuilder(cfg.RemoteEnv)
 	envb.AddPluginResponse(opts.pluginResp)
 
-	// Store feature hooks so the resume/restart path can dispatch them
-	// without re-resolving features from OCI registries.
+	// Merge feature hooks with user hooks once (used for both storage and dispatch).
+	var hooks *hookSet
 	if len(opts.imageMetadata) > 0 {
-		e.storeFeatureHooks(ws.ID, cfg, opts.imageMetadata)
+		merged := config.MergeConfiguration(cfg, opts.imageMetadata)
+		hooks = hookSetFromMerged(merged)
+		// Store feature-only hooks so the resume/restart path can dispatch them
+		// without re-resolving features from OCI registries.
+		e.storeFeatureHooks(ws.ID, merged, cfg)
+	} else {
+		hooks = hookSetFromConfig(cfg)
 	}
 
 	// Early save so crib exec/shell work while setup runs.
 	e.saveResult(ws, cfg, result)
 
 	// Run container setup (UID sync, env probe, lifecycle hooks).
-	finalEnv, err := e.setupContainer(ctx, ws, cfg, cc, envb, opts.imageMetadata)
+	finalEnv, err := e.setupContainer(ctx, ws, cfg, cc, envb, hooks)
 	cfg.RemoteEnv = finalEnv
 	if err != nil {
 		// Persist probed env even on hook failure so crib exec/shell
@@ -129,16 +136,10 @@ func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace,
 	return result, nil
 }
 
-// storeFeatureHooks extracts feature-only hooks from image metadata and
-// persists them to workspace.Result. These are the hooks declared in
-// devcontainer-feature.json files, stored separately from user hooks so
-// the resume path can dispatch them without the full metadata.
-func (e *Engine) storeFeatureHooks(wsID string, cfg *config.DevContainerConfig, metadata []*config.ImageMetadata) {
-	// MergeConfiguration produces lists with feature hooks first and user hook
-	// last. We store only the feature hooks (everything except the last entry
-	// which is the user's hook).
-	merged := config.MergeConfiguration(cfg, metadata)
-
+// storeFeatureHooks extracts feature-only hooks from the pre-merged config and
+// persists them to workspace.Result. Uses the already-merged config to avoid a
+// redundant MergeConfiguration call.
+func (e *Engine) storeFeatureHooks(wsID string, merged *config.MergedDevContainerConfig, cfg *config.DevContainerConfig) {
 	result, _ := e.store.LoadResult(wsID)
 	if result == nil {
 		result = &workspace.Result{}
@@ -150,7 +151,9 @@ func (e *Engine) storeFeatureHooks(wsID string, cfg *config.DevContainerConfig, 
 	result.FeaturePostStartCommands = toWorkspaceHooks(featureOnly(merged.PostStartCommands, cfg.PostStartCommand))
 	result.FeaturePostAttachCommands = toWorkspaceHooks(featureOnly(merged.PostAttachCommands, cfg.PostAttachCommand))
 
-	_ = e.store.SaveResult(wsID, result)
+	if err := e.store.SaveResult(wsID, result); err != nil {
+		e.logger.Warn("failed to store feature hooks", "error", err)
+	}
 }
 
 // featureOnly returns the merged hook list without the user's hook (last entry).
@@ -160,8 +163,7 @@ func featureOnly(merged []config.LifecycleHook, userHook config.LifecycleHook) [
 		return nil
 	}
 	// The user's hook is the last entry (appended by mergeLifecycleHooks).
-	// If it's the only entry, there are no feature hooks.
-	if len(userHook) > 0 && len(merged) > 0 {
+	if len(userHook) > 0 {
 		return merged[:len(merged)-1]
 	}
 	// No user hook means all entries are feature hooks.

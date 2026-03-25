@@ -137,6 +137,7 @@ func (r *lifecycleRunner) runLifecycleHooks(ctx context.Context, hooks *hookSet,
 	if err := r.runStage(ctx, "postAttachCommand", hooks.PostAttach, workspaceFolder); err != nil {
 		return err
 	}
+	r.signalReadyAt("postAttachCommand", waitFor)
 
 	return nil
 }

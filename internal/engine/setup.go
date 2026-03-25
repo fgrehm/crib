@@ -22,13 +22,10 @@ import (
 //   - Chowning the workspace directory to the remote user
 //   - Running lifecycle hooks
 //
-// imageMetadata contains feature metadata for merging lifecycle hooks. When
-// non-nil, feature hooks are dispatched before user hooks at each stage.
-//
 // Returns the final merged environment produced by the EnvBuilder. Callers
 // should assign it to cfg.RemoteEnv for persistence; setupContainer itself
 // does not mutate cfg.RemoteEnv.
-func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, envb *EnvBuilder, imageMetadata []*config.ImageMetadata) (map[string]string, error) {
+func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, envb *EnvBuilder, hooks *hookSet) (map[string]string, error) {
 	// Resolve ${containerEnv:VAR} in remoteEnv by probing the container environment.
 	// Also captures the container's base PATH for later merging.
 	var containerPATH string
@@ -78,15 +75,6 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 	probedEnv := e.probeUserEnv(ctx, cc, cfg.UserEnvProbe)
 	envb.SetProbed(probedEnv)
 	preHookEnv := envb.Build()
-
-	// Build hook set: merge feature hooks with user hooks when metadata is available.
-	var hooks *hookSet
-	if len(imageMetadata) > 0 {
-		merged := config.MergeConfiguration(cfg, imageMetadata)
-		hooks = hookSetFromMerged(merged)
-	} else {
-		hooks = hookSetFromConfig(cfg)
-	}
 
 	// Run lifecycle hooks with the pre-hook merged environment.
 	runner := e.newLifecycleRunner(ws, cc, preHookEnv)
