@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Parse the `updateContentCommand` lifecycle hook from `devcontainer-feature.json`.
+  Previously this was the only feature lifecycle hook not recognized by the parser.
+  Note: feature-declared lifecycle hooks are parsed and propagated to image metadata
+  but not yet dispatched by the lifecycle runner (tracked in roadmap).
 - `crib restart` now detects changes inside Docker Compose files (volumes,
   ports, environment, etc.) and recreates the container. Previously, only
   changes to `devcontainer.json` fields were detected, so editing a compose

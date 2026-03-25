@@ -34,6 +34,7 @@
         "MY_VAR": "my_value"
     },
     "onCreateCommand": "echo on-create",
+    "updateContentCommand": "echo update-content",
     "postCreateCommand": "echo post-create",
     "postStartCommand": "echo post-start",
     "postAttachCommand": "echo post-attach"

@@ -393,6 +393,7 @@ func featureToMetadata(f *feature.FeatureSet) *config.ImageMetadata {
 	m.Mounts = f.Config.Mounts
 	m.ContainerEnv = f.Config.ContainerEnv
 	m.OnCreateCommand = f.Config.OnCreateCommand
+	m.UpdateContentCommand = f.Config.UpdateContentCommand
 	m.PostCreateCommand = f.Config.PostCreateCommand
 	m.PostStartCommand = f.Config.PostStartCommand
 	m.PostAttachCommand = f.Config.PostAttachCommand

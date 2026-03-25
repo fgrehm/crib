@@ -124,6 +124,22 @@ Detect when a container is unhealthy or stuck and surface it in `crib status` / 
 
 Options: hash Dockerfile contents alongside compose files, parse compose YAML to discover referenced Dockerfiles and `.env` files, or add a lighter-weight mtime check. The tricky part is knowing which files to track (Dockerfiles, `.dockerignore`, build context files, `.env` files) without reimplementing `docker build`'s dependency graph.
 
+### Spec Compliance
+
+#### Feature lifecycle hooks not dispatched
+
+Feature metadata entries can declare lifecycle hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, `postAttachCommand`). These are parsed from `devcontainer-feature.json`, propagated via `featureToMetadata()`, and merged into `MergedConfigProperties` (the plural `OnCreateCommands`, `UpdateContentCommands`, etc.). However, the lifecycle runner in `internal/engine/lifecycle.go` only dispatches the base config's singular hooks (`cfg.OnCreateCommand`), not the merged lists. Feature-declared hooks are silently ignored.
+
+Per the spec, feature hooks should execute before user-defined hooks, in feature installation order.
+
+#### Recursive `dependsOn` resolution for features
+
+The spec says `dependsOn` should be resolved recursively: if feature A depends on feature B (not explicitly listed in `devcontainer.json`), the tool should automatically pull and install feature B. crib's `OrderFeatures()` in `internal/feature/order.go` instead errors with "not in the feature set." Few real-world features exercise this today, but it's a spec gap.
+
+#### Round-based feature installation ordering
+
+The spec describes a round-based priority system where `overrideFeatureInstallOrder` assigns `roundPriority = n - index`, and within each round only features at the max priority are committed. crib uses topological sort (Kahn's algorithm) with a post-hoc reorder that moves override entries to the front. These produce the same result in most cases but can diverge when override features have dependencies that should interleave with non-override features.
+
 ### Housekeeping
 
 #### XDG-based cache provider
