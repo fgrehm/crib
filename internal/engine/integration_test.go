@@ -667,6 +667,155 @@ func TestIntegrationSnapshot(t *testing.T) {
 	}
 }
 
+func TestIntegrationFeatureLifecycleHooks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+	e.SetOutput(os.Stdout, os.Stderr)
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	featureDir := filepath.Join(devcontainerDir, "test-feature")
+	if err := os.MkdirAll(featureDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Local feature with lifecycle hooks. The feature's onCreateCommand should
+	// run before the user's onCreateCommand, and postStartCommand should run
+	// on every start.
+	featureJSON := `{
+		"id": "test-feature",
+		"version": "1.0.0",
+		"name": "Test Feature",
+		"onCreateCommand": "echo feature-oncreate > /tmp/feature-oncreate-ran",
+		"postStartCommand": "echo feature-poststart > /tmp/feature-poststart-ran"
+	}`
+	if err := os.WriteFile(filepath.Join(featureDir, "devcontainer-feature.json"), []byte(featureJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Minimal install.sh (required by feature spec).
+	if err := os.WriteFile(filepath.Join(featureDir, "install.sh"), []byte("#!/bin/sh\necho 'test-feature installed'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// devcontainer.json references the local feature and has its own hooks.
+	// The user's onCreateCommand writes a timestamp so we can verify ordering:
+	// feature hook should have written its marker before the user hook runs.
+	configContent := `{
+		"image": "alpine:3.20",
+		"overrideCommand": true,
+		"features": {
+			"./test-feature": {}
+		},
+		"onCreateCommand": "test -f /tmp/feature-oncreate-ran && echo user-after-feature > /tmp/user-oncreate-ran",
+		"postStartCommand": "echo user-poststart > /tmp/user-poststart-ran"
+	}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-feature-hooks"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	// Verify feature onCreateCommand ran.
+	var stdout bytes.Buffer
+	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"cat", "/tmp/feature-oncreate-ran"}, nil, &stdout, nil, nil, ""); err != nil {
+		t.Errorf("feature onCreateCommand did not run: %v", err)
+	}
+
+	// Verify user onCreateCommand ran AND that it ran after the feature hook
+	// (it checks for /tmp/feature-oncreate-ran before writing its own marker).
+	stdout.Reset()
+	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"cat", "/tmp/user-oncreate-ran"}, nil, &stdout, nil, nil, ""); err != nil {
+		t.Errorf("user onCreateCommand did not run (or ran before feature hook): %v", err)
+	} else if got := strings.TrimSpace(stdout.String()); got != "user-after-feature" {
+		t.Errorf("user onCreateCommand output = %q, want 'user-after-feature'", got)
+	}
+
+	// Verify feature postStartCommand ran.
+	stdout.Reset()
+	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-f", "/tmp/feature-poststart-ran"}, nil, &stdout, nil, nil, ""); err != nil {
+		t.Errorf("feature postStartCommand did not run: %v", err)
+	}
+
+	// Verify user postStartCommand ran.
+	stdout.Reset()
+	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-f", "/tmp/user-poststart-ran"}, nil, &stdout, nil, nil, ""); err != nil {
+		t.Errorf("user postStartCommand did not run: %v", err)
+	}
+
+	// Verify feature hooks are stored in result.json for the resume path.
+	storedResult, err := e.store.LoadResult(wsID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+	if len(storedResult.FeatureOnCreateCommands) == 0 {
+		t.Error("FeatureOnCreateCommands should be stored in result")
+	}
+	if len(storedResult.FeaturePostStartCommands) == 0 {
+		t.Error("FeaturePostStartCommands should be stored in result")
+	}
+
+	// Verify snapshot was committed (feature has create-time hooks).
+	if storedResult.SnapshotImage == "" {
+		t.Error("SnapshotImage should be set (feature has onCreateCommand)")
+	}
+
+	// --- Resume path: Down + Up should run feature postStartCommand again ---
+
+	// Remove the postStart markers so we can verify they re-run.
+	_ = d.ExecContainer(ctx, wsID, result.ContainerID, []string{"rm", "-f", "/tmp/feature-poststart-ran", "/tmp/user-poststart-ran"}, nil, nil, nil, nil, "")
+
+	if err := e.Down(ctx, ws); err != nil {
+		t.Fatalf("Down: %v", err)
+	}
+
+	result2, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up (resume): %v", err)
+	}
+
+	// Feature postStartCommand should have run again on resume.
+	stdout.Reset()
+	if err := d.ExecContainer(ctx, wsID, result2.ContainerID, []string{"test", "-f", "/tmp/feature-poststart-ran"}, nil, &stdout, nil, nil, ""); err != nil {
+		t.Errorf("feature postStartCommand did not run on resume: %v", err)
+	}
+
+	// User postStartCommand should have run again on resume.
+	stdout.Reset()
+	if err := d.ExecContainer(ctx, wsID, result2.ContainerID, []string{"test", "-f", "/tmp/user-poststart-ran"}, nil, &stdout, nil, nil, ""); err != nil {
+		t.Errorf("user postStartCommand did not run on resume: %v", err)
+	}
+
+	// Feature onCreateCommand should NOT re-run (it is in the snapshot).
+	// The marker should still exist from the snapshot, but let's verify
+	// the hook markers were cleared by Down and not re-created.
+	// Actually, Down clears hook markers, and the resume path skips
+	// create-time hooks because the snapshot is valid. The marker file
+	// exists in the snapshot image, not because the hook re-ran.
+}
+
 func TestIntegrationDoctor(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
