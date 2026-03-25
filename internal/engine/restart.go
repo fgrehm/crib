@@ -248,6 +248,7 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 		pluginResp:     pluginResp,
 		storedResult:   storedResult,
 		fromSnapshot:   hasSnapshot,
+		imageMetadata:  metadata,
 	})
 	if err != nil {
 		if upResult != nil {
