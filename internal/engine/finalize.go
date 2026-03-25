@@ -110,6 +110,8 @@ func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace,
 		// Store feature-only hooks so the resume/restart path can dispatch them
 		// without re-resolving features from OCI registries.
 		e.storeFeatureHooks(ws.ID, merged, cfg)
+	} else if opts.storedResult != nil {
+		hooks = hookSetWithStoredFeatures(cfg, opts.storedResult)
 	} else {
 		hooks = hookSetFromConfig(cfg)
 	}
