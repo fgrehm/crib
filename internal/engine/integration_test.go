@@ -808,12 +808,6 @@ func TestIntegrationFeatureLifecycleHooks(t *testing.T) {
 		t.Errorf("user postStartCommand did not run on resume: %v", err)
 	}
 
-	// Feature onCreateCommand should NOT re-run (it is in the snapshot).
-	// The marker should still exist from the snapshot, but let's verify
-	// the hook markers were cleared by Down and not re-created.
-	// Actually, Down clears hook markers, and the resume path skips
-	// create-time hooks because the snapshot is valid. The marker file
-	// exists in the snapshot image, not because the hook re-ran.
 }
 
 func TestIntegrationDoctor(t *testing.T) {
