@@ -44,10 +44,11 @@ type FeatureConfig struct {
 	ContainerEnv  map[string]string        `json:"containerEnv,omitempty"`
 
 	// Lifecycle hooks.
-	OnCreateCommand   config.LifecycleHook `json:"onCreateCommand,omitempty"`
-	PostCreateCommand config.LifecycleHook `json:"postCreateCommand,omitempty"`
-	PostStartCommand  config.LifecycleHook `json:"postStartCommand,omitempty"`
-	PostAttachCommand config.LifecycleHook `json:"postAttachCommand,omitempty"`
+	OnCreateCommand      config.LifecycleHook `json:"onCreateCommand,omitempty"`
+	UpdateContentCommand config.LifecycleHook `json:"updateContentCommand,omitempty"`
+	PostCreateCommand    config.LifecycleHook `json:"postCreateCommand,omitempty"`
+	PostStartCommand     config.LifecycleHook `json:"postStartCommand,omitempty"`
+	PostAttachCommand    config.LifecycleHook `json:"postAttachCommand,omitempty"`
 }
 
 // FeatureOption describes a single option that a feature accepts.

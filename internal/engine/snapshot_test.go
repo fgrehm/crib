@@ -18,8 +18,8 @@ func TestComputeHookHash_Stable(t *testing.T) {
 	cfg.OnCreateCommand = config.LifecycleHook{"": {"npm install"}}
 	cfg.PostCreateCommand = config.LifecycleHook{"": {"echo done"}}
 
-	hash1 := computeHookHash(cfg)
-	hash2 := computeHookHash(cfg)
+	hash1 := computeHookHash(cfg, nil)
+	hash2 := computeHookHash(cfg, nil)
 
 	if hash1 != hash2 {
 		t.Errorf("hash not stable: %q != %q", hash1, hash2)
@@ -36,14 +36,32 @@ func TestComputeHookHash_ChangesWhenHooksChange(t *testing.T) {
 	cfg2 := &config.DevContainerConfig{}
 	cfg2.OnCreateCommand = config.LifecycleHook{"": {"yarn install"}}
 
-	if computeHookHash(cfg1) == computeHookHash(cfg2) {
+	if computeHookHash(cfg1, nil) == computeHookHash(cfg2, nil) {
 		t.Error("different hooks should produce different hashes")
+	}
+}
+
+func TestComputeHookHash_ChangesWithFeatureHooks(t *testing.T) {
+	cfg := &config.DevContainerConfig{}
+	cfg.OnCreateCommand = config.LifecycleHook{"": {"echo user"}}
+
+	hashNoFeatures := computeHookHash(cfg, nil)
+
+	stored := &workspace.Result{
+		FeatureOnCreateCommands: []workspace.LifecycleHook{
+			{"": {"echo feature-oncreate"}},
+		},
+	}
+	hashWithFeatures := computeHookHash(cfg, stored)
+
+	if hashNoFeatures == hashWithFeatures {
+		t.Error("hash should differ when feature hooks are added")
 	}
 }
 
 func TestComputeHookHash_EmptyHooks(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
-	hash := computeHookHash(cfg)
+	hash := computeHookHash(cfg, nil)
 	if hash == "" {
 		t.Error("hash should not be empty even for empty hooks")
 	}
@@ -52,7 +70,7 @@ func TestComputeHookHash_EmptyHooks(t *testing.T) {
 func TestHasCreateTimeHooks(t *testing.T) {
 	t.Run("no hooks", func(t *testing.T) {
 		cfg := &config.DevContainerConfig{}
-		if hasCreateTimeHooks(cfg) {
+		if hasCreateTimeHooks(cfg, nil) {
 			t.Error("expected false for no hooks")
 		}
 	})
@@ -60,7 +78,7 @@ func TestHasCreateTimeHooks(t *testing.T) {
 	t.Run("onCreate", func(t *testing.T) {
 		cfg := &config.DevContainerConfig{}
 		cfg.OnCreateCommand = config.LifecycleHook{"": {"echo hi"}}
-		if !hasCreateTimeHooks(cfg) {
+		if !hasCreateTimeHooks(cfg, nil) {
 			t.Error("expected true for onCreate")
 		}
 	})
@@ -68,7 +86,7 @@ func TestHasCreateTimeHooks(t *testing.T) {
 	t.Run("postCreate", func(t *testing.T) {
 		cfg := &config.DevContainerConfig{}
 		cfg.PostCreateCommand = config.LifecycleHook{"": {"echo hi"}}
-		if !hasCreateTimeHooks(cfg) {
+		if !hasCreateTimeHooks(cfg, nil) {
 			t.Error("expected true for postCreate")
 		}
 	})
@@ -76,7 +94,7 @@ func TestHasCreateTimeHooks(t *testing.T) {
 	t.Run("postStart only", func(t *testing.T) {
 		cfg := &config.DevContainerConfig{}
 		cfg.PostStartCommand = config.LifecycleHook{"": {"echo hi"}}
-		if hasCreateTimeHooks(cfg) {
+		if hasCreateTimeHooks(cfg, nil) {
 			t.Error("expected false for postStart only")
 		}
 	})
@@ -251,7 +269,7 @@ func TestValidSnapshot_Valid(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	cfg.OnCreateCommand = config.LifecycleHook{"": {"npm install"}}
 
-	hash := computeHookHash(cfg)
+	hash := computeHookHash(cfg, nil)
 	mergedJSON, _ := json.Marshal(cfg)
 	if err := store.SaveResult(ws.ID, &workspace.Result{
 		ContainerID:      "container-1",
@@ -295,7 +313,7 @@ func TestValidSnapshot_StaleHash(t *testing.T) {
 		ContainerID:      "container-1",
 		MergedConfig:     mergedJSON,
 		SnapshotImage:    "crib-ws-stale-hash:snapshot",
-		SnapshotHookHash: computeHookHash(oldCfg),
+		SnapshotHookHash: computeHookHash(oldCfg, nil),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +352,7 @@ func TestValidSnapshot_MissingImage(t *testing.T) {
 		ContainerID:      "container-1",
 		MergedConfig:     mergedJSON,
 		SnapshotImage:    "crib-ws-missing-img:snapshot",
-		SnapshotHookHash: computeHookHash(cfg),
+		SnapshotHookHash: computeHookHash(cfg, nil),
 	}); err != nil {
 		t.Fatal(err)
 	}

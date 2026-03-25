@@ -60,6 +60,28 @@ make test-integration # integration tests (requires Docker or Podman)
 
 Run a single test: `go test ./internal/config/ -short -run TestParseFull`
 
+### Integration tests
+
+Integration tests live alongside unit tests in `*_integration_test.go` files
+(primarily in `internal/engine/`). They require Docker or Podman and are skipped
+by `-short`. Run them with `make test-integration`.
+
+**Pattern**: `newTestEngine(t)` creates an engine with a real `OCIDriver` and a
+temp-dir workspace store. Tests create a temp project dir, write
+`.devcontainer/devcontainer.json`, build a `workspace.Workspace` struct, call
+`e.Up(ctx, ws, UpOptions{})`, then verify side effects via
+`d.ExecContainer(ctx, ...)`. Cleanup with `t.Cleanup` deletes containers and
+images via `cleanupWorkspaceImages(t, d, wsID)`.
+
+**Convention**: Test function names start with `TestIntegration`. Workspace IDs
+use `test-engine-<suffix>` to avoid collisions. Use `alpine:3.20` as the base
+image (small, fast to pull). Local features go in the temp project's
+`.devcontainer/` directory.
+
+**Requirement**: Always write integration tests for new engine features that
+touch the container lifecycle (hooks, env, user, features). Unit tests with mock
+drivers are good for logic but miss real Docker/Podman behavior.
+
 ## Conventions
 
 - Go module: `github.com/fgrehm/crib`

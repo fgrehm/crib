@@ -298,7 +298,7 @@ func TestRunLifecycleHooks_WaitFor_Default(t *testing.T) {
 	cfg.PostCreateCommand = config.LifecycleHook{"": {"echo postcreate"}}
 	// WaitFor = "" → defaults to updateContentCommand
 
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 
@@ -336,7 +336,7 @@ func TestRunLifecycleHooks_WaitFor_OnCreate(t *testing.T) {
 	cfg.OnCreateCommand = config.LifecycleHook{"": {"echo create"}}
 	cfg.UpdateContentCommand = config.LifecycleHook{"": {"echo update"}}
 
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 
@@ -370,7 +370,7 @@ func TestRunLifecycleHooks_WaitFor_PostCreate(t *testing.T) {
 	cfg.PostCreateCommand = config.LifecycleHook{"": {"echo postcreate"}}
 	cfg.PostStartCommand = config.LifecycleHook{"": {"echo poststart"}}
 
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 
@@ -404,7 +404,7 @@ func TestRunLifecycleHooks_WaitFor_PostStart(t *testing.T) {
 	cfg.PostStartCommand = config.LifecycleHook{"": {"echo poststart"}}
 	cfg.PostAttachCommand = config.LifecycleHook{"": {"echo postattach"}}
 
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 
@@ -427,6 +427,215 @@ func TestRunLifecycleHooks_WaitFor_PostStart(t *testing.T) {
 	}
 }
 
+func TestRunLifecycleHooks_FeatureHooksBeforeUser(t *testing.T) {
+	// Feature hooks should execute before user hooks at each stage.
+	// The merged hookSet contains feature hooks first, user hook last.
+	mock := &mockDriver{}
+	r, _, _ := newTestRunner(t, mock)
+
+	hooks := &hookSet{
+		OnCreate: []config.LifecycleHook{
+			{"": {"echo feature-oncreate"}},
+			{"": {"echo user-oncreate"}},
+		},
+		PostStart: []config.LifecycleHook{
+			{"": {"echo feature-poststart"}},
+			{"": {"echo user-poststart"}},
+		},
+	}
+
+	if err := r.runLifecycleHooks(context.Background(), hooks, ""); err != nil {
+		t.Fatalf("runLifecycleHooks: %v", err)
+	}
+
+	// Collect exec commands in order.
+	var cmds []string
+	for _, call := range mock.execCalls {
+		cmds = append(cmds, strings.Join(call.cmd, " "))
+	}
+
+	featureOnCreateIdx := indexOfCmd(cmds, "feature-oncreate")
+	userOnCreateIdx := indexOfCmd(cmds, "user-oncreate")
+	featurePostStartIdx := indexOfCmd(cmds, "feature-poststart")
+	userPostStartIdx := indexOfCmd(cmds, "user-poststart")
+
+	if featureOnCreateIdx < 0 {
+		t.Fatalf("feature-oncreate not found in cmds: %v", cmds)
+	}
+	if userOnCreateIdx < 0 {
+		t.Fatalf("user-oncreate not found in cmds: %v", cmds)
+	}
+	if featureOnCreateIdx >= userOnCreateIdx {
+		t.Errorf("feature onCreate (idx %d) should run before user onCreate (idx %d)", featureOnCreateIdx, userOnCreateIdx)
+	}
+	if featurePostStartIdx >= userPostStartIdx {
+		t.Errorf("feature postStart (idx %d) should run before user postStart (idx %d)", featurePostStartIdx, userPostStartIdx)
+	}
+}
+
+func TestRunLifecycleHooks_FeatureHooksOnly(t *testing.T) {
+	// Feature hooks should run even when user has no hooks.
+	mock := &mockDriver{}
+	r, _, _ := newTestRunner(t, mock)
+
+	hooks := &hookSet{
+		PostStart: []config.LifecycleHook{
+			{"": {"echo feature-poststart"}},
+		},
+		PostAttach: []config.LifecycleHook{
+			{"": {"echo feature-postattach"}},
+		},
+	}
+
+	if err := r.runLifecycleHooks(context.Background(), hooks, ""); err != nil {
+		t.Fatalf("runLifecycleHooks: %v", err)
+	}
+
+	if len(mock.execCalls) != 2 {
+		t.Fatalf("expected 2 exec calls (feature postStart + postAttach), got %d", len(mock.execCalls))
+	}
+}
+
+func TestRunResumeHooks_FeatureHooksBeforeUser(t *testing.T) {
+	mock := &mockDriver{}
+	r, _, _ := newTestRunner(t, mock)
+
+	hooks := &hookSet{
+		PostStart: []config.LifecycleHook{
+			{"": {"echo feature-poststart"}},
+			{"": {"echo user-poststart"}},
+		},
+		PostAttach: []config.LifecycleHook{
+			{"": {"echo feature-postattach"}},
+			{"": {"echo user-postattach"}},
+		},
+	}
+
+	if err := r.runResumeHooks(context.Background(), hooks, ""); err != nil {
+		t.Fatalf("runResumeHooks: %v", err)
+	}
+
+	var cmds []string
+	for _, call := range mock.execCalls {
+		cmds = append(cmds, strings.Join(call.cmd, " "))
+	}
+
+	if len(mock.execCalls) != 4 {
+		t.Fatalf("expected 4 exec calls, got %d: %v", len(mock.execCalls), cmds)
+	}
+
+	featurePostStartIdx := indexOfCmd(cmds, "feature-poststart")
+	userPostStartIdx := indexOfCmd(cmds, "user-poststart")
+	if featurePostStartIdx >= userPostStartIdx {
+		t.Errorf("feature postStart (idx %d) should run before user postStart (idx %d)", featurePostStartIdx, userPostStartIdx)
+	}
+}
+
+func TestHookSetWithStoredFeatures(t *testing.T) {
+	cfg := &config.DevContainerConfig{}
+	cfg.PostStartCommand = config.LifecycleHook{"": {"echo user-poststart"}}
+
+	stored := &workspace.Result{
+		FeaturePostStartCommands: []workspace.LifecycleHook{
+			{"": {"echo feature-poststart"}},
+		},
+	}
+
+	hs := hookSetWithStoredFeatures(cfg, stored)
+
+	if len(hs.PostStart) != 2 {
+		t.Fatalf("PostStart length = %d, want 2 (feature + user)", len(hs.PostStart))
+	}
+	// Feature hook first, user hook second.
+	if hs.PostStart[0][""][0] != "echo feature-poststart" {
+		t.Errorf("PostStart[0] = %v, want feature hook", hs.PostStart[0])
+	}
+	if hs.PostStart[1][""][0] != "echo user-poststart" {
+		t.Errorf("PostStart[1] = %v, want user hook", hs.PostStart[1])
+	}
+}
+
+func TestHookSetWithStoredFeatures_NilStored(t *testing.T) {
+	cfg := &config.DevContainerConfig{}
+	cfg.PostStartCommand = config.LifecycleHook{"": {"echo user"}}
+
+	hs := hookSetWithStoredFeatures(cfg, nil)
+	if len(hs.PostStart) != 1 {
+		t.Fatalf("PostStart length = %d, want 1 (user only)", len(hs.PostStart))
+	}
+}
+
+func TestHookSetFromMerged_IncludesAllStages(t *testing.T) {
+	merged := &config.MergedDevContainerConfig{}
+	merged.OnCreateCommands = []config.LifecycleHook{{"": {"echo feature-oncreate"}}, {"": {"echo user-oncreate"}}}
+	merged.UpdateContentCommands = []config.LifecycleHook{{"": {"echo feature-update"}}}
+	merged.PostCreateCommands = []config.LifecycleHook{{"": {"echo user-postcreate"}}}
+	merged.PostStartCommands = []config.LifecycleHook{{"": {"echo feature-poststart"}}, {"": {"echo user-poststart"}}}
+	merged.PostAttachCommands = []config.LifecycleHook{{"": {"echo user-postattach"}}}
+	merged.WaitFor = "onCreateCommand"
+
+	hs := hookSetFromMerged(merged)
+
+	if len(hs.OnCreate) != 2 {
+		t.Errorf("OnCreate length = %d, want 2", len(hs.OnCreate))
+	}
+	if len(hs.UpdateContent) != 1 {
+		t.Errorf("UpdateContent length = %d, want 1", len(hs.UpdateContent))
+	}
+	if len(hs.PostCreate) != 1 {
+		t.Errorf("PostCreate length = %d, want 1", len(hs.PostCreate))
+	}
+	if len(hs.PostStart) != 2 {
+		t.Errorf("PostStart length = %d, want 2", len(hs.PostStart))
+	}
+	if len(hs.PostAttach) != 1 {
+		t.Errorf("PostAttach length = %d, want 1", len(hs.PostAttach))
+	}
+	if hs.WaitFor != "onCreateCommand" {
+		t.Errorf("WaitFor = %q, want onCreateCommand", hs.WaitFor)
+	}
+}
+
+func TestFeatureOnly_WithUserHook(t *testing.T) {
+	userHook := config.LifecycleHook{"": {"echo user"}}
+	merged := []config.LifecycleHook{
+		{"": {"echo feature1"}},
+		{"": {"echo feature2"}},
+		userHook,
+	}
+	got := featureOnly(merged, userHook)
+	if len(got) != 2 {
+		t.Fatalf("featureOnly length = %d, want 2", len(got))
+	}
+}
+
+func TestFeatureOnly_NoUserHook(t *testing.T) {
+	merged := []config.LifecycleHook{
+		{"": {"echo feature1"}},
+	}
+	got := featureOnly(merged, nil)
+	if len(got) != 1 {
+		t.Fatalf("featureOnly length = %d, want 1 (all entries are feature hooks)", len(got))
+	}
+}
+
+func TestFeatureOnly_Empty(t *testing.T) {
+	got := featureOnly(nil, config.LifecycleHook{"": {"echo user"}})
+	if len(got) != 0 {
+		t.Errorf("featureOnly(nil) should be empty, got %v", got)
+	}
+}
+
+// indexOfCmd returns the first index where the command string contains substr.
+func indexOfCmd(cmds []string, substr string) int {
+	for i, c := range cmds {
+		if strings.Contains(c, substr) {
+			return i
+		}
+	}
+	return -1
+}
+
 func TestRunLifecycleHooks_NoReadyWhenNoHooks(t *testing.T) {
 	// When there are no hooks at all, "Container ready." is still emitted
 	// (at the waitFor stage, even if nothing ran there).
@@ -438,7 +647,7 @@ func TestRunLifecycleHooks_NoReadyWhenNoHooks(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	// No hooks configured; waitFor defaults to updateContentCommand.
 
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 

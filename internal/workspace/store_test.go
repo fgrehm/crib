@@ -153,6 +153,53 @@ func TestStore_SaveAndLoadResult(t *testing.T) {
 	}
 }
 
+func TestStore_SaveAndLoadResult_FeatureHooks(t *testing.T) {
+	store := NewStoreAt(t.TempDir())
+
+	result := &Result{
+		ContainerID:     "abc123",
+		ImageName:       "crib-ws:latest",
+		MergedConfig:    json.RawMessage(`{}`),
+		WorkspaceFolder: "/workspace",
+		FeatureOnCreateCommands: []LifecycleHook{
+			{"": {"echo feature1-oncreate"}},
+			{"": {"echo feature2-oncreate"}},
+		},
+		FeaturePostStartCommands: []LifecycleHook{
+			{"setup": {"echo feature-poststart"}},
+		},
+	}
+
+	if err := store.SaveResult("ws-hooks", result); err != nil {
+		t.Fatalf("SaveResult: %v", err)
+	}
+
+	loaded, err := store.LoadResult("ws-hooks")
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+
+	if len(loaded.FeatureOnCreateCommands) != 2 {
+		t.Fatalf("FeatureOnCreateCommands length = %d, want 2", len(loaded.FeatureOnCreateCommands))
+	}
+	if loaded.FeatureOnCreateCommands[0][""][0] != "echo feature1-oncreate" {
+		t.Errorf("FeatureOnCreateCommands[0] = %v, want echo feature1-oncreate", loaded.FeatureOnCreateCommands[0])
+	}
+	if len(loaded.FeaturePostStartCommands) != 1 {
+		t.Fatalf("FeaturePostStartCommands length = %d, want 1", len(loaded.FeaturePostStartCommands))
+	}
+	// Empty fields should not appear.
+	if len(loaded.FeatureUpdateContentCommands) != 0 {
+		t.Errorf("FeatureUpdateContentCommands should be empty, got %v", loaded.FeatureUpdateContentCommands)
+	}
+	if len(loaded.FeaturePostCreateCommands) != 0 {
+		t.Errorf("FeaturePostCreateCommands should be empty, got %v", loaded.FeaturePostCreateCommands)
+	}
+	if len(loaded.FeaturePostAttachCommands) != 0 {
+		t.Errorf("FeaturePostAttachCommands should be empty, got %v", loaded.FeaturePostAttachCommands)
+	}
+}
+
 func TestStore_LoadResult_NotFound(t *testing.T) {
 	store := NewStoreAt(t.TempDir())
 

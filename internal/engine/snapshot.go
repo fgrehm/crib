@@ -17,17 +17,25 @@ func snapshotImageName(workspaceID string) string {
 }
 
 // computeHookHash computes a stable hash of the create-time hook definitions
-// (onCreate, updateContent, postCreate). If the hooks change, the snapshot is stale.
-func computeHookHash(cfg *config.DevContainerConfig) string {
-	// Serialize the hook definitions to JSON for hashing.
+// (onCreate, updateContent, postCreate) including any feature hooks from the
+// stored result. If hooks change, the snapshot is stale.
+func computeHookHash(cfg *config.DevContainerConfig, stored *workspace.Result) string {
 	data := struct {
-		OnCreate      config.LifecycleHook `json:"onCreate,omitempty"`
-		UpdateContent config.LifecycleHook `json:"updateContent,omitempty"`
-		PostCreate    config.LifecycleHook `json:"postCreate,omitempty"`
+		OnCreate        config.LifecycleHook      `json:"onCreate,omitempty"`
+		UpdateContent   config.LifecycleHook      `json:"updateContent,omitempty"`
+		PostCreate      config.LifecycleHook      `json:"postCreate,omitempty"`
+		FeatureOnCreate []workspace.LifecycleHook `json:"featureOnCreate,omitempty"`
+		FeatureUpdate   []workspace.LifecycleHook `json:"featureUpdate,omitempty"`
+		FeaturePost     []workspace.LifecycleHook `json:"featurePost,omitempty"`
 	}{
 		OnCreate:      cfg.OnCreateCommand,
 		UpdateContent: cfg.UpdateContentCommand,
 		PostCreate:    cfg.PostCreateCommand,
+	}
+	if stored != nil {
+		data.FeatureOnCreate = stored.FeatureOnCreateCommands
+		data.FeatureUpdate = stored.FeatureUpdateContentCommands
+		data.FeaturePost = stored.FeaturePostCreateCommands
 	}
 
 	b, _ := json.Marshal(data)
@@ -36,16 +44,28 @@ func computeHookHash(cfg *config.DevContainerConfig) string {
 }
 
 // hasCreateTimeHooks returns true if the config has any create-time hooks.
-func hasCreateTimeHooks(cfg *config.DevContainerConfig) bool {
-	return len(cfg.OnCreateCommand) > 0 ||
-		len(cfg.UpdateContentCommand) > 0 ||
-		len(cfg.PostCreateCommand) > 0
+func hasCreateTimeHooks(cfg *config.DevContainerConfig, stored *workspace.Result) bool {
+	if len(cfg.OnCreateCommand) > 0 || len(cfg.UpdateContentCommand) > 0 || len(cfg.PostCreateCommand) > 0 {
+		return true
+	}
+	if stored != nil {
+		return len(stored.FeatureOnCreateCommands) > 0 ||
+			len(stored.FeatureUpdateContentCommands) > 0 ||
+			len(stored.FeaturePostCreateCommands) > 0
+	}
+	return false
 }
 
 // commitSnapshot creates a snapshot image from the container and saves
 // the metadata in the workspace result.
 func (e *Engine) commitSnapshot(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID string) {
-	if !hasCreateTimeHooks(cfg) {
+	stored, err := e.store.LoadResult(ws.ID)
+	if err != nil {
+		e.logger.Warn("failed to load result for snapshot decision", "error", err)
+		if !hasCreateTimeHooks(cfg, nil) {
+			return
+		}
+	} else if !hasCreateTimeHooks(cfg, stored) {
 		return
 	}
 
@@ -68,7 +88,7 @@ func (e *Engine) commitSnapshot(ctx context.Context, ws *workspace.Workspace, cf
 	}
 
 	result.SnapshotImage = imageName
-	result.SnapshotHookHash = computeHookHash(cfg)
+	result.SnapshotHookHash = computeHookHash(cfg, result)
 	if err := e.store.SaveResult(ws.ID, result); err != nil {
 		e.logger.Warn("failed to save snapshot metadata", "error", err)
 	}
@@ -107,7 +127,7 @@ func (e *Engine) validSnapshot(ctx context.Context, ws *workspace.Workspace, cfg
 	}
 
 	// Check if hooks changed since snapshot was taken.
-	currentHash := computeHookHash(cfg)
+	currentHash := computeHookHash(cfg, result)
 	if currentHash != result.SnapshotHookHash {
 		e.logger.Debug("snapshot is stale (hook hash mismatch)", "stored", result.SnapshotHookHash, "current", currentHash)
 		return "", false

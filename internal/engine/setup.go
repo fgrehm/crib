@@ -25,7 +25,7 @@ import (
 // Returns the final merged environment produced by the EnvBuilder. Callers
 // should assign it to cfg.RemoteEnv for persistence; setupContainer itself
 // does not mutate cfg.RemoteEnv.
-func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, envb *EnvBuilder) (map[string]string, error) {
+func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext, envb *EnvBuilder, hooks *hookSet) (map[string]string, error) {
 	// Resolve ${containerEnv:VAR} in remoteEnv by probing the container environment.
 	// Also captures the container's base PATH for later merging.
 	var containerPATH string
@@ -78,7 +78,7 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 
 	// Run lifecycle hooks with the pre-hook merged environment.
 	runner := e.newLifecycleRunner(ws, cc, preHookEnv)
-	hookErr := runner.runLifecycleHooks(ctx, cfg, cc.workspaceFolder)
+	hookErr := runner.runLifecycleHooks(ctx, hooks, cc.workspaceFolder)
 
 	// Post-hook environment probe: re-captures the environment to pick up
 	// any changes from lifecycle hooks (e.g. tools installed via mise, nvm).

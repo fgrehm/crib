@@ -141,7 +141,7 @@ Properties inside `portsAttributes` entries:
 
 | Variable | Usable In | Description |
 |---|---|---|
-| `${localEnv:VAR}` | Any property | Host env var. Supports default: `${localEnv:VAR:fallback}` |
+| `${localEnv:VAR}` | Any property | Host env var. Supports default: `${localEnv:VAR:fallback}`. `${env:VAR}` is an alias. |
 | `${containerEnv:VAR}` | `remoteEnv` only | Container env var. Supports default: `${containerEnv:VAR:fallback}` |
 | `${localWorkspaceFolder}` | Any property | Full path to the opened local folder |
 | `${containerWorkspaceFolder}` | Any property | Full path inside the container |
@@ -295,8 +295,9 @@ The array format is preferred because subsequent builds can simply append entrie
 These properties can appear in image metadata: `forwardPorts`, `portsAttributes`,
 `otherPortsAttributes`, `containerEnv`, `remoteEnv`, `remoteUser`, `containerUser`,
 `updateRemoteUserUID`, `userEnvProbe`, `overrideCommand`, `shutdownAction`, `init`,
-`privileged`, `capAdd`, `securityOpt`, `mounts`, `customizations`, `hostRequirements`,
-all lifecycle hooks (`onCreateCommand` through `postAttachCommand`), and `waitFor`.
+`privileged`, `capAdd`, `securityOpt`, `entrypoint`, `mounts`, `customizations`,
+`hostRequirements`, all lifecycle hooks (`onCreateCommand` through `postAttachCommand`),
+and `waitFor`.
 
 ### Metadata Merge Rules
 

@@ -2,6 +2,12 @@ package workspace
 
 import "encoding/json"
 
+// LifecycleHook is a map of named command entries. String/array hooks use the
+// "" key; object hooks use named keys that run in parallel. This mirrors
+// config.LifecycleHook but is redeclared here to avoid a dependency on the
+// config package from workspace.
+type LifecycleHook map[string][]string
+
 // Result stores the outcome of a successful `crib up` run.
 type Result struct {
 	// ContainerID is the Docker/Podman container ID.
@@ -44,4 +50,14 @@ type Result struct {
 	// to detect changes inside compose files (volumes, ports, etc.) that are
 	// invisible to devcontainer.json config comparison.
 	ComposeFilesHash string `json:"composeFilesHash,omitempty"`
+
+	// Feature lifecycle hooks, stored so the resume/restart path can dispatch
+	// them without re-resolving features from OCI registries. These are the
+	// hooks declared in devcontainer-feature.json files, NOT the user's hooks
+	// from devcontainer.json. Per the spec, feature hooks run before user hooks.
+	FeatureOnCreateCommands      []LifecycleHook `json:"featureOnCreateCommands,omitempty"`
+	FeatureUpdateContentCommands []LifecycleHook `json:"featureUpdateContentCommands,omitempty"`
+	FeaturePostCreateCommands    []LifecycleHook `json:"featurePostCreateCommands,omitempty"`
+	FeaturePostStartCommands     []LifecycleHook `json:"featurePostStartCommands,omitempty"`
+	FeaturePostAttachCommands    []LifecycleHook `json:"featurePostAttachCommands,omitempty"`
 }

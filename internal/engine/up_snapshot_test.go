@@ -123,7 +123,7 @@ func TestUpCreate_FromSnapshot_PreservesEnv(t *testing.T) {
 		ImageName:        "ruby:3.2",
 		RemoteUser:       "vscode",
 		SnapshotImage:    "crib-ws-up-snap:snapshot",
-		SnapshotHookHash: computeHookHash(&config.DevContainerConfig{}),
+		SnapshotHookHash: computeHookHash(&config.DevContainerConfig{}, nil),
 		RemoteEnv: map[string]string{
 			"PATH":      "/home/vscode/.bundle/bin:/home/vscode/.local/share/mise/installs/ruby/3.4.7/bin:/usr/local/bin:/usr/bin",
 			"RUBY_ROOT": "/home/vscode/.local/share/mise/installs/ruby/3.4.7",
@@ -220,7 +220,7 @@ func TestUpCreate_FromSnapshot_RunsResumeHooksOnly(t *testing.T) {
 		ImageName:        "ubuntu:22.04",
 		RemoteUser:       "vscode",
 		SnapshotImage:    "crib-ws-up-resume:snapshot",
-		SnapshotHookHash: computeHookHash(cfg),
+		SnapshotHookHash: computeHookHash(cfg, nil),
 		RemoteEnv:        map[string]string{"PATH": "/usr/local/bin:/usr/bin"},
 	}
 	if err := store.SaveResult(ws.ID, storedResult); err != nil {
@@ -308,7 +308,7 @@ func TestUpCreate_FromSnapshot_RecreateBypassesSnapshot(t *testing.T) {
 		ImageName:        "ubuntu:22.04",
 		RemoteUser:       "vscode",
 		SnapshotImage:    "crib-ws-up-recreate:snapshot",
-		SnapshotHookHash: computeHookHash(cfg),
+		SnapshotHookHash: computeHookHash(cfg, nil),
 		RemoteEnv:        map[string]string{"PATH": "/usr/local/bin:/usr/bin"},
 	}
 	if err := store.SaveResult(ws.ID, storedResult); err != nil {
@@ -426,7 +426,7 @@ func TestUpCreate_FromSnapshot_PluginCopiesExecuted(t *testing.T) {
 		ImageName:        "ubuntu:22.04",
 		RemoteUser:       "vscode",
 		SnapshotImage:    "crib-ws-up-copies:snapshot",
-		SnapshotHookHash: computeHookHash(cfg),
+		SnapshotHookHash: computeHookHash(cfg, nil),
 		RemoteEnv:        map[string]string{"PATH": "/usr/local/bin:/usr/bin"},
 	}
 	if err := store.SaveResult(ws.ID, storedResult); err != nil {
@@ -500,7 +500,7 @@ func TestUpCreate_FromSnapshot_PreservesImageName(t *testing.T) {
 		ImageName:        "crib-ws-up-img:features",
 		RemoteUser:       "vscode",
 		SnapshotImage:    "crib-ws-up-img:snapshot",
-		SnapshotHookHash: computeHookHash(cfg),
+		SnapshotHookHash: computeHookHash(cfg, nil),
 		RemoteEnv:        map[string]string{"PATH": "/usr/local/bin:/usr/bin"},
 	}
 	if err := store.SaveResult(ws.ID, storedResult); err != nil {
@@ -559,7 +559,7 @@ func TestUpCreate_FromSnapshot_PreservesFeatureEntrypoints(t *testing.T) {
 		RemoteUser:            "vscode",
 		HasFeatureEntrypoints: true,
 		SnapshotImage:         "crib-ws-up-feat:snapshot",
-		SnapshotHookHash:      computeHookHash(cfg),
+		SnapshotHookHash:      computeHookHash(cfg, nil),
 		RemoteEnv:             map[string]string{"PATH": "/usr/local/bin:/usr/bin"},
 	}
 	if err := store.SaveResult(ws.ID, storedResult); err != nil {
@@ -630,7 +630,7 @@ func TestUpCreate_FromSnapshot_ResolvesConfigEnv(t *testing.T) {
 		ImageName:        "go:1.22",
 		RemoteUser:       "vscode",
 		SnapshotImage:    "crib-ws-up-envres:snapshot",
-		SnapshotHookHash: computeHookHash(cfg),
+		SnapshotHookHash: computeHookHash(cfg, nil),
 		RemoteEnv: map[string]string{
 			"PATH":   "/go/bin:/usr/local/go/bin:/usr/local/bin:/usr/bin",
 			"GOPATH": "/go",
