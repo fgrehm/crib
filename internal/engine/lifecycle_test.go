@@ -427,6 +427,124 @@ func TestRunLifecycleHooks_WaitFor_PostStart(t *testing.T) {
 	}
 }
 
+func TestRunLifecycleHooks_FeatureHooksBeforeUser(t *testing.T) {
+	// Feature hooks should execute before user hooks at each stage.
+	mock := &mockDriver{}
+	r, _, _ := newTestRunner(t, mock)
+
+	r.featureHooks = &config.MergedConfigProperties{
+		OnCreateCommands: []config.LifecycleHook{
+			{"": {"echo feature-oncreate"}},
+		},
+		PostStartCommands: []config.LifecycleHook{
+			{"": {"echo feature-poststart"}},
+		},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.OnCreateCommand = config.LifecycleHook{"": {"echo user-oncreate"}}
+	cfg.PostStartCommand = config.LifecycleHook{"": {"echo user-poststart"}}
+
+	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+		t.Fatalf("runLifecycleHooks: %v", err)
+	}
+
+	// Collect exec commands in order.
+	var cmds []string
+	for _, call := range mock.execCalls {
+		cmds = append(cmds, strings.Join(call.cmd, " "))
+	}
+
+	featureOnCreateIdx := indexOfCmd(cmds, "feature-oncreate")
+	userOnCreateIdx := indexOfCmd(cmds, "user-oncreate")
+	featurePostStartIdx := indexOfCmd(cmds, "feature-poststart")
+	userPostStartIdx := indexOfCmd(cmds, "user-poststart")
+
+	if featureOnCreateIdx < 0 {
+		t.Fatalf("feature-oncreate not found in cmds: %v", cmds)
+	}
+	if userOnCreateIdx < 0 {
+		t.Fatalf("user-oncreate not found in cmds: %v", cmds)
+	}
+	if featureOnCreateIdx >= userOnCreateIdx {
+		t.Errorf("feature onCreate (idx %d) should run before user onCreate (idx %d)", featureOnCreateIdx, userOnCreateIdx)
+	}
+	if featurePostStartIdx >= userPostStartIdx {
+		t.Errorf("feature postStart (idx %d) should run before user postStart (idx %d)", featurePostStartIdx, userPostStartIdx)
+	}
+}
+
+func TestRunLifecycleHooks_FeatureHooksOnly(t *testing.T) {
+	// Feature hooks should run even when user has no hooks.
+	mock := &mockDriver{}
+	r, _, _ := newTestRunner(t, mock)
+
+	r.featureHooks = &config.MergedConfigProperties{
+		PostStartCommands: []config.LifecycleHook{
+			{"": {"echo feature-poststart"}},
+		},
+		PostAttachCommands: []config.LifecycleHook{
+			{"": {"echo feature-postattach"}},
+		},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+		t.Fatalf("runLifecycleHooks: %v", err)
+	}
+
+	if len(mock.execCalls) != 2 {
+		t.Fatalf("expected 2 exec calls (feature postStart + postAttach), got %d", len(mock.execCalls))
+	}
+}
+
+func TestRunResumeHooks_FeatureHooksBeforeUser(t *testing.T) {
+	mock := &mockDriver{}
+	r, _, _ := newTestRunner(t, mock)
+
+	r.featureHooks = &config.MergedConfigProperties{
+		PostStartCommands: []config.LifecycleHook{
+			{"": {"echo feature-poststart"}},
+		},
+		PostAttachCommands: []config.LifecycleHook{
+			{"": {"echo feature-postattach"}},
+		},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.PostStartCommand = config.LifecycleHook{"": {"echo user-poststart"}}
+	cfg.PostAttachCommand = config.LifecycleHook{"": {"echo user-postattach"}}
+
+	if err := r.runResumeHooks(context.Background(), cfg, ""); err != nil {
+		t.Fatalf("runResumeHooks: %v", err)
+	}
+
+	var cmds []string
+	for _, call := range mock.execCalls {
+		cmds = append(cmds, strings.Join(call.cmd, " "))
+	}
+
+	if len(mock.execCalls) != 4 {
+		t.Fatalf("expected 4 exec calls, got %d: %v", len(mock.execCalls), cmds)
+	}
+
+	featurePostStartIdx := indexOfCmd(cmds, "feature-poststart")
+	userPostStartIdx := indexOfCmd(cmds, "user-poststart")
+	if featurePostStartIdx >= userPostStartIdx {
+		t.Errorf("feature postStart (idx %d) should run before user postStart (idx %d)", featurePostStartIdx, userPostStartIdx)
+	}
+}
+
+// indexOfCmd returns the first index where the command string contains substr.
+func indexOfCmd(cmds []string, substr string) int {
+	for i, c := range cmds {
+		if strings.Contains(c, substr) {
+			return i
+		}
+	}
+	return -1
+}
+
 func TestRunLifecycleHooks_NoReadyWhenNoHooks(t *testing.T) {
 	// When there are no hooks at all, "Container ready." is still emitted
 	// (at the waitFor stage, even if nothing ran there).
