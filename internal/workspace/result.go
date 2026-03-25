@@ -1,8 +1,6 @@
 package workspace
 
-import (
-	"encoding/json"
-)
+import "encoding/json"
 
 // LifecycleHook is a map of named command entries. String/array hooks use the
 // "" key; object hooks use named keys that run in parallel. This mirrors

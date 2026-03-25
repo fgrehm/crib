@@ -140,7 +140,11 @@ func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace,
 // persists them to workspace.Result. Uses the already-merged config to avoid a
 // redundant MergeConfiguration call.
 func (e *Engine) storeFeatureHooks(wsID string, merged *config.MergedDevContainerConfig, cfg *config.DevContainerConfig) {
-	result, _ := e.store.LoadResult(wsID)
+	result, err := e.store.LoadResult(wsID)
+	if err != nil {
+		e.logger.Warn("failed to load result for feature hook storage, skipping", "error", err)
+		return
+	}
 	if result == nil {
 		result = &workspace.Result{}
 	}
@@ -204,7 +208,7 @@ func prependStoredHooks(stored []workspace.LifecycleHook, existing []config.Life
 	if len(stored) == 0 {
 		return existing
 	}
-	result := make([]config.LifecycleHook, 0, len(stored)+len(existing))
+	result := make([]config.LifecycleHook, 0, len(stored))
 	for _, h := range stored {
 		result = append(result, config.LifecycleHook(h))
 	}

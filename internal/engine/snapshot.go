@@ -59,8 +59,13 @@ func hasCreateTimeHooks(cfg *config.DevContainerConfig, stored *workspace.Result
 // commitSnapshot creates a snapshot image from the container and saves
 // the metadata in the workspace result.
 func (e *Engine) commitSnapshot(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, containerID string) {
-	stored, _ := e.store.LoadResult(ws.ID)
-	if !hasCreateTimeHooks(cfg, stored) {
+	stored, err := e.store.LoadResult(ws.ID)
+	if err != nil {
+		e.logger.Warn("failed to load result for snapshot decision", "error", err)
+		if !hasCreateTimeHooks(cfg, nil) {
+			return
+		}
+	} else if !hasCreateTimeHooks(cfg, stored) {
 		return
 	}
 

@@ -284,7 +284,10 @@ func resolveConfigEnvFromStored(cfg *config.DevContainerConfig, storedEnv map[st
 // (postStartCommand + postAttachCommand) for a container, including stored
 // feature hooks if available.
 func (e *Engine) runResumeHooks(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext) error {
-	stored, _ := e.store.LoadResult(ws.ID)
+	stored, err := e.store.LoadResult(ws.ID)
+	if err != nil {
+		e.logger.Warn("failed to load stored result for resume hooks, feature hooks may be skipped", "error", err)
+	}
 	hooks := hookSetWithStoredFeatures(cfg, stored)
 	runner := e.newLifecycleRunner(ws, cc, cfg.RemoteEnv)
 	return runner.runResumeHooks(ctx, hooks, cc.workspaceFolder)
