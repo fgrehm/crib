@@ -9,10 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Parse the `updateContentCommand` lifecycle hook from `devcontainer-feature.json`.
-  Previously this was the only feature lifecycle hook not recognized by the parser.
-  Note: feature-declared lifecycle hooks are parsed and propagated to image metadata
-  but not yet dispatched by the lifecycle runner (tracked in roadmap).
+- Dispatch feature-declared lifecycle hooks. Features can declare `onCreateCommand`,
+  `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and
+  `postAttachCommand` in `devcontainer-feature.json`. These now execute before
+  user-defined hooks at each stage, in feature installation order (per the spec).
+  Feature hooks are stored in `result.json` so they persist across restarts without
+  re-resolving features from OCI registries. Also parses the previously-missing
+  `updateContentCommand` field from feature configs.
 - `crib restart` now detects changes inside Docker Compose files (volumes,
   ports, environment, etc.) and recreates the container. Previously, only
   changes to `devcontainer.json` fields were detected, so editing a compose

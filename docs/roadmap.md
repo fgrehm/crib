@@ -66,11 +66,19 @@ Accept arguments to filter/show state details (container status, services, ports
 
 Build the image / container without starting it. Useful for CI or pre-warming caches.
 
+#### Feature lockfile for reproducible resolution
+
+The official devcontainers CLI has an experimental `devcontainer-lock.json` that records resolved digests, versions, and integrity hashes for each feature. Enables `--frozen-lockfile` for deterministic builds. crib currently re-resolves features on every build. A lockfile would help teams pin exact feature versions in CI. Not part of the spec (CLI extension), but useful. Format: `{ features: { "<id>": { version, resolved, integrity, dependsOn } } }`.
+
 ### Plugins
 
 #### Standardize container-side plugin paths
 
 Currently plugin mounts land at ad-hoc paths (`~/.crib_history/`, `/tmp/ssh-agent.sock`). A standard base (XDG `$XDG_DATA_HOME/crib/` for persistent data, `/tmp/crib/` for runtime sockets) would be cleaner, but we need more plugins and real-world usage to understand the right shape before committing to a convention. The cartage plugin (above) would be a good forcing function for settling on a convention.
+
+#### Dotfiles plugin
+
+Clone and install a user's [dotfiles repository](https://dotfiles.github.io/) inside the container on creation. The devcontainer spec doesn't standardize dotfiles, but VS Code, GitHub Codespaces, and DevPod all support them. A crib plugin would clone the repo to a configurable path (default `~/dotfiles`) and run an install script (`install.sh`, `bootstrap.sh`, or a custom command). Configuration via `.cribrc` or global config (`dotfiles.repository`, `dotfiles.installCommand`). See [#17](https://github.com/fgrehm/crib/issues/17).
 
 #### Cartage plugin
 
@@ -97,6 +105,14 @@ When Claude Code runs inside a container, it builds a project hash from the work
 Mounting the host's `~/.claude/projects/<hash>/` directory at the container's expected hash path would fix this, but it requires reverse-engineering Claude's hashing logic and would break on upstream changes. A Claude Code config to override the project directory association would make this trivial. Parked until an upstream escape hatch appears. As of March 2026, no such config exists in Claude Code's [settings](https://code.claude.com/docs/en/settings).
 
 ### UX
+
+#### Structured log events with progress tracking
+
+The official devcontainers CLI uses a typed log event system (`text`, `raw`, `start`, `stop`, `progress`) instead of plain text output. Lifecycle hooks emit `::step::` and `::endstep::` markers that the log handler converts to progress events, enabling rich terminal UI (spinners per hook step) without coupling hooks to the display layer. crib currently uses plain `slog` and a progress callback. A typed event system would decouple output formatting from execution and enable richer feedback during long-running operations.
+
+#### Rich error context
+
+crib's errors are mostly `fmt.Errorf` chains. The official devcontainers CLI wraps errors with structured data: container ID, config that caused the error, suggested recovery actions, and the original error. This enables better error messages ("failed to start container X because feature Y requires privileged mode, try adding `privileged: true`") and potential auto-recovery. Worth adopting incrementally, starting with the most common failure modes (build failures, hook failures, container start failures).
 
 #### Debug mode and build log capture
 
@@ -126,12 +142,6 @@ Options: hash Dockerfile contents alongside compose files, parse compose YAML to
 
 ### Spec Compliance
 
-#### Feature lifecycle hooks not dispatched
-
-Feature metadata entries can declare lifecycle hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, `postAttachCommand`). These are parsed from `devcontainer-feature.json`, propagated via `featureToMetadata()`, and merged into `MergedConfigProperties` (the plural `OnCreateCommands`, `UpdateContentCommands`, etc.). However, the lifecycle runner in `internal/engine/lifecycle.go` only dispatches the base config's singular hooks (`cfg.OnCreateCommand`), not the merged lists. Feature-declared hooks are silently ignored.
-
-Per the spec, feature hooks should execute before user-defined hooks, in feature installation order.
-
 #### Recursive `dependsOn` resolution for features
 
 The spec says `dependsOn` should be resolved recursively: if feature A depends on feature B (not explicitly listed in `devcontainer.json`), the tool should automatically pull and install feature B. crib's `OrderFeatures()` in `internal/feature/order.go` instead errors with "not in the feature set." Few real-world features exercise this today, but it's a spec gap.
@@ -141,6 +151,22 @@ The spec says `dependsOn` should be resolved recursively: if feature A depends o
 The spec describes a round-based priority system where `overrideFeatureInstallOrder` assigns `roundPriority = n - index`, and within each round only features at the max priority are committed. crib uses topological sort (Kahn's algorithm) with a post-hoc reorder that moves override entries to the front. These produce the same result in most cases but can diverge when override features have dependencies that should interleave with non-override features.
 
 ### Housekeeping
+
+#### Workspace flock
+
+Concurrent `crib up` invocations on the same workspace can race (two processes building, creating containers, or writing `result.json` simultaneously). DevPod uses [`gofrs/flock`](https://github.com/gofrs/flock) for file-based workspace locking. Small effort, prevents a real (if uncommon) bug class. Lock file would live at `~/.crib/workspaces/{id}/lock`.
+
+#### Adopt compose-go library for Compose YAML parsing
+
+crib currently generates compose override YAML via string concatenation in `generateComposeOverride` (cyclomatic complexity 26) and shells out to `docker compose` for service inspection. The official [`compose-spec/compose-go/v2`](https://github.com/compose-spec/compose-go) library (used by DevPod) provides programmatic access to service definitions, environment files, build configs, and override generation. Would simplify `generateComposeOverride`, `resolveComposeDockerfileInfo`, and the Dockerfile content change detection item above.
+
+#### `userEnvProbe` session caching
+
+crib re-probes the container's user environment on every `crib up` (twice: pre-hook and post-hook). The official devcontainers CLI caches probe results in a container-side session file. Caching the pre-hook probe and only re-probing post-hook could save ~1s per start.
+
+#### Shell persistence for exec commands
+
+The official devcontainers CLI keeps a persistent shell open inside the container and delimits commands/output with a UTF-8 sentinel character (EOT). A streaming parser extracts stdout, stderr, and exit code per command, avoiding the overhead of spawning a new `docker exec` per lifecycle hook or plugin dispatch. Lower priority since individual `docker exec` calls are fast enough today, but would matter for workspaces with many hooks.
 
 #### XDG-based cache provider
 
