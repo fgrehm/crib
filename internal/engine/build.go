@@ -399,6 +399,7 @@ func featureToMetadata(f *feature.FeatureSet) *config.ImageMetadata {
 	// unexpanded literals (e.g. ${PATH} would resolve against the host
 	// instead of the container).
 	m.OnCreateCommand = f.Config.OnCreateCommand
+	m.UpdateContentCommand = f.Config.UpdateContentCommand
 	m.PostCreateCommand = f.Config.PostCreateCommand
 	m.PostStartCommand = f.Config.PostStartCommand
 	m.PostAttachCommand = f.Config.PostAttachCommand

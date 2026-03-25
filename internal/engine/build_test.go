@@ -125,11 +125,12 @@ func TestFeatureToMetadata_Minimal(t *testing.T) {
 func TestFeatureToMetadata_LifecycleHooks(t *testing.T) {
 	f := &feature.FeatureSet{
 		Config: &feature.FeatureConfig{
-			ID:                "test-feature",
-			OnCreateCommand:   config.LifecycleHook{"": {"echo oncreate"}},
-			PostCreateCommand: config.LifecycleHook{"": {"echo postcreate"}},
-			PostStartCommand:  config.LifecycleHook{"": {"echo poststart"}},
-			PostAttachCommand: config.LifecycleHook{"": {"echo postattach"}},
+			ID:                   "test-feature",
+			OnCreateCommand:      config.LifecycleHook{"": {"echo oncreate"}},
+			UpdateContentCommand: config.LifecycleHook{"": {"echo updatecontent"}},
+			PostCreateCommand:    config.LifecycleHook{"": {"echo postcreate"}},
+			PostStartCommand:     config.LifecycleHook{"": {"echo poststart"}},
+			PostAttachCommand:    config.LifecycleHook{"": {"echo postattach"}},
 		},
 	}
 
@@ -137,6 +138,9 @@ func TestFeatureToMetadata_LifecycleHooks(t *testing.T) {
 
 	if len(m.OnCreateCommand) == 0 {
 		t.Error("OnCreateCommand should be set")
+	}
+	if len(m.UpdateContentCommand) == 0 {
+		t.Error("UpdateContentCommand should be set")
 	}
 	if len(m.PostCreateCommand) == 0 {
 		t.Error("PostCreateCommand should be set")

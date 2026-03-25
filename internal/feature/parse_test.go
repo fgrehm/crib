@@ -127,6 +127,9 @@ func TestParseFeatureConfig(t *testing.T) {
 				if len(fc.OnCreateCommand) == 0 {
 					t.Error("expected onCreateCommand")
 				}
+				if len(fc.UpdateContentCommand) == 0 {
+					t.Error("expected updateContentCommand")
+				}
 				if len(fc.PostCreateCommand) == 0 {
 					t.Error("expected postCreateCommand")
 				}

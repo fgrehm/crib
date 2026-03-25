@@ -317,6 +317,7 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 		imageName:      buildRes.imageName,
 		hasEntrypoints: buildRes.hasEntrypoints,
 		pluginResp:     pluginResp,
+		imageMetadata:  buildRes.imageMetadata,
 	})
 }
 

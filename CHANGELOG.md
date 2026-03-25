@@ -9,11 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Dispatch feature-declared lifecycle hooks. Features can declare `onCreateCommand`,
+  `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and
+  `postAttachCommand` in `devcontainer-feature.json`. These now execute before
+  user-defined hooks at each stage, in feature installation order (per the spec).
+  Feature hooks are stored in `result.json` so they persist across restarts without
+  re-resolving features from OCI registries. Also parses the previously-missing
+  `updateContentCommand` field from feature configs.
 - Feature `containerEnv` values (e.g. `PATH=/nvm/bin:${PATH}` from the node
   feature) were applied twice: correctly as `ENV` instructions in the Dockerfile
   (where Docker expands `${PATH}` at build time), then incorrectly as `-e` flags
-  at runtime (where `${PATH}` resolves against the host). On macOS the host PATH
-  is completely different from the container PATH, breaking command resolution.
+  at runtime (where `${PATH}` stays literal via `docker run`, or gets interpolated
+  from the host in compose). Either way the runtime PATH diverges from the
+  image's correctly-expanded PATH, breaking command resolution on macOS.
 - `crib restart` now detects changes inside Docker Compose files (volumes,
   ports, environment, etc.) and recreates the container. Previously, only
   changes to `devcontainer.json` fields were detected, so editing a compose
