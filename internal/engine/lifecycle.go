@@ -27,11 +27,6 @@ type lifecycleRunner struct {
 	stderr      io.Writer
 	progress    func(string)
 	verbose     bool
-
-	// featureHooks holds lifecycle hooks declared by DevContainer Features.
-	// When non-nil, feature hooks are dispatched before user hooks at each
-	// stage, in feature installation order (per the spec).
-	featureHooks *config.MergedConfigProperties
 }
 
 // newLifecycleRunner creates a lifecycleRunner from the engine's dependencies,
@@ -52,50 +47,80 @@ func (e *Engine) newLifecycleRunner(ws *workspace.Workspace, cc containerContext
 	}
 }
 
+// hookSet holds the merged lifecycle hook lists for all stages. Each list
+// contains feature hooks (in installation order) followed by the user hook.
+// Built by hookSetFromConfig (no features) or from MergeConfiguration output.
+type hookSet struct {
+	OnCreate      []config.LifecycleHook
+	UpdateContent []config.LifecycleHook
+	PostCreate    []config.LifecycleHook
+	PostStart     []config.LifecycleHook
+	PostAttach    []config.LifecycleHook
+	WaitFor       string
+}
+
+// hookSetFromConfig builds a hookSet from a DevContainerConfig with no feature
+// hooks. Each list contains at most the user's hook.
+func hookSetFromConfig(cfg *config.DevContainerConfig) *hookSet {
+	hs := &hookSet{WaitFor: cfg.WaitFor}
+	if len(cfg.OnCreateCommand) > 0 {
+		hs.OnCreate = []config.LifecycleHook{cfg.OnCreateCommand}
+	}
+	if len(cfg.UpdateContentCommand) > 0 {
+		hs.UpdateContent = []config.LifecycleHook{cfg.UpdateContentCommand}
+	}
+	if len(cfg.PostCreateCommand) > 0 {
+		hs.PostCreate = []config.LifecycleHook{cfg.PostCreateCommand}
+	}
+	if len(cfg.PostStartCommand) > 0 {
+		hs.PostStart = []config.LifecycleHook{cfg.PostStartCommand}
+	}
+	if len(cfg.PostAttachCommand) > 0 {
+		hs.PostAttach = []config.LifecycleHook{cfg.PostAttachCommand}
+	}
+	return hs
+}
+
 // runLifecycleHooks executes the devcontainer lifecycle hooks in order.
 // Hooks run as the remote user. Marker files provide idempotency for
 // create-time hooks (onCreate, updateContent, postCreate).
-// After the stage named by cfg.WaitFor (default: "updateContentCommand"),
+// After the stage named by hooks.WaitFor (default: "updateContentCommand"),
 // a "Container ready." progress message is emitted.
 //
-// When featureHooks is set, feature-declared hooks are dispatched before
-// user hooks at each stage, in feature installation order.
-func (r *lifecycleRunner) runLifecycleHooks(ctx context.Context, cfg *config.DevContainerConfig, workspaceFolder string) error {
-	waitFor := cfg.WaitFor
+// Each hook list may contain feature hooks (first) followed by the user hook
+// (last), as produced by config.MergeConfiguration.
+func (r *lifecycleRunner) runLifecycleHooks(ctx context.Context, hooks *hookSet, workspaceFolder string) error {
+	waitFor := hooks.WaitFor
 	if waitFor == "" {
 		waitFor = "updateContentCommand"
 	}
 
-	fh := func(get func(*config.MergedConfigProperties) []config.LifecycleHook) []config.LifecycleHook {
-		return r.featureHookList(get)
-	}
-
-	// onCreate hooks: feature hooks first, then user hook. Run only once.
-	if err := r.runStageWithMarker(ctx, "onCreateCommand", fh(func(m *config.MergedConfigProperties) []config.LifecycleHook { return m.OnCreateCommands }), cfg.OnCreateCommand, workspaceFolder); err != nil {
+	// onCreate hooks: run only once (marker file prevents re-execution).
+	if err := r.runStageWithMarker(ctx, "onCreateCommand", hooks.OnCreate, workspaceFolder); err != nil {
 		return err
 	}
 	r.signalReadyAt("onCreateCommand", waitFor)
 
 	// updateContent hooks.
-	if err := r.runStageWithMarker(ctx, "updateContentCommand", fh(func(m *config.MergedConfigProperties) []config.LifecycleHook { return m.UpdateContentCommands }), cfg.UpdateContentCommand, workspaceFolder); err != nil {
+	if err := r.runStageWithMarker(ctx, "updateContentCommand", hooks.UpdateContent, workspaceFolder); err != nil {
 		return err
 	}
 	r.signalReadyAt("updateContentCommand", waitFor)
 
 	// postCreate hooks: run only once.
-	if err := r.runStageWithMarker(ctx, "postCreateCommand", fh(func(m *config.MergedConfigProperties) []config.LifecycleHook { return m.PostCreateCommands }), cfg.PostCreateCommand, workspaceFolder); err != nil {
+	if err := r.runStageWithMarker(ctx, "postCreateCommand", hooks.PostCreate, workspaceFolder); err != nil {
 		return err
 	}
 	r.signalReadyAt("postCreateCommand", waitFor)
 
 	// postStart hooks: run every time the container starts.
-	if err := r.runStage(ctx, "postStartCommand", fh(func(m *config.MergedConfigProperties) []config.LifecycleHook { return m.PostStartCommands }), cfg.PostStartCommand, workspaceFolder); err != nil {
+	if err := r.runStage(ctx, "postStartCommand", hooks.PostStart, workspaceFolder); err != nil {
 		return err
 	}
 	r.signalReadyAt("postStartCommand", waitFor)
 
 	// postAttach hooks: run every time.
-	if err := r.runStage(ctx, "postAttachCommand", fh(func(m *config.MergedConfigProperties) []config.LifecycleHook { return m.PostAttachCommands }), cfg.PostAttachCommand, workspaceFolder); err != nil {
+	if err := r.runStage(ctx, "postAttachCommand", hooks.PostAttach, workspaceFolder); err != nil {
 		return err
 	}
 
@@ -112,46 +137,28 @@ func (r *lifecycleRunner) signalReadyAt(stage, waitFor string) {
 // runResumeHooks executes only the resume-flow lifecycle hooks (postStartCommand
 // and postAttachCommand). Per the devcontainer spec, these are the only hooks
 // that run when a container is restarted (as opposed to freshly created).
-func (r *lifecycleRunner) runResumeHooks(ctx context.Context, cfg *config.DevContainerConfig, workspaceFolder string) error {
-	fh := func(get func(*config.MergedConfigProperties) []config.LifecycleHook) []config.LifecycleHook {
-		return r.featureHookList(get)
-	}
-
-	// postStart hooks: feature hooks first, then user hook.
-	if err := r.runStage(ctx, "postStartCommand", fh(func(m *config.MergedConfigProperties) []config.LifecycleHook { return m.PostStartCommands }), cfg.PostStartCommand, workspaceFolder); err != nil {
+func (r *lifecycleRunner) runResumeHooks(ctx context.Context, hooks *hookSet, workspaceFolder string) error {
+	if err := r.runStage(ctx, "postStartCommand", hooks.PostStart, workspaceFolder); err != nil {
 		return err
 	}
-
-	// postAttach hooks: feature hooks first, then user hook.
-	if err := r.runStage(ctx, "postAttachCommand", fh(func(m *config.MergedConfigProperties) []config.LifecycleHook { return m.PostAttachCommands }), cfg.PostAttachCommand, workspaceFolder); err != nil {
-		return err
-	}
-
-	return nil
+	return r.runStage(ctx, "postAttachCommand", hooks.PostAttach, workspaceFolder)
 }
 
-// featureHookList returns the feature hook list for a stage, or nil.
-func (r *lifecycleRunner) featureHookList(get func(*config.MergedConfigProperties) []config.LifecycleHook) []config.LifecycleHook {
-	if r.featureHooks == nil {
-		return nil
-	}
-	return get(r.featureHooks)
-}
-
-// runStage dispatches feature hooks followed by the user hook for a stage.
-func (r *lifecycleRunner) runStage(ctx context.Context, name string, featureHooks []config.LifecycleHook, userHook config.LifecycleHook, workspaceFolder string) error {
-	for _, fh := range featureHooks {
-		if err := r.runHook(ctx, name, fh, workspaceFolder); err != nil {
+// runStage dispatches a merged list of hooks for a stage. The list typically
+// contains feature hooks first (in installation order) then the user hook.
+func (r *lifecycleRunner) runStage(ctx context.Context, name string, hooks []config.LifecycleHook, workspaceFolder string) error {
+	for _, h := range hooks {
+		if err := r.runHook(ctx, name, h, workspaceFolder); err != nil {
 			return err
 		}
 	}
-	return r.runHook(ctx, name, userHook, workspaceFolder)
+	return nil
 }
 
-// runStageWithMarker dispatches feature hooks followed by the user hook,
-// using a host-side marker file to ensure the entire stage only runs once.
-func (r *lifecycleRunner) runStageWithMarker(ctx context.Context, name string, featureHooks []config.LifecycleHook, userHook config.LifecycleHook, workspaceFolder string) error {
-	if len(featureHooks) == 0 && len(userHook) == 0 {
+// runStageWithMarker dispatches a merged hook list, using a host-side marker
+// file to ensure the entire stage only runs once.
+func (r *lifecycleRunner) runStageWithMarker(ctx context.Context, name string, hooks []config.LifecycleHook, workspaceFolder string) error {
+	if len(hooks) == 0 {
 		return nil
 	}
 
@@ -160,7 +167,7 @@ func (r *lifecycleRunner) runStageWithMarker(ctx context.Context, name string, f
 		return nil
 	}
 
-	if err := r.runStage(ctx, name, featureHooks, userHook, workspaceFolder); err != nil {
+	if err := r.runStage(ctx, name, hooks, workspaceFolder); err != nil {
 		return err
 	}
 

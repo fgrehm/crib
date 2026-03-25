@@ -283,5 +283,5 @@ func resolveConfigEnvFromStored(cfg *config.DevContainerConfig, storedEnv map[st
 // (postStartCommand + postAttachCommand) for a container.
 func (e *Engine) runResumeHooks(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext) error {
 	runner := e.newLifecycleRunner(ws, cc, cfg.RemoteEnv)
-	return runner.runResumeHooks(ctx, cfg, cc.workspaceFolder)
+	return runner.runResumeHooks(ctx, hookSetFromConfig(cfg), cc.workspaceFolder)
 }

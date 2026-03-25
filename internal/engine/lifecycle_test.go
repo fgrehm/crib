@@ -298,7 +298,7 @@ func TestRunLifecycleHooks_WaitFor_Default(t *testing.T) {
 	cfg.PostCreateCommand = config.LifecycleHook{"": {"echo postcreate"}}
 	// WaitFor = "" → defaults to updateContentCommand
 
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 
@@ -336,7 +336,7 @@ func TestRunLifecycleHooks_WaitFor_OnCreate(t *testing.T) {
 	cfg.OnCreateCommand = config.LifecycleHook{"": {"echo create"}}
 	cfg.UpdateContentCommand = config.LifecycleHook{"": {"echo update"}}
 
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 
@@ -370,7 +370,7 @@ func TestRunLifecycleHooks_WaitFor_PostCreate(t *testing.T) {
 	cfg.PostCreateCommand = config.LifecycleHook{"": {"echo postcreate"}}
 	cfg.PostStartCommand = config.LifecycleHook{"": {"echo poststart"}}
 
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 
@@ -404,7 +404,7 @@ func TestRunLifecycleHooks_WaitFor_PostStart(t *testing.T) {
 	cfg.PostStartCommand = config.LifecycleHook{"": {"echo poststart"}}
 	cfg.PostAttachCommand = config.LifecycleHook{"": {"echo postattach"}}
 
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 
@@ -429,23 +429,22 @@ func TestRunLifecycleHooks_WaitFor_PostStart(t *testing.T) {
 
 func TestRunLifecycleHooks_FeatureHooksBeforeUser(t *testing.T) {
 	// Feature hooks should execute before user hooks at each stage.
+	// The merged hookSet contains feature hooks first, user hook last.
 	mock := &mockDriver{}
 	r, _, _ := newTestRunner(t, mock)
 
-	r.featureHooks = &config.MergedConfigProperties{
-		OnCreateCommands: []config.LifecycleHook{
+	hooks := &hookSet{
+		OnCreate: []config.LifecycleHook{
 			{"": {"echo feature-oncreate"}},
+			{"": {"echo user-oncreate"}},
 		},
-		PostStartCommands: []config.LifecycleHook{
+		PostStart: []config.LifecycleHook{
 			{"": {"echo feature-poststart"}},
+			{"": {"echo user-poststart"}},
 		},
 	}
 
-	cfg := &config.DevContainerConfig{}
-	cfg.OnCreateCommand = config.LifecycleHook{"": {"echo user-oncreate"}}
-	cfg.PostStartCommand = config.LifecycleHook{"": {"echo user-poststart"}}
-
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hooks, ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 
@@ -479,17 +478,16 @@ func TestRunLifecycleHooks_FeatureHooksOnly(t *testing.T) {
 	mock := &mockDriver{}
 	r, _, _ := newTestRunner(t, mock)
 
-	r.featureHooks = &config.MergedConfigProperties{
-		PostStartCommands: []config.LifecycleHook{
+	hooks := &hookSet{
+		PostStart: []config.LifecycleHook{
 			{"": {"echo feature-poststart"}},
 		},
-		PostAttachCommands: []config.LifecycleHook{
+		PostAttach: []config.LifecycleHook{
 			{"": {"echo feature-postattach"}},
 		},
 	}
 
-	cfg := &config.DevContainerConfig{}
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hooks, ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 
@@ -502,20 +500,18 @@ func TestRunResumeHooks_FeatureHooksBeforeUser(t *testing.T) {
 	mock := &mockDriver{}
 	r, _, _ := newTestRunner(t, mock)
 
-	r.featureHooks = &config.MergedConfigProperties{
-		PostStartCommands: []config.LifecycleHook{
+	hooks := &hookSet{
+		PostStart: []config.LifecycleHook{
 			{"": {"echo feature-poststart"}},
+			{"": {"echo user-poststart"}},
 		},
-		PostAttachCommands: []config.LifecycleHook{
+		PostAttach: []config.LifecycleHook{
 			{"": {"echo feature-postattach"}},
+			{"": {"echo user-postattach"}},
 		},
 	}
 
-	cfg := &config.DevContainerConfig{}
-	cfg.PostStartCommand = config.LifecycleHook{"": {"echo user-poststart"}}
-	cfg.PostAttachCommand = config.LifecycleHook{"": {"echo user-postattach"}}
-
-	if err := r.runResumeHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runResumeHooks(context.Background(), hooks, ""); err != nil {
 		t.Fatalf("runResumeHooks: %v", err)
 	}
 
@@ -556,7 +552,7 @@ func TestRunLifecycleHooks_NoReadyWhenNoHooks(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	// No hooks configured; waitFor defaults to updateContentCommand.
 
-	if err := r.runLifecycleHooks(context.Background(), cfg, ""); err != nil {
+	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
 		t.Fatalf("runLifecycleHooks: %v", err)
 	}
 

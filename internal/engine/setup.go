@@ -78,7 +78,7 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 
 	// Run lifecycle hooks with the pre-hook merged environment.
 	runner := e.newLifecycleRunner(ws, cc, preHookEnv)
-	hookErr := runner.runLifecycleHooks(ctx, cfg, cc.workspaceFolder)
+	hookErr := runner.runLifecycleHooks(ctx, hookSetFromConfig(cfg), cc.workspaceFolder)
 
 	// Post-hook environment probe: re-captures the environment to pick up
 	// any changes from lifecycle hooks (e.g. tools installed via mise, nvm).
