@@ -59,6 +59,20 @@ type hookSet struct {
 	WaitFor       string
 }
 
+// hookSetFromMerged builds a hookSet from a MergedDevContainerConfig. The
+// merged config's plural hook lists already contain feature hooks first and
+// user hook last (as produced by config.MergeConfiguration).
+func hookSetFromMerged(m *config.MergedDevContainerConfig) *hookSet {
+	return &hookSet{
+		OnCreate:      m.OnCreateCommands,
+		UpdateContent: m.UpdateContentCommands,
+		PostCreate:    m.PostCreateCommands,
+		PostStart:     m.PostStartCommands,
+		PostAttach:    m.PostAttachCommands,
+		WaitFor:       m.WaitFor,
+	}
+}
+
 // hookSetFromConfig builds a hookSet from a DevContainerConfig with no feature
 // hooks. Each list contains at most the user's hook.
 func hookSetFromConfig(cfg *config.DevContainerConfig) *hookSet {

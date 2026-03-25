@@ -18,6 +18,7 @@ type finalizeOpts struct {
 	storedResult    *workspace.Result               // non-nil for snapshot/stored resume
 	fromSnapshot    bool                            // true = restore env + resume hooks
 	skipVolumeChown bool                            // true for restart (volumes exist)
+	imageMetadata   []*config.ImageMetadata         // feature metadata for hook merging (nil = no features)
 }
 
 // finalize runs post-creation/post-restart steps: plugin file copies, volume
@@ -98,11 +99,17 @@ func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace,
 	envb := NewEnvBuilder(cfg.RemoteEnv)
 	envb.AddPluginResponse(opts.pluginResp)
 
+	// Store feature hooks so the resume/restart path can dispatch them
+	// without re-resolving features from OCI registries.
+	if len(opts.imageMetadata) > 0 {
+		e.storeFeatureHooks(ws.ID, cfg, opts.imageMetadata)
+	}
+
 	// Early save so crib exec/shell work while setup runs.
 	e.saveResult(ws, cfg, result)
 
 	// Run container setup (UID sync, env probe, lifecycle hooks).
-	finalEnv, err := e.setupContainer(ctx, ws, cfg, cc, envb)
+	finalEnv, err := e.setupContainer(ctx, ws, cfg, cc, envb, opts.imageMetadata)
 	cfg.RemoteEnv = finalEnv
 	if err != nil {
 		// Persist probed env even on hook failure so crib exec/shell
@@ -118,6 +125,58 @@ func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace,
 	e.saveResult(ws, cfg, result)
 
 	return result, nil
+}
+
+// storeFeatureHooks extracts feature-only hooks from image metadata and
+// persists them to workspace.Result. These are the hooks declared in
+// devcontainer-feature.json files, stored separately from user hooks so
+// the resume path can dispatch them without the full metadata.
+func (e *Engine) storeFeatureHooks(wsID string, cfg *config.DevContainerConfig, metadata []*config.ImageMetadata) {
+	// MergeConfiguration produces lists with feature hooks first and user hook
+	// last. We store only the feature hooks (everything except the last entry
+	// which is the user's hook).
+	merged := config.MergeConfiguration(cfg, metadata)
+
+	result, _ := e.store.LoadResult(wsID)
+	if result == nil {
+		result = &workspace.Result{}
+	}
+
+	result.FeatureOnCreateCommands = toWorkspaceHooks(featureOnly(merged.OnCreateCommands, cfg.OnCreateCommand))
+	result.FeatureUpdateContentCommands = toWorkspaceHooks(featureOnly(merged.UpdateContentCommands, cfg.UpdateContentCommand))
+	result.FeaturePostCreateCommands = toWorkspaceHooks(featureOnly(merged.PostCreateCommands, cfg.PostCreateCommand))
+	result.FeaturePostStartCommands = toWorkspaceHooks(featureOnly(merged.PostStartCommands, cfg.PostStartCommand))
+	result.FeaturePostAttachCommands = toWorkspaceHooks(featureOnly(merged.PostAttachCommands, cfg.PostAttachCommand))
+
+	_ = e.store.SaveResult(wsID, result)
+}
+
+// featureOnly returns the merged hook list without the user's hook (last entry).
+// If the merged list only contains the user's hook, returns nil.
+func featureOnly(merged []config.LifecycleHook, userHook config.LifecycleHook) []config.LifecycleHook {
+	if len(merged) == 0 {
+		return nil
+	}
+	// The user's hook is the last entry (appended by mergeLifecycleHooks).
+	// If it's the only entry, there are no feature hooks.
+	if len(userHook) > 0 && len(merged) > 0 {
+		return merged[:len(merged)-1]
+	}
+	// No user hook means all entries are feature hooks.
+	return merged
+}
+
+// toWorkspaceHooks converts config.LifecycleHook slices to workspace.LifecycleHook slices.
+// The types are structurally identical (map[string][]string) but belong to different packages.
+func toWorkspaceHooks(hooks []config.LifecycleHook) []workspace.LifecycleHook {
+	if len(hooks) == 0 {
+		return nil
+	}
+	result := make([]workspace.LifecycleHook, len(hooks))
+	for i, h := range hooks {
+		result[i] = workspace.LifecycleHook(h)
+	}
+	return result
 }
 
 // toRestartResult converts an UpResult to a RestartResult.
