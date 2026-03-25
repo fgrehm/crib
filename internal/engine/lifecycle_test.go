@@ -531,6 +531,40 @@ func TestRunResumeHooks_FeatureHooksBeforeUser(t *testing.T) {
 	}
 }
 
+func TestHookSetWithStoredFeatures(t *testing.T) {
+	cfg := &config.DevContainerConfig{}
+	cfg.PostStartCommand = config.LifecycleHook{"": {"echo user-poststart"}}
+
+	stored := &workspace.Result{
+		FeaturePostStartCommands: []workspace.LifecycleHook{
+			{"": {"echo feature-poststart"}},
+		},
+	}
+
+	hs := hookSetWithStoredFeatures(cfg, stored)
+
+	if len(hs.PostStart) != 2 {
+		t.Fatalf("PostStart length = %d, want 2 (feature + user)", len(hs.PostStart))
+	}
+	// Feature hook first, user hook second.
+	if hs.PostStart[0][""][0] != "echo feature-poststart" {
+		t.Errorf("PostStart[0] = %v, want feature hook", hs.PostStart[0])
+	}
+	if hs.PostStart[1][""][0] != "echo user-poststart" {
+		t.Errorf("PostStart[1] = %v, want user hook", hs.PostStart[1])
+	}
+}
+
+func TestHookSetWithStoredFeatures_NilStored(t *testing.T) {
+	cfg := &config.DevContainerConfig{}
+	cfg.PostStartCommand = config.LifecycleHook{"": {"echo user"}}
+
+	hs := hookSetWithStoredFeatures(cfg, nil)
+	if len(hs.PostStart) != 1 {
+		t.Fatalf("PostStart length = %d, want 1 (user only)", len(hs.PostStart))
+	}
+}
+
 func TestHookSetFromMerged_IncludesAllStages(t *testing.T) {
 	merged := &config.MergedDevContainerConfig{}
 	merged.OnCreateCommands = []config.LifecycleHook{{"": {"echo feature-oncreate"}}, {"": {"echo user-oncreate"}}}

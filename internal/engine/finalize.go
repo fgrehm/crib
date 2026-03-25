@@ -86,7 +86,9 @@ func (e *Engine) finalizeFromSnapshotPath(ctx context.Context, ws *workspace.Wor
 	e.saveResult(ws, cfg, result)
 
 	// Run only resume-flow hooks (create-time effects are in the snapshot).
-	if err := e.runResumeHooks(ctx, ws, cfg, cc); err != nil {
+	// Include stored feature hooks so features' postStart/postAttach run too.
+	hooks := hookSetWithStoredFeatures(cfg, opts.storedResult)
+	if err := e.runResumeHooksWithSet(ctx, ws, cc, hooks); err != nil {
 		e.logger.Warn("resume hooks failed", "error", err)
 	}
 
@@ -177,6 +179,34 @@ func toWorkspaceHooks(hooks []config.LifecycleHook) []workspace.LifecycleHook {
 		result[i] = workspace.LifecycleHook(h)
 	}
 	return result
+}
+
+// hookSetWithStoredFeatures builds a hookSet by prepending stored feature hooks
+// from a workspace.Result to the user's hooks from the config.
+func hookSetWithStoredFeatures(cfg *config.DevContainerConfig, stored *workspace.Result) *hookSet {
+	hs := hookSetFromConfig(cfg)
+	if stored == nil {
+		return hs
+	}
+	hs.OnCreate = prependStoredHooks(stored.FeatureOnCreateCommands, hs.OnCreate)
+	hs.UpdateContent = prependStoredHooks(stored.FeatureUpdateContentCommands, hs.UpdateContent)
+	hs.PostCreate = prependStoredHooks(stored.FeaturePostCreateCommands, hs.PostCreate)
+	hs.PostStart = prependStoredHooks(stored.FeaturePostStartCommands, hs.PostStart)
+	hs.PostAttach = prependStoredHooks(stored.FeaturePostAttachCommands, hs.PostAttach)
+	return hs
+}
+
+// prependStoredHooks prepends workspace.LifecycleHook entries (feature hooks)
+// before the existing hook list (user hooks).
+func prependStoredHooks(stored []workspace.LifecycleHook, existing []config.LifecycleHook) []config.LifecycleHook {
+	if len(stored) == 0 {
+		return existing
+	}
+	result := make([]config.LifecycleHook, 0, len(stored)+len(existing))
+	for _, h := range stored {
+		result = append(result, config.LifecycleHook(h))
+	}
+	return append(result, existing...)
 }
 
 // toRestartResult converts an UpResult to a RestartResult.
