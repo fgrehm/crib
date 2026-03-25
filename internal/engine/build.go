@@ -396,8 +396,8 @@ func featureToMetadata(f *feature.FeatureSet) *config.ImageMetadata {
 	// build (see feature.GenerateDockerfile). Including them here would
 	// cause them to also be passed as runtime -e flags / compose
 	// environment, overriding the image's correctly-expanded values with
-	// unexpanded literals (e.g. ${PATH} would resolve against the host
-	// instead of the container).
+	// unexpanded literals (e.g. ${PATH} would remain literal when passed
+	// via exec.Command, or be interpolated from the host in compose).
 	m.OnCreateCommand = f.Config.OnCreateCommand
 	m.UpdateContentCommand = f.Config.UpdateContentCommand
 	m.PostCreateCommand = f.Config.PostCreateCommand
