@@ -108,7 +108,9 @@ Mounting the host's `~/.claude/projects/<hash>/` directory at the container's ex
 
 #### Structured log events with progress tracking
 
-The official devcontainers CLI uses a typed log event system (`text`, `raw`, `start`, `stop`, `progress`) instead of plain text output. Lifecycle hooks emit `::step::` and `::endstep::` markers that the log handler converts to progress events, enabling rich terminal UI (spinners per hook step) without coupling hooks to the display layer. crib currently uses plain `slog` and a progress callback. A typed event system would decouple output formatting from execution and enable richer feedback during long-running operations.
+Foundation laid: the engine now emits typed `ProgressEvent` structs with `Phase` and `Message` fields, replacing raw string callbacks. The cmd layer renders events identically to before, but the structured data is available for richer UIs.
+
+Remaining work: the official devcontainers CLI goes further with a full event system (`text`, `raw`, `start`, `stop`, `progress`) and lifecycle hooks emit `::step::` and `::endstep::` markers that enable rich terminal UI (spinners per hook step). crib's typed events are the foundation for this, but the richer event taxonomy and per-hook-step tracking are not yet implemented.
 
 #### Rich error context
 
@@ -152,14 +154,6 @@ The spec describes a round-based priority system where `overrideFeatureInstallOr
 
 ### Housekeeping
 
-#### Workspace flock
-
-Concurrent `crib up` invocations on the same workspace can race (two processes building, creating containers, or writing `result.json` simultaneously). DevPod uses [`gofrs/flock`](https://github.com/gofrs/flock) for file-based workspace locking. Small effort, prevents a real (if uncommon) bug class. Lock file would live at `~/.crib/workspaces/{id}/lock`.
-
-#### Adopt compose-go library for Compose YAML parsing
-
-crib currently generates compose override YAML via string concatenation in `generateComposeOverride` (cyclomatic complexity 26) and shells out to `docker compose` for service inspection. The official [`compose-spec/compose-go/v2`](https://github.com/compose-spec/compose-go) library (used by DevPod) provides programmatic access to service definitions, environment files, build configs, and override generation. Would simplify `generateComposeOverride`, `resolveComposeDockerfileInfo`, and the Dockerfile content change detection item above.
-
 #### `userEnvProbe` session caching
 
 crib re-probes the container's user environment on every `crib up` (twice: pre-hook and post-hook). The official devcontainers CLI caches probe results in a container-side session file. Caching the pre-hook probe and only re-probing post-hook could save ~1s per start.
@@ -194,7 +188,7 @@ The name "crib" is close to [cribl.io](https://cribl.io/), which muddies search 
 
 #### Reduce cyclomatic complexity hotspots
 
-CI gates at gocyclo > 40 (the ratchet that prevents things from getting worse). Several engine functions exceed 15, the practical threshold for maintainability: `upCompose` (38), `syncRemoteUserUID` (29), `generateComposeOverride` (26), `Doctor` (23), `detectConfigChange` (22), `extractTar` (19), `upSingle` (18), `restartRecreateSingle` (18). These should be broken into focused helpers before they become harder to change.
+CI threshold lowered to 30 (from 40). `generateComposeOverride` dropped significantly after the compose-go refactor. Remaining hotspots are in the engine orchestration functions (`upCompose`, `syncRemoteUserUID`, `Doctor`, `detectConfigChange`). `upCompose` is the priority target for future decomposition.
 
 ## Not Planned
 
