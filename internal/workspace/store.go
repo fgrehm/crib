@@ -1,11 +1,13 @@
 package workspace
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gofrs/flock"
 )
@@ -197,19 +199,30 @@ func (s *Store) ClearHookMarkers(id string) error {
 	return nil
 }
 
+// Lock is a workspace file lock. Call Unlock to release it.
+type Lock struct{ fl *flock.Flock }
+
+// Unlock releases the workspace lock.
+func (l *Lock) Unlock() error { return l.fl.Unlock() }
+
 // Lock acquires an exclusive file lock for a workspace, preventing concurrent
 // mutations (up, down, rebuild, restart, remove) from racing. The caller must
-// defer lock.Unlock() to release it.
-func (s *Store) Lock(id string) (*flock.Flock, error) {
+// defer lock.Unlock() to release it. The lock respects context cancellation
+// so Ctrl+C works while waiting for a competing process.
+func (s *Store) Lock(ctx context.Context, id string) (*Lock, error) {
 	dir := s.workspaceDir(id)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("creating workspace directory: %w", err)
 	}
 	fl := flock.New(filepath.Join(dir, ".lock"))
-	if err := fl.Lock(); err != nil {
+	locked, err := fl.TryLockContext(ctx, 200*time.Millisecond)
+	if err != nil {
 		return nil, fmt.Errorf("acquiring workspace lock: %w", err)
 	}
-	return fl, nil
+	if !locked {
+		return nil, fmt.Errorf("workspace %q is locked by another crib process", id)
+	}
+	return &Lock{fl: fl}, nil
 }
 
 // WorkspaceDir returns the on-disk directory for a workspace.

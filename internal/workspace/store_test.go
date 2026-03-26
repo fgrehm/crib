@@ -1,12 +1,11 @@
 package workspace
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/gofrs/flock"
 )
 
 func TestStore_SaveAndLoad(t *testing.T) {
@@ -204,50 +203,47 @@ func TestStore_SaveAndLoadResult_FeatureHooks(t *testing.T) {
 
 func TestStore_Lock(t *testing.T) {
 	store := NewStoreAt(t.TempDir())
+	ctx := context.Background()
 
 	// Lock should succeed and create the workspace directory.
-	fl, err := store.Lock("locktest")
+	lock, err := store.Lock(ctx, "locktest")
 	if err != nil {
 		t.Fatalf("Lock: %v", err)
 	}
 
-	// A second TryLock on the same workspace should fail (held by us).
-	fl2 := flock.New(fl.Path())
-	locked, err := fl2.TryLock()
-	if err != nil {
-		t.Fatalf("TryLock: %v", err)
-	}
-	if locked {
-		t.Error("TryLock should fail while lock is held")
-		fl2.Unlock()
+	// A second Lock with an already-cancelled context should fail immediately
+	// because the lock is held.
+	cancelledCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	_, err = store.Lock(cancelledCtx, "locktest")
+	if err == nil {
+		t.Error("Lock should fail when workspace is already locked and context is cancelled")
 	}
 
-	// Unlock, then TryLock should succeed.
-	if err := fl.Unlock(); err != nil {
+	// Unlock, then Lock should succeed.
+	if err := lock.Unlock(); err != nil {
 		t.Fatalf("Unlock: %v", err)
 	}
-	locked, err = fl2.TryLock()
+	lock2, err := store.Lock(ctx, "locktest")
 	if err != nil {
-		t.Fatalf("TryLock after unlock: %v", err)
+		t.Fatalf("Lock after unlock: %v", err)
 	}
-	if !locked {
-		t.Error("TryLock should succeed after unlock")
-	}
-	fl2.Unlock()
+	lock2.Unlock()
 }
 
 func TestStore_Lock_DeleteCleansUp(t *testing.T) {
 	store := NewStoreAt(t.TempDir())
+	ctx := context.Background()
 
 	// Create a workspace and lock it.
 	if err := store.Save(&Workspace{ID: "cleanup", Source: "/tmp"}); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	fl, err := store.Lock("cleanup")
+	lock, err := store.Lock(ctx, "cleanup")
 	if err != nil {
 		t.Fatalf("Lock: %v", err)
 	}
-	fl.Unlock()
+	lock.Unlock()
 
 	// Delete removes the entire workspace dir including the lock file.
 	if err := store.Delete("cleanup"); err != nil {

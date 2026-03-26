@@ -37,7 +37,7 @@ args), restart will ask you to run 'crib rebuild' instead.`,
 		if err != nil {
 			return err
 		}
-		lock, err := store.Lock(ws.ID)
+		lock, err := store.Lock(cmd.Context(), ws.ID)
 		if err != nil {
 			return err
 		}
