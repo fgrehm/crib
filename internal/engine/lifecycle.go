@@ -145,7 +145,7 @@ func (r *lifecycleRunner) runLifecycleHooks(ctx context.Context, hooks *hookSet,
 // signalReadyAt emits a "Container ready." progress event when stage matches waitFor.
 func (r *lifecycleRunner) signalReadyAt(stage, waitFor string) {
 	if stage == waitFor && r.progress != nil {
-		r.progress(ProgressEvent{Phase: PhaseHooks, Message: "Container ready.", Done: true})
+		r.progress(ProgressEvent{Phase: PhaseHooks, Message: "Container ready."})
 	}
 }
 

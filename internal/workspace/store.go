@@ -220,6 +220,9 @@ func (s *Store) Lock(ctx context.Context, id string) (*Lock, error) {
 		return nil, fmt.Errorf("acquiring workspace lock: %w", err)
 	}
 	if !locked {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, fmt.Errorf("workspace %q is locked by another crib process", id)
 	}
 	return &Lock{fl: fl}, nil

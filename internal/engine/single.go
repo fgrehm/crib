@@ -19,13 +19,16 @@ import (
 // defaultEntrypoint is used when overrideCommand is not explicitly false.
 const defaultEntrypoint = "/bin/sh"
 
+// sleepScript is the shell command that keeps the container alive.
+const sleepScript = `echo Container started; trap "exit 0" 15; exec "$@"; sleep infinity`
+
 // defaultCmd keeps the container alive when overrideCommand is not false.
 // These are arguments to defaultEntrypoint ("/bin/sh").
-var defaultCmd = []string{"-c", "echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity"}
+var defaultCmd = []string{"-c", sleepScript}
 
 // featureCmd is used when features set an ENTRYPOINT in the image.
 // The feature entrypoint chains via exec "$@", so CMD must be a full command.
-var featureCmd = []string{"/bin/sh", "-c", "echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity"}
+var featureCmd = []string{"/bin/sh", "-c", sleepScript}
 
 // buildRunOptions constructs RunOptions from the devcontainer config.
 // hasFeatureEntrypoints indicates the image has feature-declared entrypoints

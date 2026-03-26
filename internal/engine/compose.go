@@ -143,32 +143,19 @@ type featureOverrides struct {
 func collectFeatureOverrides(metadata []*config.ImageMetadata, subCtx *config.SubstitutionContext) featureOverrides {
 	sub := func(s string) string { return config.SubstituteString(subCtx, s) }
 
-	var ov featureOverrides
+	ov := featureOverrides{Env: make(map[string]string)}
 	for _, m := range metadata {
-		if m.Privileged != nil && *m.Privileged {
+		if !ov.Privileged && m.Privileged != nil && *m.Privileged {
 			ov.Privileged = true
-			break
 		}
-	}
-	for _, m := range metadata {
-		if m.Init != nil && *m.Init {
+		if !ov.Init && m.Init != nil && *m.Init {
 			ov.Init = true
-			break
 		}
-	}
-	for _, m := range metadata {
 		ov.CapAdd = append(ov.CapAdd, m.CapAdd...)
 		ov.SecurityOpt = append(ov.SecurityOpt, m.SecurityOpt...)
-	}
-
-	ov.Env = make(map[string]string)
-	for _, m := range metadata {
 		for k, v := range m.ContainerEnv {
 			ov.Env[k] = sub(v)
 		}
-	}
-
-	for _, m := range metadata {
 		for _, mount := range m.Mounts {
 			mount.Source = sub(mount.Source)
 			mount.Target = sub(mount.Target)
@@ -206,7 +193,7 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 
 	// Override entrypoint/command to keep the container alive.
 	overrideCommand := cfg.OverrideCommand == nil || *cfg.OverrideCommand
-	sleepCmd := `echo Container started; trap "exit 0" 15; exec "$@"; sleep infinity`
+	sleepCmd := sleepScript
 	if overrideCommand {
 		if hasFeatureEntrypoints {
 			// Feature entrypoints are baked into the image. Don't
@@ -264,11 +251,7 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		return "", fmt.Errorf("marshalling compose override: %w", err)
 	}
 
-	wsDir := e.store.WorkspaceDir(ws.ID)
-	if err := os.MkdirAll(wsDir, 0o755); err != nil {
-		return "", fmt.Errorf("creating workspace directory: %w", err)
-	}
-	overridePath := filepath.Join(wsDir, "compose-override.yml")
+	overridePath := filepath.Join(e.store.WorkspaceDir(ws.ID), "compose-override.yml")
 	if err := os.WriteFile(overridePath, yamlBytes, 0o644); err != nil {
 		return "", fmt.Errorf("writing compose override: %w", err)
 	}
