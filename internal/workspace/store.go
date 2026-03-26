@@ -228,6 +228,9 @@ func (s *Store) Lock(ctx context.Context, id string) (*Lock, error) {
 	return &Lock{fl: fl}, nil
 }
 
+// BaseDir returns the store's base directory (e.g. ~/.crib/workspaces).
+func (s *Store) BaseDir() string { return s.baseDir }
+
 // WorkspaceDir returns the on-disk directory for a workspace.
 func (s *Store) WorkspaceDir(id string) string {
 	return filepath.Join(s.baseDir, id)

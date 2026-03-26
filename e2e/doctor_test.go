@@ -47,7 +47,18 @@ func TestE2EDoctorFix(t *testing.T) {
 	projectDir := setupProject(t)
 	cribHome := t.TempDir()
 
-	// Doctor --fix on clean state should succeed.
+	// Bring up a workspace so doctor --fix has real state to inspect.
+	// Without a workspace in this store, doctor --fix would see containers
+	// from other CRIB_HOME instances as "dangling" and delete them.
+	mustRunCrib(t, projectDir, cribHome, "up")
+	t.Cleanup(func() {
+		cmd := cribCmd(projectDir, cribHome, "rm", "--force")
+		_ = cmd.Run()
+	})
+
+	// Doctor --fix should succeed with no issues for our workspace.
 	out := mustRunCrib(t, projectDir, cribHome, "doctor", "--fix")
-	_ = out // no-op fix is fine
+	if strings.Contains(strings.ToLower(out), "error") {
+		t.Errorf("doctor --fix: unexpected error in output: %s", out)
+	}
 }

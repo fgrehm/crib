@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/fgrehm/crib/internal/config"
+	ocidriver "github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
@@ -37,6 +38,7 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (s
 	if err != nil {
 		return "", err
 	}
+	runOpts.Labels[ocidriver.LabelHome] = b.e.store.BaseDir()
 
 	subCtx := &config.SubstitutionContext{
 		DevContainerID:           b.ws.ID,

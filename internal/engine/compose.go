@@ -175,6 +175,7 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	svc := composetypes.ServiceConfig{
 		Labels: composetypes.Labels{
 			ocidriver.LabelWorkspace: ws.ID,
+			ocidriver.LabelHome:      e.store.BaseDir(),
 		},
 	}
 
