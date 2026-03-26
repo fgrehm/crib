@@ -140,8 +140,14 @@ type featureOverrides struct {
 
 // collectFeatureOverrides gathers feature-declared capabilities, env, and
 // mounts from image metadata, applying variable substitution to values.
+// If subCtx is nil, no substitution is performed.
 func collectFeatureOverrides(metadata []*config.ImageMetadata, subCtx *config.SubstitutionContext) featureOverrides {
-	sub := func(s string) string { return config.SubstituteString(subCtx, s) }
+	sub := func(s string) string {
+		if subCtx == nil {
+			return s
+		}
+		return config.SubstituteString(subCtx, s)
+	}
 
 	ov := featureOverrides{Env: make(map[string]string)}
 	for _, m := range metadata {
@@ -230,7 +236,8 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	// don't produce duplicate mount destinations in the override. Compose
 	// deduplicates short-form volumes by target during merge, but not
 	// when the override uses long-form (compose-go's output format).
-	existingTargets := e.existingVolumeTargets(composeFiles, serviceName)
+	composeEnv := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
+	existingTargets := e.existingVolumeTargets(composeFiles, serviceName, composeEnv)
 	svc.Volumes = buildOverrideVolumes(ws, cfg, workspaceFolder, featOv, pluginResp, existingTargets)
 
 	// Auto-inject userns_mode for rootless Podman.
@@ -337,11 +344,11 @@ func collectNamedVolumes(vols []composetypes.ServiceVolumeConfig) composetypes.V
 // volume target paths already defined for the given service. Returns nil on
 // any error (best-effort; the override will include all mounts and compose
 // may report a duplicate if one exists).
-func (e *Engine) existingVolumeTargets(composeFiles []string, service string) map[string]bool {
+func (e *Engine) existingVolumeTargets(composeFiles []string, service string, extraEnv []string) map[string]bool {
 	if len(composeFiles) == 0 {
 		return nil
 	}
-	project, err := composehelper.LoadProject(context.Background(), composeFiles, nil, nil)
+	project, err := composehelper.LoadProject(context.Background(), composeFiles, nil, extraEnv)
 	if err != nil {
 		e.logger.Debug("failed to load compose files for volume dedup", "error", err)
 		return nil
