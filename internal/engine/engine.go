@@ -130,6 +130,7 @@ func (e *Engine) SetProgress(fn func(ProgressEvent)) {
 
 // progressToString adapts a ProgressEvent callback to a plain string callback
 // for use by the plugin manager (which lives in a separate package).
+// TODO: remove once plugin package migrates to ProgressEvent.
 func progressToString(fn func(ProgressEvent)) func(string) {
 	if fn == nil {
 		return nil
