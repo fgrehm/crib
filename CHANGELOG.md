@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit `slog.String()` wrappers in favor of implicit key-value args.
 - Compose override generation uses compose-go types instead of string
   concatenation. Volume syntax changes to long form (functionally equivalent).
+- `LoadProject` now threads caller-supplied environment variables (e.g.
+  `localWorkspaceFolder`, `devcontainerId`) through to compose-go's loader
+  for `${VAR}` substitution. Previously accepted but silently ignored.
 
 ### Fixed
 
