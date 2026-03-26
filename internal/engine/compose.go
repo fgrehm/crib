@@ -225,7 +225,13 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	svc.SecurityOpt = featOv.SecurityOpt
 
 	svc.Environment = buildOverrideEnv(cfg, featOv, pluginResp)
-	svc.Volumes = buildOverrideVolumes(ws, cfg, workspaceFolder, featOv, pluginResp)
+
+	// Load existing volume targets from the user's compose files so we
+	// don't produce duplicate mount destinations in the override. Compose
+	// deduplicates short-form volumes by target during merge, but not
+	// when the override uses long-form (compose-go's output format).
+	existingTargets := e.existingVolumeTargets(composeFiles, serviceName)
+	svc.Volumes = buildOverrideVolumes(ws, cfg, workspaceFolder, featOv, pluginResp, existingTargets)
 
 	// Auto-inject userns_mode for rootless Podman.
 	isPodman := e.isRootlessPodman() && !composeFilesContainUserns(composeFiles)
@@ -286,20 +292,27 @@ func buildOverrideEnv(cfg *config.DevContainerConfig, featOv featureOverrides, p
 }
 
 // buildOverrideVolumes assembles the service volume list from the workspace
-// bind mount, feature mounts, and plugin mounts.
-func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse) []composetypes.ServiceVolumeConfig {
+// bind mount, feature mounts, and plugin mounts. existingTargets contains
+// volume targets already defined in the user's compose files; mounts for
+// those targets are skipped to avoid "duplicate mount destination" errors
+// when compose merges the files.
+func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse, existingTargets map[string]bool) []composetypes.ServiceVolumeConfig {
 	var vols []composetypes.ServiceVolumeConfig
-	if cfg.WorkspaceMount == "" {
+	if cfg.WorkspaceMount == "" && !existingTargets[workspaceFolder] {
 		vols = append(vols, composetypes.ServiceVolumeConfig{
 			Type: "bind", Source: ws.Source, Target: workspaceFolder,
 		})
 	}
 	for _, m := range featOv.Mounts {
-		vols = append(vols, toComposeVolume(m))
+		if !existingTargets[m.Target] {
+			vols = append(vols, toComposeVolume(m))
+		}
 	}
 	if pluginResp != nil {
 		for _, m := range pluginResp.Mounts {
-			vols = append(vols, toComposeVolume(m))
+			if !existingTargets[m.Target] {
+				vols = append(vols, toComposeVolume(m))
+			}
 		}
 	}
 	return vols
@@ -318,6 +331,32 @@ func collectNamedVolumes(vols []composetypes.ServiceVolumeConfig) composetypes.V
 		return nil
 	}
 	return named
+}
+
+// existingVolumeTargets loads the user's compose files and returns the set of
+// volume target paths already defined for the given service. Returns nil on
+// any error (best-effort; the override will include all mounts and compose
+// may report a duplicate if one exists).
+func (e *Engine) existingVolumeTargets(composeFiles []string, service string) map[string]bool {
+	if len(composeFiles) == 0 {
+		return nil
+	}
+	project, err := composehelper.LoadProject(context.Background(), composeFiles, nil)
+	if err != nil {
+		e.logger.Debug("failed to load compose files for volume dedup", "error", err)
+		return nil
+	}
+	svc, err := project.GetService(service)
+	if err != nil {
+		return nil
+	}
+	targets := make(map[string]bool, len(svc.Volumes))
+	for _, v := range svc.Volumes {
+		if v.Target != "" {
+			targets[v.Target] = true
+		}
+	}
+	return targets
 }
 
 // toComposeVolume converts a crib config.Mount to a compose ServiceVolumeConfig.
