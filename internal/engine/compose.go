@@ -236,37 +236,8 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	svc.CapAdd = featOv.CapAdd
 	svc.SecurityOpt = featOv.SecurityOpt
 
-	// Container environment (config + features + plugins).
-	env := composetypes.MappingWithEquals{}
-	for k, v := range cfg.ContainerEnv {
-		env[k] = &v
-	}
-	for k, v := range featOv.Env {
-		env[k] = &v
-	}
-	if pluginResp != nil {
-		for k, v := range pluginResp.Env {
-			env[k] = &v
-		}
-	}
-	if len(env) > 0 {
-		svc.Environment = env
-	}
-
-	// Volumes: workspace mount + feature mounts + plugin mounts.
-	if cfg.WorkspaceMount == "" {
-		svc.Volumes = append(svc.Volumes, composetypes.ServiceVolumeConfig{
-			Type: "bind", Source: ws.Source, Target: workspaceFolder,
-		})
-	}
-	for _, m := range featOv.Mounts {
-		svc.Volumes = append(svc.Volumes, toComposeVolume(m))
-	}
-	if pluginResp != nil {
-		for _, m := range pluginResp.Mounts {
-			svc.Volumes = append(svc.Volumes, toComposeVolume(m))
-		}
-	}
+	svc.Environment = buildOverrideEnv(cfg, featOv, pluginResp)
+	svc.Volumes = buildOverrideVolumes(ws, cfg, workspaceFolder, featOv, pluginResp)
 
 	// Auto-inject userns_mode for rootless Podman.
 	isPodman := e.isRootlessPodman() && !composeFilesContainUserns(composeFiles)
@@ -278,18 +249,7 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		Services: composetypes.Services{serviceName: svc},
 	}
 
-	// Top-level named volume declarations (compose rejects unknown names).
-	namedVols := composetypes.Volumes{}
-	seen := make(map[string]bool)
-	for _, v := range svc.Volumes {
-		if v.Type == "volume" && !seen[v.Source] {
-			seen[v.Source] = true
-			namedVols[v.Source] = composetypes.VolumeConfig{Name: v.Source}
-		}
-	}
-	if len(namedVols) > 0 {
-		project.Volumes = namedVols
-	}
+	project.Volumes = collectNamedVolumes(svc.Volumes)
 
 	// Disable podman-compose pod creation (incompatible with --userns).
 	if isPodman {
@@ -314,6 +274,62 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	}
 
 	return overridePath, nil
+}
+
+// buildOverrideEnv merges environment variables from config, features, and
+// plugins into a single MappingWithEquals for the compose override.
+func buildOverrideEnv(cfg *config.DevContainerConfig, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse) composetypes.MappingWithEquals {
+	env := composetypes.MappingWithEquals{}
+	for k, v := range cfg.ContainerEnv {
+		env[k] = &v
+	}
+	for k, v := range featOv.Env {
+		env[k] = &v
+	}
+	if pluginResp != nil {
+		for k, v := range pluginResp.Env {
+			env[k] = &v
+		}
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	return env
+}
+
+// buildOverrideVolumes assembles the service volume list from the workspace
+// bind mount, feature mounts, and plugin mounts.
+func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse) []composetypes.ServiceVolumeConfig {
+	var vols []composetypes.ServiceVolumeConfig
+	if cfg.WorkspaceMount == "" {
+		vols = append(vols, composetypes.ServiceVolumeConfig{
+			Type: "bind", Source: ws.Source, Target: workspaceFolder,
+		})
+	}
+	for _, m := range featOv.Mounts {
+		vols = append(vols, toComposeVolume(m))
+	}
+	if pluginResp != nil {
+		for _, m := range pluginResp.Mounts {
+			vols = append(vols, toComposeVolume(m))
+		}
+	}
+	return vols
+}
+
+// collectNamedVolumes returns top-level volume declarations for any "volume"
+// type mounts. Compose rejects unknown volume references without these.
+func collectNamedVolumes(vols []composetypes.ServiceVolumeConfig) composetypes.Volumes {
+	named := composetypes.Volumes{}
+	for _, v := range vols {
+		if v.Type == "volume" {
+			named[v.Source] = composetypes.VolumeConfig{Name: v.Source}
+		}
+	}
+	if len(named) == 0 {
+		return nil
+	}
+	return named
 }
 
 // toComposeVolume converts a crib config.Mount to a compose ServiceVolumeConfig.
