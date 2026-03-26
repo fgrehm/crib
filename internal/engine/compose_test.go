@@ -736,6 +736,116 @@ func TestCollectFeatureOverrides_ExcludesFeatureContainerEnv(t *testing.T) {
 	}
 }
 
+// Regression: podman-compose does not deduplicate volumes when the user's
+// compose file uses short-form (source:target) and the override uses
+// long-form (type/source/target from compose-go). generateComposeOverride
+// must skip volumes whose target already exists in the user's compose files.
+func TestGenerateComposeOverride_DeduplicatesPluginMountAgainstUserVolumes(t *testing.T) {
+	projectDir := t.TempDir()
+	devDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// User's compose file already mounts to /home/vscode/.claude.
+	composeContent := `services:
+  app:
+    image: alpine:3.20
+    volumes:
+      - ../../data/claude:/home/vscode/.claude
+      - ../../data/ssh:/home/vscode/.ssh
+`
+	composeFile := filepath.Join(devDir, "compose.yml")
+	if err := os.WriteFile(composeFile, []byte(composeContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws := &workspace.Workspace{ID: "test-ws", Source: projectDir}
+	e := newComposeTestEngine(t, "docker", ws)
+	e.logger = slog.Default()
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	// Plugin wants to mount to the same target (/home/vscode/.claude) and
+	// a non-conflicting target (/home/vscode/.crib_history).
+	pluginResp := &plugin.PreContainerRunResponse{
+		Mounts: []config.Mount{
+			{Type: "bind", Source: "/crib/state/claude", Target: "/home/vscode/.claude"},
+			{Type: "bind", Source: "/crib/state/history", Target: "/home/vscode/.crib_history"},
+		},
+	}
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", []string{composeFile}, "", pluginResp)
+	if err != nil {
+		t.Fatalf("generateComposeOverride: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+	content := string(data)
+
+	// The conflicting mount (/home/vscode/.claude) must be skipped.
+	if strings.Contains(content, "/crib/state/claude") {
+		t.Errorf("override should not contain plugin mount for /home/vscode/.claude (already in user compose):\n%s", content)
+	}
+
+	// The non-conflicting mount must still be present.
+	if !strings.Contains(content, "/crib/state/history") || !strings.Contains(content, "/home/vscode/.crib_history") {
+		t.Errorf("override should contain non-conflicting plugin mount:\n%s", content)
+	}
+}
+
+// Verify that the default workspace mount is skipped when the user's compose
+// file already provides a volume for the workspace folder.
+func TestGenerateComposeOverride_DeduplicatesWorkspaceMount(t *testing.T) {
+	projectDir := t.TempDir()
+	devDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// User's compose file already mounts the workspace folder.
+	composeContent := `services:
+  app:
+    image: alpine:3.20
+    volumes:
+      - ../..:/workspaces:cached
+`
+	composeFile := filepath.Join(devDir, "compose.yml")
+	if err := os.WriteFile(composeFile, []byte(composeContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws := &workspace.Workspace{ID: "test-ws", Source: projectDir}
+	e := newComposeTestEngine(t, "docker", ws)
+	e.logger = slog.Default()
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+	// WorkspaceMount is empty, so crib would normally add a default mount
+	// to /workspaces. The user's compose file already provides it.
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces", []string{composeFile}, "", nil)
+	if err != nil {
+		t.Fatalf("generateComposeOverride: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading override: %v", err)
+	}
+	content := string(data)
+
+	// The override should not add a workspace mount since the user's
+	// compose file already has one for /workspaces.
+	if strings.Contains(content, "target: /workspaces") {
+		t.Errorf("override should not duplicate workspace mount:\n%s", content)
+	}
+}
+
 func TestWritePodmanDownOverride_RootlessPodman(t *testing.T) {
 	origGetuid := getuid
 	t.Cleanup(func() { getuid = origGetuid })
