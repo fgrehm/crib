@@ -1,22 +1,11 @@
 // Ruby project example with bundler cache testing.
-// Usage:
-//   cd examples/ruby-project
-//   crib up
-//   crib run -- rake --version     # should work without bundle exec
-//   crib run -- rspec --version    # should work without bundle exec
-//   crib run -- which rake         # should find it on PATH
-//   crib stop
-//   crib delete
 {
   "name": "ruby-project",
   "image": "docker.io/library/ruby:3.3-bookworm",
-
   "overrideCommand": true,
   "remoteUser": "root",
-
   "remoteEnv": {
     "CRIB_EXAMPLE": "ruby-project"
   },
-
   "postCreateCommand": "bundle install && echo '==> Installed gems:' && gem list --no-versions rake rspec && echo '==> rake at:' && which rake && echo '==> rspec at:' && which rspec"
 }
