@@ -13,7 +13,7 @@ func TestLoadProject(t *testing.T) {
 	composePath := filepath.Join(testdataDir, "simple-compose.yml")
 
 	ctx := context.Background()
-	project, err := LoadProject(ctx, []string{composePath}, nil)
+	project, err := LoadProject(ctx, []string{composePath}, nil, nil)
 	if err != nil {
 		t.Fatalf("LoadProject: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestLoadProject(t *testing.T) {
 
 func TestLoadProject_NoFiles(t *testing.T) {
 	ctx := context.Background()
-	_, err := LoadProject(ctx, nil, nil)
+	_, err := LoadProject(ctx, nil, nil, nil)
 	if err == nil {
 		t.Error("expected error for no files, got nil")
 	}
@@ -97,6 +97,54 @@ func TestGetServiceInfo_NotFound(t *testing.T) {
 	_, err := GetServiceInfo(ctx, []string{composePath}, "nonexistent", nil)
 	if err == nil {
 		t.Error("expected error for nonexistent service, got nil")
+	}
+}
+
+func TestLoadProject_ExtraEnvSubstitution(t *testing.T) {
+	_, thisFile, _, _ := runtime.Caller(0)
+	testdataDir := filepath.Join(filepath.Dir(thisFile), "testdata")
+	composePath := filepath.Join(testdataDir, "env-compose.yml")
+
+	ctx := context.Background()
+	project, err := LoadProject(ctx, []string{composePath}, nil, []string{
+		"localWorkspaceFolder=/home/user/myproject",
+	})
+	if err != nil {
+		t.Fatalf("LoadProject: %v", err)
+	}
+
+	svc, err := project.GetService("app")
+	if err != nil {
+		t.Fatalf("GetService(app): %v", err)
+	}
+
+	if len(svc.Volumes) == 0 {
+		t.Fatal("expected at least one volume")
+	}
+	vol := svc.Volumes[0]
+	if vol.Source != "/home/user/myproject" {
+		t.Errorf("volume source = %q, want /home/user/myproject (env substitution failed)", vol.Source)
+	}
+	if vol.Target != "/workspaces/project" {
+		t.Errorf("volume target = %q, want /workspaces/project", vol.Target)
+	}
+}
+
+func TestGetServiceInfo_ExtraEnvSubstitution(t *testing.T) {
+	_, thisFile, _, _ := runtime.Caller(0)
+	testdataDir := filepath.Join(filepath.Dir(thisFile), "testdata")
+	composePath := filepath.Join(testdataDir, "env-compose.yml")
+
+	ctx := context.Background()
+	// Without env, the variable won't resolve (compose-go treats unset vars as empty).
+	info, err := GetServiceInfo(ctx, []string{composePath}, "app", []string{
+		"localWorkspaceFolder=/tmp/test-project",
+	})
+	if err != nil {
+		t.Fatalf("GetServiceInfo: %v", err)
+	}
+	if info.Image != "alpine:3.20" {
+		t.Errorf("Image = %q, want alpine:3.20", info.Image)
 	}
 }
 

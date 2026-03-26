@@ -341,7 +341,7 @@ func (e *Engine) existingVolumeTargets(composeFiles []string, service string) ma
 	if len(composeFiles) == 0 {
 		return nil
 	}
-	project, err := composehelper.LoadProject(context.Background(), composeFiles, nil)
+	project, err := composehelper.LoadProject(context.Background(), composeFiles, nil, nil)
 	if err != nil {
 		e.logger.Debug("failed to load compose files for volume dedup", "error", err)
 		return nil
@@ -389,12 +389,21 @@ func (e *Engine) writePodmanDownOverride(composeFiles []string) (string, bool) {
 	if !e.isRootlessPodman() || composeFilesContainUserns(composeFiles) {
 		return "", false
 	}
+	project := &composetypes.Project{
+		Extensions: composetypes.Extensions{
+			"x-podman": map[string]any{"in_pod": false},
+		},
+	}
+	yamlBytes, err := project.MarshalYAML()
+	if err != nil {
+		return "", false
+	}
 	f, err := os.CreateTemp("", "crib-podman-down-override-*.yml")
 	if err != nil {
 		return "", false
 	}
 	path := f.Name()
-	if _, err := f.WriteString("x-podman:\n  in_pod: false\n"); err != nil {
+	if _, err := f.Write(yamlBytes); err != nil {
 		_ = f.Close()
 		_ = os.Remove(path)
 		return "", false
