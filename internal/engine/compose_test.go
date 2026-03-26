@@ -51,10 +51,10 @@ func TestGenerateComposeOverride_RootlessPodmanInjectsUserns(t *testing.T) {
 		t.Fatalf("reading override: %v", err)
 	}
 
-	if !strings.Contains(string(data), `userns_mode: "keep-id"`) {
-		t.Errorf("expected userns_mode: \"keep-id\" in override, got:\n%s", data)
+	if !strings.Contains(string(data), "userns_mode: keep-id") {
+		t.Errorf("expected userns_mode in override, got:\n%s", data)
 	}
-	if !strings.Contains(string(data), "x-podman:\n  in_pod: false") {
+	if !strings.Contains(string(data), "x-podman:") || !strings.Contains(string(data), "in_pod: false") {
 		t.Errorf("expected x-podman in_pod: false in override, got:\n%s", data)
 	}
 }
@@ -223,15 +223,15 @@ func TestGenerateComposeOverride_PluginMounts(t *testing.T) {
 	}
 	content := string(data)
 
-	// Workspace mount should still be present.
-	if !strings.Contains(content, "/tmp/project:/workspaces/project") {
+	// Workspace mount should still be present (long form).
+	if !strings.Contains(content, "source: /tmp/project") || !strings.Contains(content, "target: /workspaces/project") {
 		t.Errorf("expected workspace mount, got:\n%s", content)
 	}
 	// Plugin mounts should be present.
-	if !strings.Contains(content, "/host/history:/home/vscode/.crib_history") {
+	if !strings.Contains(content, "source: /host/history") || !strings.Contains(content, "target: /home/vscode/.crib_history") {
 		t.Errorf("expected plugin history mount, got:\n%s", content)
 	}
-	if !strings.Contains(content, "/host/ssh:/tmp/ssh-agent.sock") {
+	if !strings.Contains(content, "source: /host/ssh") || !strings.Contains(content, "target: /tmp/ssh-agent.sock") {
 		t.Errorf("expected plugin ssh mount, got:\n%s", content)
 	}
 }
@@ -586,8 +586,8 @@ func TestGenerateComposeOverride_NoFeatureEntrypointSetsEntrypoint(t *testing.T)
 	content := string(data)
 
 	// Without feature entrypoints: should set entrypoint and command.
-	if !strings.Contains(content, "entrypoint: /bin/sh") {
-		t.Errorf("expected entrypoint: /bin/sh, got:\n%s", content)
+	if !strings.Contains(content, "entrypoint:") || !strings.Contains(content, "/bin/sh") {
+		t.Errorf("expected entrypoint with /bin/sh, got:\n%s", content)
 	}
 }
 
@@ -620,12 +620,12 @@ func TestGenerateComposeOverride_FeatureMounts(t *testing.T) {
 	content := string(data)
 
 	// Variable substitution should resolve ${devcontainerId}.
-	if !strings.Contains(content, "dind-var-lib-docker-test-ws:/var/lib/docker") {
+	if !strings.Contains(content, "source: dind-var-lib-docker-test-ws") || !strings.Contains(content, "target: /var/lib/docker") {
 		t.Errorf("expected substituted feature mount, got:\n%s", content)
 	}
 
 	// Named volume should get a top-level declaration.
-	if !strings.Contains(content, "  dind-var-lib-docker-test-ws:\n    name: dind-var-lib-docker-test-ws") {
+	if !strings.Contains(content, "dind-var-lib-docker-test-ws:") || !strings.Contains(content, "name: dind-var-lib-docker-test-ws") {
 		t.Errorf("expected top-level named volume declaration, got:\n%s", content)
 	}
 }
@@ -663,7 +663,7 @@ func TestGenerateComposeOverride_FeatureEnv(t *testing.T) {
 		t.Errorf("expected DOCKER_HOST in environment, got:\n%s", content)
 	}
 	// Variable substitution should resolve ${devcontainerId} in env values.
-	if !strings.Contains(content, `"test-ws"`) {
+	if !strings.Contains(content, "WS_ID: test-ws") {
 		t.Errorf("expected substituted WS_ID value, got:\n%s", content)
 	}
 }
@@ -712,9 +712,9 @@ func TestGenerateComposeOverride_FeatureEnvMergedWithConfigAndPlugin(t *testing.
 
 // Regression: feature containerEnv (e.g. PATH=/nvm/bin:${PATH}) is baked into
 // the image via Dockerfile ENV. featureToMetadata must exclude it so
-// writeFeatureOverrides doesn't write it into the compose environment section,
+// collectFeatureOverrides doesn't include it in the compose environment section,
 // which would override the image's correctly-expanded values.
-func TestWriteFeatureOverrides_ExcludesFeatureContainerEnv(t *testing.T) {
+func TestCollectFeatureOverrides_ExcludesFeatureContainerEnv(t *testing.T) {
 	f := &feature.FeatureSet{
 		Config: &feature.FeatureConfig{
 			ID: "node",
@@ -726,16 +726,13 @@ func TestWriteFeatureOverrides_ExcludesFeatureContainerEnv(t *testing.T) {
 	}
 
 	metadata := []*config.ImageMetadata{featureToMetadata(f)}
+	ov := collectFeatureOverrides(metadata, nil)
 
-	var b strings.Builder
-	env, _ := writeFeatureOverrides(&b, metadata, nil)
-
-	if len(env) != 0 {
-		t.Errorf("feature containerEnv should not appear in compose env, got %v", env)
+	if len(ov.Env) != 0 {
+		t.Errorf("feature containerEnv should not appear in compose env, got %v", ov.Env)
 	}
-	// Other metadata (capAdd) should still be written.
-	if !strings.Contains(b.String(), "SYS_PTRACE") {
-		t.Errorf("expected SYS_PTRACE in compose override, got:\n%s", b.String())
+	if len(ov.CapAdd) != 1 || ov.CapAdd[0] != "SYS_PTRACE" {
+		t.Errorf("expected SYS_PTRACE in CapAdd, got %v", ov.CapAdd)
 	}
 }
 

@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and message) instead of raw strings. No user-visible change.
 - Logging consistency: config path change demoted from Info to Debug; removed
   explicit `slog.String()` wrappers in favor of implicit key-value args.
+- Compose override generation uses compose-go types instead of string
+  concatenation. Volume syntax changes to long form (functionally equivalent).
 
 ### Fixed
 
