@@ -37,6 +37,11 @@ args), restart will ask you to run 'crib rebuild' instead.`,
 		if err != nil {
 			return err
 		}
+		lock, err := store.Lock(ws.ID)
+		if err != nil {
+			return err
+		}
+		defer lock.Unlock() //nolint:errcheck // best-effort cleanup
 
 		u.Dim(versionString())
 		u.Header("Restarting workspace")

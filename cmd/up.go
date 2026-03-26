@@ -29,6 +29,11 @@ var upCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		lock, err := store.Lock(ws.ID)
+		if err != nil {
+			return err
+		}
+		defer lock.Unlock() //nolint:errcheck // best-effort cleanup
 
 		u.Dim(versionString())
 		u.Header("Starting workspace")

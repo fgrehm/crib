@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/gofrs/flock"
 )
 
 const (
@@ -193,6 +195,21 @@ func (s *Store) ClearHookMarkers(id string) error {
 		return fmt.Errorf("clearing hook markers: %w", err)
 	}
 	return nil
+}
+
+// Lock acquires an exclusive file lock for a workspace, preventing concurrent
+// mutations (up, down, rebuild, restart, remove) from racing. The caller must
+// defer lock.Unlock() to release it.
+func (s *Store) Lock(id string) (*flock.Flock, error) {
+	dir := s.workspaceDir(id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating workspace directory: %w", err)
+	}
+	fl := flock.New(filepath.Join(dir, ".lock"))
+	if err := fl.Lock(); err != nil {
+		return nil, fmt.Errorf("acquiring workspace lock: %w", err)
+	}
+	return fl, nil
 }
 
 // WorkspaceDir returns the on-disk directory for a workspace.

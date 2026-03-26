@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/gofrs/flock"
 )
 
 func TestStore_SaveAndLoad(t *testing.T) {
@@ -197,6 +199,62 @@ func TestStore_SaveAndLoadResult_FeatureHooks(t *testing.T) {
 	}
 	if len(loaded.FeaturePostAttachCommands) != 0 {
 		t.Errorf("FeaturePostAttachCommands should be empty, got %v", loaded.FeaturePostAttachCommands)
+	}
+}
+
+func TestStore_Lock(t *testing.T) {
+	store := NewStoreAt(t.TempDir())
+
+	// Lock should succeed and create the workspace directory.
+	fl, err := store.Lock("locktest")
+	if err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+
+	// A second TryLock on the same workspace should fail (held by us).
+	fl2 := flock.New(fl.Path())
+	locked, err := fl2.TryLock()
+	if err != nil {
+		t.Fatalf("TryLock: %v", err)
+	}
+	if locked {
+		t.Error("TryLock should fail while lock is held")
+		fl2.Unlock()
+	}
+
+	// Unlock, then TryLock should succeed.
+	if err := fl.Unlock(); err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+	locked, err = fl2.TryLock()
+	if err != nil {
+		t.Fatalf("TryLock after unlock: %v", err)
+	}
+	if !locked {
+		t.Error("TryLock should succeed after unlock")
+	}
+	fl2.Unlock()
+}
+
+func TestStore_Lock_DeleteCleansUp(t *testing.T) {
+	store := NewStoreAt(t.TempDir())
+
+	// Create a workspace and lock it.
+	if err := store.Save(&Workspace{ID: "cleanup", Source: "/tmp"}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	fl, err := store.Lock("cleanup")
+	if err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+	fl.Unlock()
+
+	// Delete removes the entire workspace dir including the lock file.
+	if err := store.Delete("cleanup"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if store.Exists("cleanup") {
+		t.Error("workspace should not exist after delete")
 	}
 }
 
