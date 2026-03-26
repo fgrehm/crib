@@ -28,8 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cannot trigger).
 - Compose backend now captures stderr for diagnostics when a container is not
   found after `compose up`, instead of the opaque "container not found" error.
-- Integration tests warn when active crib workspaces are detected and refuse
-  to clean up non-test workspace IDs.
+- Compose override no longer produces duplicate mount destinations when the
+  user's compose files already define a volume for the same target path.
+  Fixes "duplicate mount destination" errors with podman-compose caused by
+  the compose-go long-form volume format not being deduplicated during merge.
+- `crib doctor --fix` no longer deletes containers belonging to a different
+  `CRIB_HOME`. Containers now carry a `crib.home` label recording which store
+  created them; doctor skips containers whose label doesn't match.
+- Integration and e2e tests no longer interfere with active workspaces.
+  `TestMain` warns about running crib containers, cleanup helpers reject
+  non-test workspace IDs, and the e2e doctor test no longer runs `--fix`
+  on an empty store.
 
 ## [0.7.1] - 2026-03-25
 
