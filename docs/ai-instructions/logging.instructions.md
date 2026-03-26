@@ -34,7 +34,7 @@ detection).
 ## Progress events
 
 The engine emits `ProgressEvent` structs (defined in `progress.go`) with a
-`Phase` and `Message`. Phases: `PhaseBuild`, `PhaseCreate`, `PhaseHooks`,
-`PhaseSnapshot`, `PhaseRestart`, `PhasePlugins`. The cmd layer renders these
+`Phase` and `Message`. Phases: `PhaseInit`, `PhaseBuild`, `PhaseCreate`,
+`PhasePlugins`, `PhaseHooks`, `PhaseRestart`. The cmd layer renders these
 via `u.Dim("  " + ev.Message)`. Use `e.reportProgress(phase, msg)` inside
 engine code; never call the progress callback directly.
