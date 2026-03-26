@@ -12,6 +12,7 @@ import (
 
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/driver"
+	ocidriver "github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
@@ -307,6 +308,161 @@ func TestDoctor_StalePluginData_Fix(t *testing.T) {
 	parentPluginDir := filepath.Join(storeDir, "ws-stale-fix", "plugins")
 	if _, err := os.Stat(parentPluginDir); !os.IsNotExist(err) {
 		t.Error("stale plugin directory should be removed with --fix")
+	}
+}
+
+func TestDoctor_DanglingContainer_SkippedWhenDifferentCribHome(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+
+	mockDrv := &doctorMockDriver{
+		containers: []driver.ContainerDetails{
+			{
+				ID: "container-other-store",
+				Config: driver.ContainerConfig{
+					Labels: map[string]string{
+						"crib.workspace":    "some-workspace",
+						ocidriver.LabelHome: "/some/other/store",
+					},
+				},
+			},
+		},
+	}
+
+	eng := &Engine{
+		driver: mockDrv,
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+	}
+
+	result, err := eng.Doctor(context.Background(), false)
+	if err != nil {
+		t.Fatalf("Doctor: %v", err)
+	}
+
+	for _, issue := range result.Issues {
+		if issue.Check == "dangling-container" {
+			t.Errorf("should skip container from different crib.home, got issue: %s", issue.Description)
+		}
+	}
+}
+
+func TestDoctor_DanglingContainer_FlaggedWhenSameCribHome(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+
+	mockDrv := &doctorMockDriver{
+		containers: []driver.ContainerDetails{
+			{
+				ID: "container-same-store",
+				Config: driver.ContainerConfig{
+					Labels: map[string]string{
+						"crib.workspace":    "nonexistent-ws",
+						ocidriver.LabelHome: store.BaseDir(),
+					},
+				},
+			},
+		},
+	}
+
+	eng := &Engine{
+		driver: mockDrv,
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+	}
+
+	result, err := eng.Doctor(context.Background(), false)
+	if err != nil {
+		t.Fatalf("Doctor: %v", err)
+	}
+
+	found := false
+	for _, issue := range result.Issues {
+		if issue.Check == "dangling-container" && issue.WorkspaceID == "nonexistent-ws" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected dangling-container issue for container matching crib.home")
+	}
+}
+
+func TestDoctor_DanglingContainer_FlaggedWhenNoHomeLabel(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+
+	// Pre-v0.8.0 containers have no crib.home label. They should still be
+	// flagged as dangling (the guard only skips when home is present AND different).
+	mockDrv := &doctorMockDriver{
+		containers: []driver.ContainerDetails{
+			{
+				ID: "container-legacy",
+				Config: driver.ContainerConfig{
+					Labels: map[string]string{
+						"crib.workspace": "orphan-ws",
+					},
+				},
+			},
+		},
+	}
+
+	eng := &Engine{
+		driver: mockDrv,
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+	}
+
+	result, err := eng.Doctor(context.Background(), false)
+	if err != nil {
+		t.Fatalf("Doctor: %v", err)
+	}
+
+	found := false
+	for _, issue := range result.Issues {
+		if issue.Check == "dangling-container" && issue.WorkspaceID == "orphan-ws" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected dangling-container for container without crib.home label")
+	}
+}
+
+func TestDoctor_Fix_SkipsContainerFromDifferentStore(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+
+	mockDrv := &doctorMockDriver{
+		containers: []driver.ContainerDetails{
+			{
+				ID: "container-protected",
+				Config: driver.ContainerConfig{
+					Labels: map[string]string{
+						"crib.workspace":    "other-ws",
+						ocidriver.LabelHome: "/different/store",
+					},
+				},
+			},
+		},
+	}
+
+	eng := &Engine{
+		driver: mockDrv,
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+	}
+
+	_, err := eng.Doctor(context.Background(), true)
+	if err != nil {
+		t.Fatalf("Doctor --fix: %v", err)
+	}
+
+	if len(mockDrv.deleted) != 0 {
+		t.Errorf("should not delete container from different store, deleted: %v", mockDrv.deleted)
 	}
 }
 
