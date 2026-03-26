@@ -19,7 +19,7 @@ applyTo: "internal/**,cmd/**"
 | Mechanism | Audience | Controlled by |
 |-----------|----------|---------------|
 | `internal/ui` (stdout) | User: results and errors | always visible; `cmd/` layer only |
-| Engine progress callback | User: operation status | always visible |
+| Engine progress callback (`ProgressEvent`) | User: operation status | always visible |
 | Engine stdout/stderr writers | User: subprocess output | `--verbose` |
 | `log/slog` (stderr) | Developer diagnostics | `--debug` |
 
@@ -30,3 +30,11 @@ detection).
 **`--verbose`** passes subprocess stdout through. Does not change the slog level.
 
 **`--debug`** sets slog to Debug and also implies verbose.
+
+## Progress events
+
+The engine emits `ProgressEvent` structs (defined in `progress.go`) with a
+`Phase` and `Message`. Phases: `PhaseBuild`, `PhaseCreate`, `PhaseHooks`,
+`PhaseSnapshot`, `PhaseRestart`, `PhasePlugins`. The cmd layer renders these
+via `u.Dim("  " + ev.Message)`. Use `e.reportProgress(phase, msg)` inside
+engine code; never call the progress callback directly.

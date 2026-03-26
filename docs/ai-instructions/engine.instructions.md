@@ -22,6 +22,13 @@ compose differences. All post-creation/post-restart steps converge in a single
 Plugin dispatch, file copies, env wiring, lifecycle hooks, and result saving
 live in the shared orchestration layer, never inside the backend.
 
+## Workspace locking
+
+State-mutating commands (up, down, rebuild, restart, remove) acquire an exclusive
+file lock via `store.Lock(ctx, ws.ID)` before operating. The lock file lives at
+`~/.crib/workspaces/{id}/.lock`. Read-only commands (exec, run, shell, logs,
+status, list, doctor) do not lock. The lock respects context cancellation.
+
 ## Up() orchestration
 
 `Up()` in `engine.go` parses config, runs `initializeCommand`, creates a backend,
@@ -71,6 +78,12 @@ compose services are started, created, or restarted. The `composeBackend`
 methods (`start`, `createContainer`, `restart`) handle override generation
 internally. When a container is already running, `upExisting` skips
 regeneration (no backend call needed).
+
+Override generation uses compose-go types (`composetypes.ServiceConfig`,
+`composetypes.Project`) and `project.MarshalYAML()`. Volume targets from the
+user's compose files are loaded via `existingVolumeTargets()` to avoid
+duplicate mount destinations during merge (compose-go emits long-form volumes
+which podman-compose does not deduplicate against short-form).
 
 ## Persisted build artifacts
 
