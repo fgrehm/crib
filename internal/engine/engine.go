@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -106,6 +107,17 @@ func (e *Engine) composeStderr() io.Writer {
 		return e.stderr
 	}
 	return io.Discard
+}
+
+// composeStderrTee returns a writer that always captures compose stderr into
+// buf, and also forwards to the engine's stderr in verbose mode. Use this
+// when the caller needs the output for error diagnostics even in non-verbose
+// mode (e.g., "container not found after up").
+func (e *Engine) composeStderrTee(buf *bytes.Buffer) io.Writer {
+	if e.verbose {
+		return io.MultiWriter(buf, e.stderr)
+	}
+	return buf
 }
 
 // SetProgress sets a callback for user-facing progress events.

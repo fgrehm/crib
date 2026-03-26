@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docs website now deploys automatically after releases. The workflow triggers
   on `stable` branch push instead of the `release` event (which GITHUB_TOKEN
   cannot trigger).
+- Compose backend now captures stderr for diagnostics when a container is not
+  found after `compose up`, instead of the opaque "container not found" error.
+- Integration tests warn when active crib workspaces are detected and refuse
+  to clean up non-test workspace IDs.
 
 ## [0.7.1] - 2026-03-25
 

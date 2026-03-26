@@ -1,9 +1,11 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/plugin"
@@ -26,12 +28,13 @@ func (b *composeBackend) pluginUser(ctx context.Context) string {
 func (b *composeBackend) start(ctx context.Context, containerID string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
 	allFiles := b.prepareOverride(ctx, pluginResp)
 
+	var stderrBuf bytes.Buffer
 	b.e.reportProgress(PhaseCreate, "Starting services...")
-	if err := b.e.compose.Start(ctx, b.inv.projectName, allFiles, b.e.composeStdout(), b.e.composeStderr(), b.inv.env); err != nil {
+	if err := b.e.compose.Start(ctx, b.inv.projectName, allFiles, b.e.composeStdout(), b.e.composeStderrTee(&stderrBuf), b.inv.env); err != nil {
 		return "", fmt.Errorf("starting compose services: %w", err)
 	}
 
-	return b.findRunningContainer(ctx, "after start")
+	return b.findRunningContainer(ctx, "after start", stderrBuf.String())
 }
 
 func (b *composeBackend) buildImage(ctx context.Context) (*buildResult, error) {
@@ -78,12 +81,13 @@ func (b *composeBackend) createContainer(ctx context.Context, opts createOpts) (
 		}
 	}
 
+	var stderrBuf bytes.Buffer
 	b.e.reportProgress(PhaseCreate, "Starting services...")
-	if err := b.e.compose.Up(ctx, b.inv.projectName, allFiles, services, b.e.composeStdout(), b.e.composeStderr(), b.inv.env); err != nil {
+	if err := b.e.compose.Up(ctx, b.inv.projectName, allFiles, services, b.e.composeStdout(), b.e.composeStderrTee(&stderrBuf), b.inv.env); err != nil {
 		return "", fmt.Errorf("starting compose services: %w", err)
 	}
 
-	return b.findRunningContainer(ctx, "after up")
+	return b.findRunningContainer(ctx, "after up", stderrBuf.String())
 }
 
 func (b *composeBackend) deleteExisting(ctx context.Context) error {
@@ -98,12 +102,13 @@ func (b *composeBackend) restart(ctx context.Context, containerID string, plugin
 		b.e.logger.Warn("failed to stop services, proceeding with start", "error", err)
 	}
 
+	var stderrBuf bytes.Buffer
 	b.e.reportProgress(PhaseRestart, "Starting services...")
-	if err := b.e.compose.Start(ctx, b.inv.projectName, allFiles, b.e.composeStdout(), b.e.composeStderr(), b.inv.env); err != nil {
+	if err := b.e.compose.Start(ctx, b.inv.projectName, allFiles, b.e.composeStdout(), b.e.composeStderrTee(&stderrBuf), b.inv.env); err != nil {
 		return "", fmt.Errorf("starting compose services: %w", err)
 	}
 
-	return b.findRunningContainer(ctx, "after restart")
+	return b.findRunningContainer(ctx, "after restart", stderrBuf.String())
 }
 
 func (b *composeBackend) canResumeFromStored() bool {
@@ -134,10 +139,15 @@ func (b *composeBackend) prepareOverride(ctx context.Context, pluginResp *plugin
 }
 
 // findRunningContainer locates the primary service container and verifies
-// it is running.
-func (b *composeBackend) findRunningContainer(ctx context.Context, stage string) (string, error) {
+// it is running. composeOutput is included in the error message when the
+// container cannot be found, providing diagnostics that would otherwise be
+// lost when compose stderr is discarded in non-verbose mode.
+func (b *composeBackend) findRunningContainer(ctx context.Context, stage, composeOutput string) (string, error) {
 	container, err := b.e.findComposeContainer(ctx, b.ws.ID, b.inv, stage)
 	if err != nil {
+		if hint := strings.TrimSpace(composeOutput); hint != "" {
+			return "", fmt.Errorf("%w\ncompose output:\n%s", err, hint)
+		}
 		return "", err
 	}
 	if err := b.e.ensureContainerRunning(ctx, b.ws.ID, container); err != nil {
