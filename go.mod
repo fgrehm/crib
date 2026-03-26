@@ -13,8 +13,8 @@ require (
 	github.com/charmbracelet/x/term v0.2.1
 	github.com/compose-spec/compose-go/v2 v2.10.1
 	github.com/google/go-containerregistry v0.21.0
-	github.com/moby/buildkit v0.27.1
-	github.com/moby/patternmatcher v0.6.0
+	github.com/moby/buildkit v0.28.1
+	github.com/moby/patternmatcher v0.6.1
 	github.com/spf13/cobra v1.10.2
 	github.com/tidwall/jsonc v0.3.2
 	golang.org/x/sync v0.19.0
