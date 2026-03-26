@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Workspace file lock prevents concurrent state-mutating commands (up, down,
+  rebuild, restart, remove) from racing on the same workspace.
+
+### Changed
+
+- Progress reporting uses typed events internally (`ProgressEvent` with phase
+  and message) instead of raw strings. No user-visible change.
+- Logging consistency: config path change demoted from Info to Debug; removed
+  explicit `slog.String()` wrappers in favor of implicit key-value args.
+
+### Fixed
+
+- Docs website now deploys automatically after releases. The workflow triggers
+  on `stable` branch push instead of the `release` event (which GITHUB_TOKEN
+  cannot trigger).
+
 ## [0.7.1] - 2026-03-25
 
 ### Fixed
