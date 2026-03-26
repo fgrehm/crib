@@ -23,11 +23,11 @@ jobs:
           GO_TEST_FLAGS: -json
       - name: Lint
         run: make lint
-      - name: Complexity gate (gocyclo -over 40)
+      - name: Complexity gate (gocyclo -over 30)
         run: |
-          out=$(go tool gocyclo -over 40 .)
+          out=$(go tool gocyclo -over 30 -ignore '_test\.go$' .)
           if [ -n "$out" ]; then
-            echo "Functions exceeding complexity threshold of 40:"
+            echo "Functions exceeding complexity threshold of 30:"
             echo "$out"
             exit 1
           fi

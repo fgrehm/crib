@@ -251,7 +251,11 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		return "", fmt.Errorf("marshalling compose override: %w", err)
 	}
 
-	overridePath := filepath.Join(e.store.WorkspaceDir(ws.ID), "compose-override.yml")
+	wsDir := e.store.WorkspaceDir(ws.ID)
+	if err := os.MkdirAll(wsDir, 0o755); err != nil {
+		return "", fmt.Errorf("creating workspace directory: %w", err)
+	}
+	overridePath := filepath.Join(wsDir, "compose-override.yml")
 	if err := os.WriteFile(overridePath, yamlBytes, 0o644); err != nil {
 		return "", fmt.Errorf("writing compose override: %w", err)
 	}

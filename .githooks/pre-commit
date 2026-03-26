@@ -30,9 +30,9 @@ echo "✓ Lint passed"
 
 # Check cyclomatic complexity
 echo "Running gocyclo..."
-out=$(go tool gocyclo -over 40 -ignore '_test\.go$' .)
+out=$(go tool gocyclo -over 30 -ignore '_test\.go$' .)
 if [ -n "$out" ]; then
-    echo "Functions exceeding complexity threshold of 40:"
+    echo "Functions exceeding complexity threshold of 30:"
     echo "$out"
     exit 1
 fi
