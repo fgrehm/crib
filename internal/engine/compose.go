@@ -33,7 +33,7 @@ func (e *Engine) buildComposeFeatures(ctx context.Context, ws *workspace.Workspa
 	var baseImage string
 	if svcInfo.HasBuild {
 		// Build-based service: run compose build first to produce the base image.
-		e.reportProgress("Building service...")
+		e.reportProgress(PhaseBuild, "Building service...")
 		if err := e.compose.Build(ctx, inv.projectName, inv.files, []string{serviceName}, e.stdout, e.stderr, inv.env); err != nil {
 			return nil, fmt.Errorf("building compose service: %w", err)
 		}

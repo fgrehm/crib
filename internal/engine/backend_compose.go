@@ -26,7 +26,7 @@ func (b *composeBackend) pluginUser(ctx context.Context) string {
 func (b *composeBackend) start(ctx context.Context, containerID string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
 	allFiles := b.prepareOverride(ctx, pluginResp)
 
-	b.e.reportProgress("Starting services...")
+	b.e.reportProgress(PhaseCreate, "Starting services...")
 	if err := b.e.compose.Start(ctx, b.inv.projectName, allFiles, b.e.composeStdout(), b.e.composeStderr(), b.inv.env); err != nil {
 		return "", fmt.Errorf("starting compose services: %w", err)
 	}
@@ -65,20 +65,20 @@ func (b *composeBackend) createContainer(ctx context.Context, opts createOpts) (
 		if opts.imageName != "" {
 			others := removeService(services, b.cfg.Service)
 			if len(others) > 0 {
-				b.e.reportProgress("Building services...")
+				b.e.reportProgress(PhaseBuild, "Building services...")
 				if err := b.e.compose.Build(ctx, b.inv.projectName, allFiles, others, b.e.stdout, b.e.stderr, b.inv.env); err != nil {
 					return "", fmt.Errorf("building compose services: %w", err)
 				}
 			}
 		} else {
-			b.e.reportProgress("Building services...")
+			b.e.reportProgress(PhaseBuild, "Building services...")
 			if err := b.e.compose.Build(ctx, b.inv.projectName, allFiles, nil, b.e.stdout, b.e.stderr, b.inv.env); err != nil {
 				return "", fmt.Errorf("building compose services: %w", err)
 			}
 		}
 	}
 
-	b.e.reportProgress("Starting services...")
+	b.e.reportProgress(PhaseCreate, "Starting services...")
 	if err := b.e.compose.Up(ctx, b.inv.projectName, allFiles, services, b.e.composeStdout(), b.e.composeStderr(), b.inv.env); err != nil {
 		return "", fmt.Errorf("starting compose services: %w", err)
 	}
@@ -93,12 +93,12 @@ func (b *composeBackend) deleteExisting(ctx context.Context) error {
 func (b *composeBackend) restart(ctx context.Context, containerID string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
 	allFiles := b.prepareOverride(ctx, pluginResp)
 
-	b.e.reportProgress("Stopping services...")
+	b.e.reportProgress(PhaseRestart, "Stopping services...")
 	if err := b.e.compose.Stop(ctx, b.inv.projectName, allFiles, b.e.composeStdout(), b.e.composeStderr(), b.inv.env); err != nil {
 		b.e.logger.Warn("failed to stop services, proceeding with start", "error", err)
 	}
 
-	b.e.reportProgress("Starting services...")
+	b.e.reportProgress(PhaseRestart, "Starting services...")
 	if err := b.e.compose.Start(ctx, b.inv.projectName, allFiles, b.e.composeStdout(), b.e.composeStderr(), b.inv.env); err != nil {
 		return "", fmt.Errorf("starting compose services: %w", err)
 	}

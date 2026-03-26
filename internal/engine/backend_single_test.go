@@ -29,7 +29,7 @@ func TestSingleBackend_CanResumeFromStored_ReturnsFalse(t *testing.T) {
 
 func TestSingleBackend_Start_CallsDriverStart(t *testing.T) {
 	drv := &mockDriver{}
-	eng := &Engine{driver: drv, logger: slog.Default(), progress: func(string) {}}
+	eng := &Engine{driver: drv, logger: slog.Default(), progress: func(ProgressEvent) {}}
 
 	b := &singleBackend{
 		e:  eng,
@@ -47,7 +47,7 @@ func TestSingleBackend_Start_CallsDriverStart(t *testing.T) {
 
 func TestSingleBackend_Restart_CallsDriverRestart(t *testing.T) {
 	drv := &mockDriver{}
-	eng := &Engine{driver: drv, logger: slog.Default(), progress: func(string) {}}
+	eng := &Engine{driver: drv, logger: slog.Default(), progress: func(ProgressEvent) {}}
 
 	b := &singleBackend{
 		e:  eng,
@@ -77,7 +77,7 @@ func TestSingleBackend_CreateContainer_MergesPluginResponse(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -162,7 +162,7 @@ func TestSingleBackend_CreateContainer_AppliesFeatureMetadata(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -242,7 +242,7 @@ func TestSingleBackend_DeleteExisting_WithContainer(t *testing.T) {
 
 func TestSingleBackend_Start_IgnoresPluginResp(t *testing.T) {
 	drv := &mockDriver{}
-	eng := &Engine{driver: drv, logger: slog.Default(), progress: func(string) {}}
+	eng := &Engine{driver: drv, logger: slog.Default(), progress: func(ProgressEvent) {}}
 
 	b := &singleBackend{
 		e:  eng,
@@ -277,7 +277,7 @@ func TestSingleBackend_CreateContainer_FeatureEntrypoints(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -318,7 +318,7 @@ func TestSingleBackend_CreateContainer_FeatureEntrypoints(t *testing.T) {
 
 func TestSingleBackend_Restart_IgnoresPluginResp(t *testing.T) {
 	drv := &mockDriver{}
-	eng := &Engine{driver: drv, logger: slog.Default(), progress: func(string) {}}
+	eng := &Engine{driver: drv, logger: slog.Default(), progress: func(ProgressEvent) {}}
 
 	b := &singleBackend{
 		e:  eng,
@@ -354,7 +354,7 @@ func TestSingleBackend_CreateContainer_FindsNewContainer(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -398,7 +398,7 @@ func TestSingleBackend_CreateContainer_ProgressReported(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(msg string) { progressMessages = append(progressMessages, msg) },
+		progress: func(ev ProgressEvent) { progressMessages = append(progressMessages, ev.Message) },
 	}
 
 	cfg := &config.DevContainerConfig{}

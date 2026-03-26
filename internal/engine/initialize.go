@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os/exec"
 
 	"github.com/fgrehm/crib/internal/config"
@@ -19,7 +18,7 @@ func (e *Engine) runInitializeCommand(ctx context.Context, ws *workspace.Workspa
 		return nil
 	}
 
-	e.reportProgress("Running initializeCommand...")
+	e.reportProgress(PhaseInit, "Running initializeCommand...")
 
 	return dispatchHook(ctx, cfg.InitializeCommand, func(ctx context.Context, hookName string, cmdParts []string) error {
 		return e.execInitCmd(ctx, ws, "initializeCommand", hookName, cmdParts)
@@ -50,7 +49,7 @@ func (e *Engine) execInitCmd(ctx context.Context, ws *workspace.Workspace, hookS
 	cmd.Stdout = e.stdout
 	cmd.Stderr = e.stderr
 
-	e.logger.Debug("executing host command", slog.String("hook", label), slog.String("cmd", cmd.String()))
+	e.logger.Debug("executing host command", "hook", label, "cmd", cmd.String())
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("lifecycle hook %q failed: %w", label, err)

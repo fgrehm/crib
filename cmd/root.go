@@ -248,7 +248,7 @@ func currentWorkspace(store *workspace.Store, create bool) (*workspace.Workspace
 		// Refresh fields that may have drifted from stored state.
 		var changed bool
 		if ws.DevContainerPath != rr.RelativeConfigPath {
-			logger.Info("devcontainer config path changed",
+			logger.Debug("devcontainer config path changed",
 				"old", ws.DevContainerPath, "new", rr.RelativeConfigPath)
 			ws.DevContainerPath = rr.RelativeConfigPath
 			changed = true

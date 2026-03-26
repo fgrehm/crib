@@ -154,7 +154,7 @@ func TestUpCreate_FromSnapshot_PreservesEnv(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -239,7 +239,7 @@ func TestUpCreate_FromSnapshot_RunsResumeHooksOnly(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	b := eng.newBackend(ws, cfg, "/workspaces/project")
@@ -327,7 +327,7 @@ func TestUpCreate_FromSnapshot_RecreateBypassesSnapshot(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	// With Recreate=true, the snapshot should be bypassed. This will fail
@@ -390,7 +390,7 @@ func TestUpCreate_FromSnapshot_StaleSnapshotFallsThrough(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -462,7 +462,7 @@ func TestUpCreate_FromSnapshot_PluginCopiesExecuted(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	b := eng.newBackend(ws, cfg, "/workspaces/project")
@@ -519,7 +519,7 @@ func TestUpCreate_FromSnapshot_PreservesImageName(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	b := eng.newBackend(ws, cfg, "/workspaces/project")
@@ -578,7 +578,7 @@ func TestUpCreate_FromSnapshot_PreservesFeatureEntrypoints(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	b := eng.newBackend(ws, cfg, "/workspaces/project")
@@ -652,7 +652,7 @@ func TestUpCreate_FromSnapshot_ResolvesConfigEnv(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	b := eng.newBackend(ws, cfg, "/workspaces/project")

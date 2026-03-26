@@ -20,7 +20,7 @@ var rebuildCmd = &cobra.Command{
 		}
 		eng.SetOutput(os.Stdout, os.Stderr)
 		eng.SetVerbose(verboseFlag || debugFlag)
-		eng.SetProgress(func(msg string) { u.Dim("  " + msg) })
+		eng.SetProgress(func(ev engine.ProgressEvent) { u.Dim("  " + ev.Message) })
 		setupPlugins(eng, d)
 
 		ws, err := currentWorkspace(store, true)

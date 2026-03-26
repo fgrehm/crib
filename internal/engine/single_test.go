@@ -640,7 +640,7 @@ func TestUpExisting_PreservesPathPrepend(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -701,7 +701,7 @@ func TestUpExisting_PassesRemoteUserToPlugins(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -754,7 +754,7 @@ func TestUpExisting_FallsBackToContainerUser(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	// No RemoteUser, only ContainerUser.

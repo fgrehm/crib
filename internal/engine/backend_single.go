@@ -55,7 +55,7 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (s
 		runOpts.ExtraArgs = append(runOpts.ExtraArgs, opts.pluginResp.RunArgs...)
 	}
 
-	b.e.reportProgress("Creating container...")
+	b.e.reportProgress(PhaseCreate, "Creating container...")
 	if err := b.e.driver.RunContainer(ctx, b.ws.ID, runOpts); err != nil {
 		return "", fmt.Errorf("creating container: %w", err)
 	}

@@ -35,7 +35,7 @@ func TestFinalize_FreshSetup_RunsPluginCopiesAndChown(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -108,7 +108,7 @@ func TestFinalize_FreshSetup_CallsSetupContainerAndCommitsSnapshot(t *testing.T)
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -161,7 +161,7 @@ func TestFinalize_FromSnapshot_RestoresStoredEnvAndRunsResumeHooks(t *testing.T)
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -255,7 +255,7 @@ func TestFinalize_FromSnapshot_SkipsSetupContainerAndSnapshot(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -303,7 +303,7 @@ func TestFinalize_SkipVolumeChown(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -361,7 +361,7 @@ func TestFinalize_EarlySave_BeforeLifecycleHooks(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -418,7 +418,7 @@ func TestFinalize_PreservesPathPrepend_FreshSetup(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -475,7 +475,7 @@ func TestFinalize_PreservesPathPrepend_FromSnapshot(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -541,7 +541,7 @@ func TestFinalize_RemoteUserSkippedWhenPreset(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
