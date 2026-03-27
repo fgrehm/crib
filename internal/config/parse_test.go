@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -222,28 +221,6 @@ func TestParse_NonexistentFile(t *testing.T) {
 	_, err := Parse("/nonexistent/devcontainer.json")
 	if err == nil {
 		t.Fatal("expected error for nonexistent file")
-	}
-}
-
-func TestFindAndParse(t *testing.T) {
-	dir := t.TempDir()
-	mkdirAll(t, filepath.Join(dir, ".devcontainer"))
-	writeFile(t, filepath.Join(dir, ".devcontainer", "devcontainer.json"), `{"image":"node:20"}`)
-
-	config, err := FindAndParse(dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if config.Image != "node:20" {
-		t.Errorf("Image = %q, want %q", config.Image, "node:20")
-	}
-}
-
-func TestFindAndParse_NotFound(t *testing.T) {
-	dir := t.TempDir()
-	_, err := FindAndParse(dir)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
 

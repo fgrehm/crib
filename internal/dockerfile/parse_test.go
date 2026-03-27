@@ -251,41 +251,6 @@ RUN echo build
 	}
 }
 
-func TestBuildContextFiles(t *testing.T) {
-	content := `FROM ubuntu:22.04 AS builder
-COPY app /app
-COPY files /files
-ADD data.tar.gz /data
-FROM builder AS runner
-COPY --from=builder /app /app
-ADD extra /extra
-`
-	df, err := Parse(content)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	files := df.BuildContextFiles()
-
-	// Should include: app, files, data.tar.gz, extra
-	// Should NOT include: /app (from COPY --from=builder)
-	want := map[string]bool{
-		"app":         true,
-		"files":       true,
-		"data.tar.gz": true,
-		"extra":       true,
-	}
-
-	if len(files) != len(want) {
-		t.Fatalf("got %d files %v, want %d", len(files), files, len(want))
-	}
-	for _, f := range files {
-		if !want[f] {
-			t.Errorf("unexpected file %q", f)
-		}
-	}
-}
-
 func TestEnsureFinalStageName_AddsName(t *testing.T) {
 	content := "FROM ubuntu:22.04\nRUN echo hello\n"
 	name, modified, err := EnsureFinalStageName(content, "crib_final")

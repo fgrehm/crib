@@ -61,14 +61,6 @@ func (g *Graph[T]) HasNode(key string) bool {
 	return ok
 }
 
-// HasEdge returns true if there is a directed edge from -> to.
-func (g *Graph[T]) HasEdge(from, to string) bool {
-	if g.edges[from] == nil {
-		return false
-	}
-	return g.edges[from][to]
-}
-
 // Sort returns nodes in topological order using Kahn's algorithm.
 // When multiple nodes have zero in-degree, they are processed in sorted
 // key order for deterministic output. Returns an error if the graph

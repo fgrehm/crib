@@ -125,38 +125,6 @@ func (d *Dockerfile) FindUserStatement(buildArgs, baseImageEnv map[string]string
 	return d.findUser(stage, buildArgs, baseImageEnv, make(map[string]bool))
 }
 
-// BuildContextFiles returns all source paths from COPY and ADD instructions
-// that reference local files (not from other stages).
-func (d *Dockerfile) BuildContextFiles() []string {
-	seen := make(map[string]bool)
-	var files []string
-
-	for _, stage := range d.Stages {
-		for _, cmd := range stage.Commands {
-			var sources []string
-			switch c := cmd.(type) {
-			case *instructions.CopyCommand:
-				if c.From != "" {
-					continue // COPY --from=stage, skip
-				}
-				sources = c.SourcePaths
-			case *instructions.AddCommand:
-				sources = c.SourcePaths
-			default:
-				continue
-			}
-			for _, src := range sources {
-				if !seen[src] {
-					seen[src] = true
-					files = append(files, src)
-				}
-			}
-		}
-	}
-
-	return files
-}
-
 // EnsureFinalStageName adds "AS <name>" to the last FROM if it doesn't
 // have one. Returns (stageName, modifiedContent, error).
 // If the stage already has a name, modifiedContent is empty.
