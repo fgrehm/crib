@@ -49,7 +49,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// Clone the repository. Use accept-new so the first connection to a host
 	// (e.g. github.com) auto-accepts its key without a known_hosts entry.
 	cloneCmd := []string{"git", "clone", p.cfg.Repository, targetPath}
-	if strings.Contains(p.cfg.Repository, "@") || strings.HasPrefix(p.cfg.Repository, "ssh://") {
+	if isSSHRepo(p.cfg.Repository) {
 		cloneCmd = []string{"sh", "-c", "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone " + shellQuote(p.cfg.Repository) + " " + shellQuote(targetPath)}
 	}
 	if err := streamExecWithRetry(ctx, req, cloneCmd, req.RemoteUser, "", 3); err != nil {
@@ -100,6 +100,21 @@ func streamExecWithRetry(ctx context.Context, req *plugin.PostContainerCreateReq
 		}
 	}
 	return err
+}
+
+// isSSHRepo returns true if the repository URL uses SSH transport.
+// Matches git@host:path (SCP syntax) and ssh:// URLs, but not HTTPS
+// URLs that happen to contain a username (e.g. https://user@host/...).
+func isSSHRepo(repo string) bool {
+	if strings.HasPrefix(repo, "ssh://") {
+		return true
+	}
+	// SCP syntax: user@host:path (no scheme, colon after host).
+	// HTTPS with username has :// before the @, so we exclude that.
+	if strings.Contains(repo, "://") {
+		return false
+	}
+	return strings.Contains(repo, "@")
 }
 
 // shellQuote wraps s in single quotes, escaping any embedded single quotes.

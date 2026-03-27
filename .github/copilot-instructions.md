@@ -62,6 +62,15 @@ Plugins that construct shell commands use layered validation:
 If input passes the regex, it is safe for use in the generated script. Review
 the regex definition before flagging injection concerns.
 
+## Go Version
+
+This project requires Go 1.26+ (see `go.mod`). Modern Go features are used
+throughout the codebase:
+
+- `for i := range n` (integer range) is valid and idiomatic. Do not flag it
+  as a compilation error or suggest rewriting to `for i := 0; i < n; i++`.
+- `range` over function iterators may also appear.
+
 ## Conventions
 
 - Go module: `github.com/fgrehm/crib`

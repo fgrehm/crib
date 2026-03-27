@@ -61,8 +61,9 @@ func (m *Manager) RunPreContainerRun(ctx context.Context, req *PreContainerRunRe
 }
 
 // RunPostContainerCreate dispatches the post-container-create event to all
-// registered plugins. Called after container creation and file copies but
-// before lifecycle hooks. Errors are logged and skipped (fail-open).
+// registered plugins. Called between create-time hooks (postCreateCommand)
+// and start-time hooks (postStartCommand). Errors are logged and skipped
+// (fail-open).
 func (m *Manager) RunPostContainerCreate(ctx context.Context, req *PostContainerCreateRequest) {
 	for _, p := range m.plugins {
 		if m.progress != nil {
