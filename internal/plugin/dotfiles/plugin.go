@@ -50,7 +50,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// (e.g. github.com) auto-accepts its key without a known_hosts entry.
 	cloneCmd := []string{"git", "clone", p.cfg.Repository, targetPath}
 	if isSSHRepo(p.cfg.Repository) {
-		cloneCmd = []string{"sh", "-c", "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone " + shellQuote(p.cfg.Repository) + " " + shellQuote(targetPath)}
+		cloneCmd = []string{"sh", "-c", "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone " + sq(p.cfg.Repository) + " " + sq(targetPath)}
 	}
 	if err := streamExecWithRetry(ctx, req, cloneCmd, req.RemoteUser, "", 3); err != nil {
 		slog.Warn("dotfiles: clone failed", "repo", p.cfg.Repository, "error", err)
@@ -70,7 +70,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// Auto-detect install script.
 	for _, script := range installScripts {
 		scriptPath := targetPath + "/" + script
-		checkCmd := []string{"test", "-f", scriptPath}
+		checkCmd := []string{"sh", "-c", "test -f " + sq(scriptPath)}
 		if _, err := req.Exec(ctx, checkCmd, req.RemoteUser, ""); err != nil {
 			continue
 		}
@@ -96,7 +96,11 @@ func streamExecWithRetry(ctx context.Context, req *plugin.PostContainerCreateReq
 		}
 		if i < maxAttempts-1 {
 			slog.Debug("dotfiles: retrying after transient failure", "attempt", i+1, "error", err)
-			time.Sleep(2 * time.Second)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(2 * time.Second):
+			}
 		}
 	}
 	return err
@@ -117,9 +121,9 @@ func isSSHRepo(repo string) bool {
 	return strings.Contains(repo, "@")
 }
 
-// shellQuote wraps s in single quotes, escaping any embedded single quotes.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+// sq wraps s in single quotes via the shared ShellQuote helper.
+func sq(s string) string {
+	return "'" + plugin.ShellQuote(s) + "'"
 }
 
 // resolveTargetPath expands ~ to the remote user's home directory.
