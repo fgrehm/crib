@@ -46,7 +46,9 @@ func NewStore() (*Store, error) {
 		return nil, fmt.Errorf("creating workspaces directory: %w", err)
 	}
 
-	return &Store{baseDir: baseDir, explicitHome: explicit}, nil
+	s := NewStoreAt(baseDir)
+	s.explicitHome = explicit
+	return s, nil
 }
 
 // NewStoreAt creates a Store with a custom base directory. Useful for testing.

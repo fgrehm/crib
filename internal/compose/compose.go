@@ -57,12 +57,11 @@ func NewHelper(runtimeCommand string, logger *slog.Logger) (*Helper, error) {
 	version := firstLine(stdoutBuf.String())
 	logger.Info("detected compose", "command", runtimeCommand+" compose", "version", version)
 
-	return &Helper{
-		baseCommand: runtimeCommand,
-		argsPrefix:  []string{"compose"},
-		version:     version,
-		logger:      logger,
-	}, nil
+	h := NewHelperFromRuntime(runtimeCommand)
+	h.argsPrefix = []string{"compose"}
+	h.version = version
+	h.logger = logger
+	return h, nil
 }
 
 // RuntimeCommand returns the base runtime command (e.g. "docker" or "podman").
