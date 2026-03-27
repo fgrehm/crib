@@ -178,11 +178,15 @@ func collectFeatureOverrides(metadata []*config.ImageMetadata, subCtx *config.Su
 func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, composeFiles []string, featureImage string, pluginResp *plugin.PreContainerRunResponse, featureMetadata ...*config.ImageMetadata) (string, error) {
 	serviceName := cfg.Service
 
+	labels := composetypes.Labels{
+		ocidriver.LabelWorkspace: ws.ID,
+	}
+	if e.store.IsExplicitHome() {
+		labels[ocidriver.LabelHome] = e.store.BaseDir()
+	}
+
 	svc := composetypes.ServiceConfig{
-		Labels: composetypes.Labels{
-			ocidriver.LabelWorkspace: ws.ID,
-			ocidriver.LabelHome:      e.store.BaseDir(),
-		},
+		Labels: labels,
 	}
 
 	if featureImage != "" {
