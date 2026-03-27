@@ -266,62 +266,14 @@ upSingle()                               restartRecreateSingle()
 
 ## Bundled Plugins
 
-### coding-agents
+For user-facing documentation on what each plugin does and how to configure it, see [Built-in Plugins](/crib/guides/plugins/).
 
-Shares Claude Code credentials with containers. Two modes:
+Implementation notes for contributors:
 
-**Host mode (default):** Copies `~/.claude/.credentials.json` from the host into the container. Uses `FileCopy` (not bind mounts) because Claude Code does atomic renames on `~/.claude.json`.
-
-**Workspace mode:** Configured via devcontainer.json:
-
-```json
-{
-  "customizations": {
-    "crib": {
-      "coding-agents": {
-        "credentials": "workspace"
-      }
-    }
-  }
-}
-```
-
-In workspace mode, host credentials are not injected. Instead, a persistent directory is bind-mounted to `~/.claude/` inside the container. The user authenticates inside the container on first use, and credentials survive container rebuilds.
-
-A minimal `~/.claude.json` with `{"hasCompletedOnboarding":true}` is re-injected via FileCopy on each rebuild to skip the Claude Code onboarding flow. This file is not persisted because Claude Code does atomic renames on it.
-
-### dotfiles
-
-Clones and installs a user's dotfiles repository inside the container on creation. Uses the `PostContainerCreate` hook (not `PreContainerRun`) because it needs to run commands inside the container via the `Exec` callback.
-
-Configured via global config (`~/.config/crib/config.toml`):
-
-```toml
-[dotfiles]
-repository = "https://github.com/user/dotfiles"
-targetPath = "~/dotfiles"        # optional, default ~/dotfiles
-installCommand = "install.sh"    # optional, auto-detect if omitted
-```
-
-The plugin auto-detects install scripts in order: `install.sh`, `bootstrap.sh`, `setup.sh`. If none are found, only the clone happens. The `installCommand` override skips auto-detection.
-
-Tilde (`~`) in `targetPath` expands to the remote user's home directory inside the container.
-
-### shell-history
-
-Persists bash/zsh history across container recreations by bind-mounting a history directory from workspace state and setting `HISTFILE`.
-
-### ssh
-
-Shares SSH configuration and enables agent forwarding. Four components:
-
-1. **SSH agent forwarding:** Bind-mounts the host's `SSH_AUTH_SOCK` socket into the container at `/tmp/ssh-agent.sock` and sets the `SSH_AUTH_SOCK` env var. No-op if the agent is not running.
-
-2. **SSH config:** Copies `~/.ssh/config` into the container so host aliases, proxy settings, and other SSH config are available.
-
-3. **SSH public keys:** Copies `*.pub` files from `~/.ssh/` into the container. Private keys are not copied. Git commit signing works via the forwarded SSH agent (requires OpenSSH 8.2+, which can sign using only the public key plus the agent).
-
-4. **Git SSH signing config:** If the host's git config has `gpg.format = ssh`, the plugin extracts signing-related settings (`user.name`, `user.email`, `user.signingkey`, `gpg.format`, `gpg.ssh.program`, `commit.gpgsign`, `tag.gpgsign`) and generates a minimal `.gitconfig` for the container. The `user.signingkey` path is rewritten from the host home to the container home. Skipped entirely if git is not configured for SSH signing.
+- **coding-agents**: Uses `FileCopy` (not bind mounts) because Claude Code does atomic renames on `~/.claude.json`. Supports host and workspace credential modes via `customizations.crib.coding-agents.credentials`.
+- **dotfiles**: Uses `PostContainerCreate` (not `PreContainerRun`) because it needs to run `git clone` inside the container via the `Exec` callback. Configured via global config, not devcontainer.json.
+- **shell-history**: Bind-mounts a directory (not a file) to avoid `EBUSY` on atomic renames when the shell saves history.
+- **ssh**: Four components (agent forwarding, config, public keys, git signing config). Private keys are never copied. Signing works via the forwarded agent.
 
 ## Future: External Plugins
 
