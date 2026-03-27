@@ -19,10 +19,11 @@ import (
 
 // mockDriver implements the Driver interface for testing.
 type mockDriver struct {
-	mu        sync.Mutex // protects execCalls from concurrent hook execution
-	execCalls []mockExecCall
-	responses map[string]string
-	errors    map[string]error
+	mu           sync.Mutex // protects execCalls from concurrent hook execution
+	execCalls    []mockExecCall
+	responses    map[string]string
+	errors       map[string]error
+	execCallback func(cmd []string) // optional callback on each exec
 }
 
 type mockExecCall struct {
@@ -57,7 +58,12 @@ func (m *mockDriver) DeleteContainer(ctx context.Context, workspaceID, container
 func (m *mockDriver) ExecContainer(ctx context.Context, workspaceID, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer, env []string, user string) error {
 	m.mu.Lock()
 	m.execCalls = append(m.execCalls, mockExecCall{cmd: cmd, env: env})
+	cb := m.execCallback
 	m.mu.Unlock()
+
+	if cb != nil {
+		cb(cmd)
+	}
 
 	// Try full command key first, then fall back to legacy prefix matching.
 	fullKey := strings.Join(cmd, " ")

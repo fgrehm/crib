@@ -527,6 +527,122 @@ func TestFinalize_PreservesPathPrepend_FromSnapshot(t *testing.T) {
 	}
 }
 
+func TestFinalize_FreshSetup_CallsPostContainerCreatePlugins(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-fin-postcreate", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := &mockDriver{responses: map[string]string{}}
+	var postCreateCalled bool
+	tp := &testPlugin{
+		resp: &plugin.PreContainerRunResponse{},
+	}
+	// Use a custom stubPlugin that tracks PostContainerCreate calls.
+	mgr := plugin.NewManager(slog.Default())
+	stubP := &postCreateTracker{name: "tracker", called: &postCreateCalled}
+	mgr.Register(tp)
+	mgr.Register(stubP)
+
+	eng := &Engine{
+		driver:   mockDrv,
+		store:    store,
+		plugins:  mgr,
+		logger:   slog.Default(),
+		stdout:   io.Discard,
+		stderr:   io.Discard,
+		progress: func(ProgressEvent) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.RemoteUser = "vscode"
+
+	cc := containerContext{
+		workspaceID:     ws.ID,
+		containerID:     "container-1",
+		workspaceFolder: "/workspaces/project",
+	}
+
+	_, err := eng.finalize(context.Background(), ws, cfg, finalizeOpts{
+		cc:        cc,
+		imageName: "ubuntu:22.04",
+	})
+	if err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+
+	if !postCreateCalled {
+		t.Error("PostContainerCreate should be called in fresh setup path")
+	}
+}
+
+func TestFinalize_FromSnapshot_DoesNotCallPostContainerCreatePlugins(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-fin-nopostcreate", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := &mockDriver{responses: map[string]string{}}
+	var postCreateCalled bool
+	mgr := plugin.NewManager(slog.Default())
+	stubP := &postCreateTracker{name: "tracker", called: &postCreateCalled}
+	mgr.Register(stubP)
+
+	eng := &Engine{
+		driver:   mockDrv,
+		store:    store,
+		plugins:  mgr,
+		logger:   slog.Default(),
+		stdout:   io.Discard,
+		stderr:   io.Discard,
+		progress: func(ProgressEvent) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.RemoteUser = "vscode"
+
+	cc := containerContext{
+		workspaceID:     ws.ID,
+		containerID:     "container-1",
+		workspaceFolder: "/workspaces/project",
+	}
+
+	storedResult := &workspace.Result{
+		ImageName:  "ubuntu:22.04",
+		RemoteUser: "vscode",
+		RemoteEnv:  map[string]string{"PATH": "/usr/bin"},
+	}
+
+	_, err := eng.finalize(context.Background(), ws, cfg, finalizeOpts{
+		cc:           cc,
+		imageName:    "ubuntu:22.04",
+		storedResult: storedResult,
+		fromSnapshot: true,
+	})
+	if err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+
+	if postCreateCalled {
+		t.Error("PostContainerCreate should NOT be called in snapshot/resume path")
+	}
+}
+
+// postCreateTracker is a test plugin that tracks PostContainerCreate calls.
+type postCreateTracker struct {
+	plugin.BasePlugin
+	name   string
+	called *bool
+}
+
+func (p *postCreateTracker) Name() string { return p.name }
+func (p *postCreateTracker) PostContainerCreate(_ context.Context, _ *plugin.PostContainerCreateRequest) (*plugin.PostContainerCreateResponse, error) {
+	*p.called = true
+	return nil, nil
+}
+
 func TestFinalize_RemoteUserSkippedWhenPreset(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-fin-user", Source: "/home/user/project"}
