@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/fgrehm/crib/internal/globalconfig"
 	"github.com/fgrehm/crib/internal/plugin"
@@ -50,7 +51,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	if strings.Contains(p.cfg.Repository, "@") || strings.HasPrefix(p.cfg.Repository, "ssh://") {
 		cloneCmd = []string{"sh", "-c", "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone " + shellQuote(p.cfg.Repository) + " " + shellQuote(targetPath)}
 	}
-	if _, err := req.Exec(ctx, cloneCmd, req.RemoteUser, ""); err != nil {
+	if err := execWithRetry(ctx, req, cloneCmd, req.RemoteUser, "", 3); err != nil {
 		slog.Warn("dotfiles: clone failed", "repo", p.cfg.Repository, "error", err)
 		return nil, nil
 	}
@@ -81,6 +82,23 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	}
 
 	return nil, nil
+}
+
+// execWithRetry runs a command up to maxAttempts times, waiting briefly
+// between attempts. Retries help with transient DNS failures that are
+// common on rootless Podman.
+func execWithRetry(ctx context.Context, req *plugin.PostContainerCreateRequest, cmd []string, user, workDir string, maxAttempts int) error {
+	var err error
+	for i := range maxAttempts {
+		if _, err = req.Exec(ctx, cmd, user, workDir); err == nil {
+			return nil
+		}
+		if i < maxAttempts-1 {
+			slog.Debug("dotfiles: retrying after transient failure", "attempt", i+1, "error", err)
+			time.Sleep(2 * time.Second)
+		}
+	}
+	return err
 }
 
 // shellQuote wraps s in single quotes, escaping any embedded single quotes.
