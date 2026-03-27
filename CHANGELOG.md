@@ -7,13 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-03-28
+
 ### Added
 
+- `crib stop` command: non-destructive stop that preserves the container and
+  hook markers. The next `crib up` resumes with only postStartCommand and
+  postAttachCommand, same as restarting a stopped container.
+- **Dotfiles plugin**: automatically clones and installs a dotfiles repository
+  inside the container on creation. Configured via global config
+  (`~/.config/crib/config.toml`). Supports custom target path, install command
+  override, and auto-detection of `install.sh`/`bootstrap.sh`/`setup.sh`.
+  See [#17](https://github.com/fgrehm/crib/issues/17).
+- **Global config** (`~/.config/crib/config.toml`, respects `$XDG_CONFIG_HOME`):
+  TOML file for user-level settings applied across all workspaces. Currently
+  supports `[dotfiles]` configuration (repository, targetPath, installCommand).
+- `PostContainerCreate` plugin hook: runs between `postCreateCommand` and
+  `postStartCommand` during fresh container creation. Provides an `Exec`
+  callback for running commands inside the container. Plugins that only need
+  this hook can embed `plugin.BasePlugin` to get no-op defaults for other
+  methods.
 - Workspace file lock prevents concurrent state-mutating commands (up, down,
   rebuild, restart, remove) from racing on the same workspace.
 
 ### Changed
 
+- `stop` is no longer an alias for `down`. `crib stop` pauses the container
+  (non-destructive), `crib down` removes it (destructive, clears hook markers).
+- The `crib.home` container label is now only applied when `CRIB_HOME` is
+  explicitly set. Regular users no longer see it on their containers. The label
+  still works for multi-store isolation in tests and CI.
 - Progress reporting uses typed events internally (`ProgressEvent` with phase
   and message) instead of raw strings. No user-visible change.
 - Logging consistency: config path change demoted from Info to Debug; removed
@@ -23,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LoadProject` now threads caller-supplied environment variables (e.g.
   `localWorkspaceFolder`, `devcontainerId`) through to compose-go's loader
   for `${VAR}` substitution. Previously accepted but silently ignored.
+- Compose stop/down now reuse the persisted `compose-override.yml` from
+  `crib up` instead of generating temporary override files.
 
 ### Fixed
 

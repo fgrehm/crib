@@ -12,11 +12,12 @@ internal/plugin/
   plugin.go           -> Plugin interface and types
   manager.go          -> Registration and event dispatch
   codingagents/       -> Claude Code credentials plugin
+  dotfiles/           -> Dotfiles repository cloning and installation
   shellhistory/       -> Persistent shell history plugin
   ssh/                -> SSH agent forwarding, keys, and git signing
 ```
 
-Plugins are registered in `cmd/root.go` via `setupPlugins()` and dispatched by the engine during both `upSingle()` (initial container creation) and `restartRecreateSingle()` (container recreation triggered by `crib restart`).
+Plugins are registered in `cmd/root.go` via `setupPlugins()` and dispatched by the engine during container creation, recreation, and post-creation setup.
 
 ## Plugin Interface
 
@@ -26,6 +27,7 @@ Every plugin implements `plugin.Plugin`:
 type Plugin interface {
     Name() string
     PreContainerRun(ctx context.Context, req *PreContainerRunRequest) (*PreContainerRunResponse, error)
+    PostContainerCreate(ctx context.Context, req *PostContainerCreateRequest) (*PostContainerCreateResponse, error)
 }
 ```
 
@@ -86,6 +88,34 @@ Example devcontainer.json:
 | `RunArgs` | `[]string`          | Appended in plugin order    | Before container creation |
 | `Copies`  | `[]plugin.FileCopy` | Appended in plugin order    | After container creation  |
 
+### PostContainerCreate
+
+`PostContainerCreate` runs inside a freshly created container, between `postCreateCommand` and `postStartCommand`. It does not run on resume or restart (the effects are baked into the snapshot).
+
+The request provides an `Exec` callback for running commands inside the container:
+
+| Field             | Description                                          |
+|-------------------|------------------------------------------------------|
+| `WorkspaceID`     | Unique workspace identifier                          |
+| `WorkspaceDir`    | `~/.crib/workspaces/{id}/`                           |
+| `ContainerID`     | Running container ID                                 |
+| `RemoteUser`      | User inside the container                            |
+| `WorkspaceFolder` | Path inside container (e.g. `/workspaces/proj`)      |
+| `Exec`            | `func(ctx, cmd, user, workDir) ([]byte, error)`      |
+
+Return `nil, nil` for no-op. Errors are logged and skipped (fail-open).
+
+### BasePlugin
+
+Plugins that only need one hook can embed `plugin.BasePlugin` to get no-op defaults for the other:
+
+```go
+type Plugin struct {
+    plugin.BasePlugin  // provides no-op PreContainerRun and PostContainerCreate
+    // ...
+}
+```
+
 ### FileCopy
 
 `FileCopy` describes a file to inject into the container after creation via `docker exec`:
@@ -122,11 +152,15 @@ import (
     "github.com/fgrehm/crib/internal/plugin"
 )
 
-type Plugin struct{}
+type Plugin struct {
+    plugin.BasePlugin  // no-op defaults for hooks you don't need
+}
 
 func New() *Plugin { return &Plugin{} }
 
 func (p *Plugin) Name() string { return "your-plugin" }
+
+// Implement only the hooks you need. BasePlugin provides no-ops for the rest.
 
 func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunRequest) (*plugin.PreContainerRunResponse, error) {
     // Return nil for no-op (e.g. when prerequisite files don't exist).
@@ -215,7 +249,18 @@ upSingle()                               restartRecreateSingle()
     chownPluginVolumes()                     (skip on restart)
     resolveRemoteUser()                      (already set)
     saveResult() (early)                     saveResult() (early)
-    setupContainer() / hooks                 resumeHooks()
+    setupContainer()                         resumeHooks()
+      runCreateHooks()                         postStartCommand
+        onCreateCommand                        postAttachCommand
+        updateContentCommand
+        postCreateCommand
+      RunPostContainerCreate()               (not called on resume)
+        plugin1.PostContainerCreate()
+        plugin2.PostContainerCreate()
+      runStartHooks()
+        postStartCommand
+        postAttachCommand
+    commitSnapshot()
     saveResult() (final)                     saveResult() (final)
 ```
 
@@ -244,6 +289,23 @@ Shares Claude Code credentials with containers. Two modes:
 In workspace mode, host credentials are not injected. Instead, a persistent directory is bind-mounted to `~/.claude/` inside the container. The user authenticates inside the container on first use, and credentials survive container rebuilds.
 
 A minimal `~/.claude.json` with `{"hasCompletedOnboarding":true}` is re-injected via FileCopy on each rebuild to skip the Claude Code onboarding flow. This file is not persisted because Claude Code does atomic renames on it.
+
+### dotfiles
+
+Clones and installs a user's dotfiles repository inside the container on creation. Uses the `PostContainerCreate` hook (not `PreContainerRun`) because it needs to run commands inside the container via the `Exec` callback.
+
+Configured via global config (`~/.config/crib/config.toml`):
+
+```toml
+[dotfiles]
+repository = "https://github.com/user/dotfiles"
+targetPath = "~/dotfiles"        # optional, default ~/dotfiles
+installCommand = "install.sh"    # optional, auto-detect if omitted
+```
+
+The plugin auto-detects install scripts in order: `install.sh`, `bootstrap.sh`, `setup.sh`. If none are found, only the clone happens. The `installCommand` override skips auto-detection.
+
+Tilde (`~`) in `targetPath` expands to the remote user's home directory inside the container.
 
 ### shell-history
 
