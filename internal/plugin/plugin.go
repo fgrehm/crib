@@ -11,6 +11,40 @@ import (
 type Plugin interface {
 	Name() string
 	PreContainerRun(ctx context.Context, req *PreContainerRunRequest) (*PreContainerRunResponse, error)
+	PostContainerCreate(ctx context.Context, req *PostContainerCreateRequest) (*PostContainerCreateResponse, error)
+}
+
+// ExecFunc runs a command inside the container. Returns combined output and error.
+type ExecFunc func(ctx context.Context, cmd []string, user string, workDir string) ([]byte, error)
+
+// PostContainerCreateRequest provides context for post-creation hooks.
+// Plugins that need to run commands inside the container (e.g. dotfiles
+// installation) use the Exec callback.
+type PostContainerCreateRequest struct {
+	WorkspaceID     string
+	WorkspaceDir    string
+	ContainerID     string
+	RemoteUser      string
+	WorkspaceFolder string
+	Exec            ExecFunc
+}
+
+// PostContainerCreateResponse carries results from post-creation hooks.
+// Empty for now, keeps the interface consistent with PreContainerRun.
+type PostContainerCreateResponse struct{}
+
+// BasePlugin provides no-op implementations of optional Plugin methods.
+// Embed it in plugin structs to satisfy the interface without boilerplate.
+type BasePlugin struct{}
+
+// PreContainerRun is a no-op. Override in plugins that need pre-run logic.
+func (BasePlugin) PreContainerRun(_ context.Context, _ *PreContainerRunRequest) (*PreContainerRunResponse, error) {
+	return nil, nil
+}
+
+// PostContainerCreate is a no-op. Override in plugins that need post-creation logic.
+func (BasePlugin) PostContainerCreate(_ context.Context, _ *PostContainerCreateRequest) (*PostContainerCreateResponse, error) {
+	return nil, nil
 }
 
 // PreContainerRunRequest carries context about the workspace and container

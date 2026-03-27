@@ -19,7 +19,9 @@ const (
 // the history directory from the workspace state directory and setting HISTFILE.
 // We mount the directory (not the file) so that shells like zsh can do atomic
 // renames when saving history (e.g. writing .shell_history.new then renaming).
-type Plugin struct{}
+type Plugin struct {
+	plugin.BasePlugin
+}
 
 // New creates a shell-history plugin.
 func New() *Plugin {
@@ -65,4 +67,3 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 		},
 	}, nil
 }
-

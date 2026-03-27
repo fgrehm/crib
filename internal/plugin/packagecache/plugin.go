@@ -52,6 +52,7 @@ const GlobalVolumePrefix = "crib-cache-"
 
 // Plugin shares host package caches via named Docker volumes.
 type Plugin struct {
+	plugin.BasePlugin
 	providers []string
 }
 

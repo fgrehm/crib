@@ -11,14 +11,21 @@ import (
 
 // stubPlugin is a test helper that implements Plugin with configurable behavior.
 type stubPlugin struct {
-	name string
-	resp *PreContainerRunResponse
-	err  error
+	name         string
+	resp         *PreContainerRunResponse
+	err          error
+	postCreateFn func(context.Context, *PostContainerCreateRequest) (*PostContainerCreateResponse, error)
 }
 
 func (s *stubPlugin) Name() string { return s.name }
 func (s *stubPlugin) PreContainerRun(_ context.Context, _ *PreContainerRunRequest) (*PreContainerRunResponse, error) {
 	return s.resp, s.err
+}
+func (s *stubPlugin) PostContainerCreate(ctx context.Context, req *PostContainerCreateRequest) (*PostContainerCreateResponse, error) {
+	if s.postCreateFn != nil {
+		return s.postCreateFn(ctx, req)
+	}
+	return nil, nil
 }
 
 func testManager() *Manager {
@@ -191,6 +198,62 @@ func TestRunPreContainerRun_CopiesAppended(t *testing.T) {
 	}
 	if resp.Copies[0].Source != "/host/a" || resp.Copies[1].Source != "/host/b" {
 		t.Errorf("copies not in expected order: %v", resp.Copies)
+	}
+}
+
+func TestRunPostContainerCreate_Dispatches(t *testing.T) {
+	mgr := testManager()
+	var called []string
+	mgr.Register(&stubPlugin{
+		name: "plugin-a",
+		postCreateFn: func(_ context.Context, _ *PostContainerCreateRequest) (*PostContainerCreateResponse, error) {
+			called = append(called, "a")
+			return nil, nil
+		},
+	})
+	mgr.Register(&stubPlugin{
+		name: "plugin-b",
+		postCreateFn: func(_ context.Context, _ *PostContainerCreateRequest) (*PostContainerCreateResponse, error) {
+			called = append(called, "b")
+			return nil, nil
+		},
+	})
+
+	mgr.RunPostContainerCreate(context.Background(), &PostContainerCreateRequest{
+		WorkspaceID: "test-ws",
+		ContainerID: "abc123",
+		RemoteUser:  "vscode",
+	})
+
+	if len(called) != 2 || called[0] != "a" || called[1] != "b" {
+		t.Errorf("expected [a b], got %v", called)
+	}
+}
+
+func TestRunPostContainerCreate_FailOpen(t *testing.T) {
+	mgr := testManager()
+	var called bool
+	mgr.Register(&stubPlugin{
+		name: "failing",
+		postCreateFn: func(_ context.Context, _ *PostContainerCreateRequest) (*PostContainerCreateResponse, error) {
+			return nil, errors.New("install failed")
+		},
+	})
+	mgr.Register(&stubPlugin{
+		name: "good",
+		postCreateFn: func(_ context.Context, _ *PostContainerCreateRequest) (*PostContainerCreateResponse, error) {
+			called = true
+			return nil, nil
+		},
+	})
+
+	mgr.RunPostContainerCreate(context.Background(), &PostContainerCreateRequest{
+		WorkspaceID: "test-ws",
+		ContainerID: "abc123",
+	})
+
+	if !called {
+		t.Error("second plugin should still run after first fails")
 	}
 }
 
