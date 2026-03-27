@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/fgrehm/crib/internal/config"
@@ -91,7 +90,7 @@ func (b *composeBackend) createContainer(ctx context.Context, opts createOpts) (
 }
 
 func (b *composeBackend) deleteExisting(ctx context.Context) error {
-	return b.e.composeDown(ctx, b.inv, false)
+	return b.e.composeDown(ctx, b.inv, b.ws.ID, false)
 }
 
 func (b *composeBackend) restart(ctx context.Context, containerID string, pluginResp *plugin.PreContainerRunResponse) (string, error) {
@@ -134,8 +133,7 @@ func (b *composeBackend) prepareOverride(ctx context.Context, pluginResp *plugin
 		b.e.logger.Warn("failed to regenerate compose override", "error", err)
 	}
 
-	overridePath := filepath.Join(b.e.store.WorkspaceDir(b.ws.ID), "compose-override.yml")
-	return append(b.inv.files[:len(b.inv.files):len(b.inv.files)], overridePath)
+	return b.e.composeFilesWithOverride(b.inv.files, b.ws.ID)
 }
 
 // findRunningContainer locates the primary service container and verifies

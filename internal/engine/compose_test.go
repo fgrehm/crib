@@ -846,88 +846,58 @@ func TestGenerateComposeOverride_DeduplicatesWorkspaceMount(t *testing.T) {
 	}
 }
 
-func TestWritePodmanDownOverride_RootlessPodman(t *testing.T) {
-	origGetuid := getuid
-	t.Cleanup(func() { getuid = origGetuid })
-	getuid = func() int { return 1000 }
-
-	e := &Engine{compose: compose.NewHelperFromRuntime("podman")}
-
-	dir := t.TempDir()
-	composeFile := filepath.Join(dir, "compose.yml")
-	if err := os.WriteFile(composeFile, []byte("services:\n  app:\n    image: alpine\n"), 0o644); err != nil {
+func TestComposeFilesWithOverride_IncludesExistingOverride(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	wsID := "test-compose-override"
+	wsDir := store.WorkspaceDir(wsID)
+	if err := os.MkdirAll(wsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	path, ok := e.writePodmanDownOverride([]string{composeFile})
-	if !ok {
-		t.Fatal("expected override to be written for rootless podman")
-	}
-	t.Cleanup(func() { os.Remove(path) })
-
-	data, err := os.ReadFile(path)
-	if err != nil {
+	overridePath := filepath.Join(wsDir, "compose-override.yml")
+	if err := os.WriteFile(overridePath, []byte("services: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	content := string(data)
-	if !strings.Contains(content, "x-podman:") || !strings.Contains(content, "in_pod: false") {
-		t.Errorf("unexpected override content:\n%s", content)
+
+	e := &Engine{store: store}
+	base := []string{"compose.yml"}
+	result := e.composeFilesWithOverride(base, wsID)
+
+	if len(result) != 2 {
+		t.Fatalf("expected 2 files, got %d: %v", len(result), result)
+	}
+	if result[1] != overridePath {
+		t.Errorf("expected override path %q, got %q", overridePath, result[1])
 	}
 }
 
-func TestWritePodmanDownOverride_Docker(t *testing.T) {
-	origGetuid := getuid
-	t.Cleanup(func() { getuid = origGetuid })
-	getuid = func() int { return 1000 }
+func TestComposeFilesWithOverride_NoOverride(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	e := &Engine{store: store}
+	base := []string{"compose.yml"}
+	result := e.composeFilesWithOverride(base, "nonexistent-ws")
 
-	e := &Engine{compose: compose.NewHelperFromRuntime("docker")}
-
-	dir := t.TempDir()
-	composeFile := filepath.Join(dir, "compose.yml")
-	if err := os.WriteFile(composeFile, []byte("services:\n  app:\n    image: alpine\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, ok := e.writePodmanDownOverride([]string{composeFile})
-	if ok {
-		t.Error("docker should not create podman override")
+	if len(result) != 1 {
+		t.Fatalf("expected 1 file when no override exists, got %d: %v", len(result), result)
 	}
 }
 
-func TestWritePodmanDownOverride_SkipsWhenUsernsSet(t *testing.T) {
-	origGetuid := getuid
-	t.Cleanup(func() { getuid = origGetuid })
-	getuid = func() int { return 1000 }
-
-	e := &Engine{compose: compose.NewHelperFromRuntime("podman")}
-
-	dir := t.TempDir()
-	composeFile := filepath.Join(dir, "compose.yml")
-	if err := os.WriteFile(composeFile, []byte("services:\n  app:\n    userns_mode: host\n"), 0o644); err != nil {
+func TestComposeFilesWithOverride_DoesNotMutateInput(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	wsID := "test-no-mutate"
+	wsDir := store.WorkspaceDir(wsID)
+	if err := os.MkdirAll(wsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wsDir, "compose-override.yml"), []byte("services: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	_, ok := e.writePodmanDownOverride([]string{composeFile})
-	if ok {
-		t.Error("should skip override when compose files already set userns_mode")
-	}
-}
+	e := &Engine{store: store}
+	base := []string{"compose.yml"}
+	_ = e.composeFilesWithOverride(base, wsID)
 
-func TestWritePodmanDownOverride_RootPodman(t *testing.T) {
-	origGetuid := getuid
-	t.Cleanup(func() { getuid = origGetuid })
-	getuid = func() int { return 0 }
-
-	e := &Engine{compose: compose.NewHelperFromRuntime("podman")}
-
-	dir := t.TempDir()
-	composeFile := filepath.Join(dir, "compose.yml")
-	if err := os.WriteFile(composeFile, []byte("services:\n  app:\n    image: alpine\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, ok := e.writePodmanDownOverride([]string{composeFile})
-	if ok {
-		t.Error("root podman should not create override")
+	if len(base) != 1 {
+		t.Errorf("input slice was mutated: len=%d", len(base))
 	}
 }

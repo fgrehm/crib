@@ -443,7 +443,7 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
 			if e.compose != nil {
 				inv := newComposeInvocation(ws, &cfg, result.WorkspaceFolder)
-				return e.composeDown(ctx, inv, false)
+				return e.composeDown(ctx, inv, ws.ID, false)
 			}
 		}
 	}
@@ -472,7 +472,7 @@ func (e *Engine) Stop(ctx context.Context, ws *workspace.Workspace) error {
 		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
 			if e.compose != nil {
 				inv := newComposeInvocation(ws, &cfg, result.WorkspaceFolder)
-				return e.composeStop(ctx, inv)
+				return e.composeStop(ctx, inv, ws.ID)
 			}
 		}
 	}
@@ -544,7 +544,7 @@ func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
 		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
 			if e.compose != nil {
 				inv := newComposeInvocation(ws, &cfg, result.WorkspaceFolder)
-				if err := e.composeDown(ctx, inv, true); err != nil {
+				if err := e.composeDown(ctx, inv, ws.ID, true); err != nil {
 					e.logger.Warn("failed to remove compose services", "error", err)
 				}
 				composeTornDown = true
