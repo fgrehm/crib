@@ -30,7 +30,7 @@ audit: ## Run complexity and dead-code analysis (informational)
 	@go tool deadcode ./... 2>&1 || true
 
 deadcode: ## Check for dead code (hard gate, matches CI)
-	@out=$$(go tool deadcode ./... 2>&1); \
+	@out=$$(go tool deadcode ./...); \
 	if [ -n "$$out" ]; then \
 		echo "Unreachable functions detected by deadcode:"; \
 		echo "$$out"; \
