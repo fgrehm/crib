@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 
+	composetypes "github.com/compose-spec/compose-go/v2/types"
+
 	composehelper "github.com/fgrehm/crib/internal/compose"
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/dockerfile"
@@ -33,7 +35,7 @@ func (e *Engine) buildComposeFeatures(ctx context.Context, ws *workspace.Workspa
 	var baseImage string
 	if svcInfo.HasBuild {
 		// Build-based service: run compose build first to produce the base image.
-		e.reportProgress("Building service...")
+		e.reportProgress(PhaseBuild, "Building service...")
 		if err := e.compose.Build(ctx, inv.projectName, inv.files, []string{serviceName}, e.stdout, e.stderr, inv.env); err != nil {
 			return nil, fmt.Errorf("building compose service: %w", err)
 		}
@@ -125,28 +127,66 @@ func (e *Engine) resolveComposeDockerfileInfo(svcInfo *composehelper.ServiceInfo
 	return baseImage, user
 }
 
-// generateComposeOverride creates a temporary compose override file that adds
-// crib-specific labels and configuration to the target service.
-// pluginResp may be nil; when non-nil, plugin mounts and env are included.
+// featureOverrides holds capabilities and runtime configuration declared by
+// DevContainer Features, collected from image metadata.
+type featureOverrides struct {
+	Privileged  bool
+	Init        bool
+	CapAdd      []string
+	SecurityOpt []string
+	Env         map[string]string
+	Mounts      []config.Mount
+}
+
+// collectFeatureOverrides gathers feature-declared capabilities, env, and
+// mounts from image metadata, applying variable substitution to values.
+// If subCtx is nil, no substitution is performed.
+func collectFeatureOverrides(metadata []*config.ImageMetadata, subCtx *config.SubstitutionContext) featureOverrides {
+	sub := func(s string) string {
+		if subCtx == nil {
+			return s
+		}
+		return config.SubstituteString(subCtx, s)
+	}
+
+	ov := featureOverrides{Env: make(map[string]string)}
+	for _, m := range metadata {
+		if !ov.Privileged && m.Privileged != nil && *m.Privileged {
+			ov.Privileged = true
+		}
+		if !ov.Init && m.Init != nil && *m.Init {
+			ov.Init = true
+		}
+		ov.CapAdd = append(ov.CapAdd, m.CapAdd...)
+		ov.SecurityOpt = append(ov.SecurityOpt, m.SecurityOpt...)
+		for k, v := range m.ContainerEnv {
+			ov.Env[k] = sub(v)
+		}
+		for _, mount := range m.Mounts {
+			mount.Source = sub(mount.Source)
+			mount.Target = sub(mount.Target)
+			ov.Mounts = append(ov.Mounts, mount)
+		}
+	}
+	return ov
+}
+
 // generateComposeOverride creates a compose override file with crib-specific
-// configuration (labels, entrypoint, env, mounts, etc.). featureMetadata is
-// optional; when non-nil, feature-declared capabilities (privileged, init,
-// capAdd, entrypoints) are included in the override.
+// configuration (labels, entrypoint, env, mounts, etc.) using compose-go types.
+// featureMetadata is optional; when non-nil, feature-declared capabilities
+// (privileged, init, capAdd, entrypoints) are included in the override.
 func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, composeFiles []string, featureImage string, pluginResp *plugin.PreContainerRunResponse, featureMetadata ...*config.ImageMetadata) (string, error) {
 	serviceName := cfg.Service
 
-	// Build the override YAML.
-	var b strings.Builder
-	b.WriteString("services:\n")
-	fmt.Fprintf(&b, "  %s:\n", serviceName)
+	svc := composetypes.ServiceConfig{
+		Labels: composetypes.Labels{
+			ocidriver.LabelWorkspace: ws.ID,
+			ocidriver.LabelHome:      e.store.BaseDir(),
+		},
+	}
 
-	// Add workspace label for container discovery.
-	b.WriteString("    labels:\n")
-	fmt.Fprintf(&b, "      %s: %q\n", ocidriver.LabelWorkspace, ws.ID)
-
-	// Override image if a feature image was built.
 	if featureImage != "" {
-		fmt.Fprintf(&b, "    image: %s\n", featureImage)
+		svc.Image = featureImage
 	}
 
 	// Check if features declare entrypoints (baked into image ENTRYPOINT).
@@ -160,170 +200,181 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 
 	// Override entrypoint/command to keep the container alive.
 	overrideCommand := cfg.OverrideCommand == nil || *cfg.OverrideCommand
+	sleepCmd := sleepScript
 	if overrideCommand {
 		if hasFeatureEntrypoints {
 			// Feature entrypoints are baked into the image. Don't
 			// override entrypoint; only set command as a full command
 			// so the feature entrypoint can exec into it.
-			b.WriteString("    command:\n")
-			b.WriteString("      - /bin/sh\n")
-			b.WriteString("      - -c\n")
-			b.WriteString("      - 'echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity'\n")
+			svc.Command = composetypes.ShellCommand{"/bin/sh", "-c", sleepCmd}
 		} else {
-			b.WriteString("    entrypoint: /bin/sh\n")
-			b.WriteString("    command:\n")
-			b.WriteString("      - -c\n")
-			b.WriteString("      - 'echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity'\n")
+			svc.Entrypoint = composetypes.ShellCommand{"/bin/sh"}
+			svc.Command = composetypes.ShellCommand{"-c", sleepCmd}
 		}
 	}
 
-	// Apply feature capabilities and collect mounts/env with variable substitution.
+	// Collect feature capabilities, env, and mounts.
 	subCtx := &config.SubstitutionContext{
 		DevContainerID:           ws.ID,
 		LocalWorkspaceFolder:     ws.Source,
 		ContainerWorkspaceFolder: workspaceFolder,
 		Env:                      envMap(),
 	}
-	featureEnv, featureMounts := writeFeatureOverrides(&b, featureMetadata, subCtx)
+	featOv := collectFeatureOverrides(featureMetadata, subCtx)
 
-	// Container environment (config + plugins + features).
-	hasConfigEnv := len(cfg.ContainerEnv) > 0
-	hasPluginEnv := pluginResp != nil && len(pluginResp.Env) > 0
-	hasFeatureEnv := len(featureEnv) > 0
-	if hasConfigEnv || hasPluginEnv || hasFeatureEnv {
-		b.WriteString("    environment:\n")
-		for k, v := range cfg.ContainerEnv {
-			fmt.Fprintf(&b, "      %s: %q\n", k, v)
-		}
-		for k, v := range featureEnv {
-			fmt.Fprintf(&b, "      %s: %q\n", k, v)
-		}
-		if hasPluginEnv {
-			for k, v := range pluginResp.Env {
-				fmt.Fprintf(&b, "      %s: %q\n", k, v)
-			}
-		}
+	svc.Privileged = featOv.Privileged
+	if featOv.Init {
+		initTrue := true
+		svc.Init = &initTrue
 	}
+	svc.CapAdd = featOv.CapAdd
+	svc.SecurityOpt = featOv.SecurityOpt
 
-	// Volumes: workspace mount + plugin mounts + feature mounts.
-	useDefaultWorkspaceMount := cfg.WorkspaceMount == ""
-	hasPluginMounts := pluginResp != nil && len(pluginResp.Mounts) > 0
-	hasFeatureMounts := len(featureMounts) > 0
-	if useDefaultWorkspaceMount || hasPluginMounts || hasFeatureMounts {
-		b.WriteString("    volumes:\n")
-		if useDefaultWorkspaceMount {
-			fmt.Fprintf(&b, "      - %s:%s\n", ws.Source, workspaceFolder)
-		}
-		for _, m := range featureMounts {
-			fmt.Fprintf(&b, "      - %s:%s\n", m.Source, m.Target)
-		}
-		if hasPluginMounts {
-			for _, m := range pluginResp.Mounts {
-				fmt.Fprintf(&b, "      - %s:%s\n", m.Source, m.Target)
-			}
-		}
+	svc.Environment = buildOverrideEnv(cfg, featOv, pluginResp)
+
+	// Load existing volume targets from the user's compose files so we
+	// don't produce duplicate mount destinations in the override. Compose
+	// deduplicates short-form volumes by target during merge, but not
+	// when the override uses long-form (compose-go's output format).
+	composeEnv := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
+	existingTargets := e.existingVolumeTargets(composeFiles, serviceName, composeEnv)
+	svc.Volumes = buildOverrideVolumes(ws, cfg, workspaceFolder, featOv, pluginResp, existingTargets)
+
+	// Auto-inject userns_mode for rootless Podman.
+	isPodman := e.isRootlessPodman() && !composeFilesContainUserns(composeFiles)
+	if isPodman {
+		svc.UserNSMode = "keep-id"
 	}
 
-	// Auto-inject userns_mode: "keep-id" for rootless Podman to fix bind mount
-	// permissions. Skip if the user already set userns_mode in their compose files.
-	// Also disable podman-compose pod creation (x-podman.in_pod) because
-	// --userns and --pod are incompatible in Podman.
-	if e.isRootlessPodman() && !composeFilesContainUserns(composeFiles) {
-		b.WriteString("    userns_mode: \"keep-id\"\n")
-		b.WriteString("x-podman:\n")
-		b.WriteString("  in_pod: false\n")
+	project := &composetypes.Project{
+		Services: composetypes.Services{serviceName: svc},
 	}
 
-	// Top-level volumes: declarations for named volumes (e.g. package cache, features).
-	// Without this, compose rejects unknown volume references in the service.
-	namedVolSeen := make(map[string]bool)
-	var namedVolNames []string
-	for _, m := range featureMounts {
-		if m.Type == "volume" && !namedVolSeen[m.Source] {
-			namedVolSeen[m.Source] = true
-			namedVolNames = append(namedVolNames, m.Source)
-		}
-	}
-	if hasPluginMounts {
-		for _, m := range pluginResp.Mounts {
-			if m.Type == "volume" && !namedVolSeen[m.Source] {
-				namedVolSeen[m.Source] = true
-				namedVolNames = append(namedVolNames, m.Source)
-			}
-		}
-	}
-	if len(namedVolNames) > 0 {
-		b.WriteString("volumes:\n")
-		for _, name := range namedVolNames {
-			fmt.Fprintf(&b, "  %s:\n    name: %s\n", name, name)
+	project.Volumes = collectNamedVolumes(svc.Volumes)
+
+	// Disable podman-compose pod creation (incompatible with --userns).
+	if isPodman {
+		project.Extensions = composetypes.Extensions{
+			"x-podman": map[string]any{"in_pod": false},
 		}
 	}
 
-	// Persist the override in the workspace state directory so it survives
-	// for troubleshooting. The file is overwritten on every compose up.
+	// Marshal and persist.
+	yamlBytes, err := project.MarshalYAML()
+	if err != nil {
+		return "", fmt.Errorf("marshalling compose override: %w", err)
+	}
+
 	wsDir := e.store.WorkspaceDir(ws.ID)
 	if err := os.MkdirAll(wsDir, 0o755); err != nil {
 		return "", fmt.Errorf("creating workspace directory: %w", err)
 	}
 	overridePath := filepath.Join(wsDir, "compose-override.yml")
-	if err := os.WriteFile(overridePath, []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(overridePath, yamlBytes, 0o644); err != nil {
 		return "", fmt.Errorf("writing compose override: %w", err)
 	}
 
 	return overridePath, nil
 }
 
-// writeFeatureOverrides writes feature capabilities (privileged, init, cap_add,
-// security_opt) to the compose override YAML and returns collected feature env
-// and mounts with variable substitution applied.
-func writeFeatureOverrides(b *strings.Builder, metadata []*config.ImageMetadata, subCtx *config.SubstitutionContext) (env map[string]string, mounts []config.Mount) {
-	sub := func(s string) string { return config.SubstituteString(subCtx, s) }
+// buildOverrideEnv merges environment variables from config, features, and
+// plugins into a single MappingWithEquals for the compose override.
+func buildOverrideEnv(cfg *config.DevContainerConfig, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse) composetypes.MappingWithEquals {
+	env := composetypes.MappingWithEquals{}
+	for k, v := range cfg.ContainerEnv {
+		env[k] = &v
+	}
+	for k, v := range featOv.Env {
+		env[k] = &v
+	}
+	if pluginResp != nil {
+		for k, v := range pluginResp.Env {
+			env[k] = &v
+		}
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	return env
+}
 
-	for _, m := range metadata {
-		if m.Privileged != nil && *m.Privileged {
-			b.WriteString("    privileged: true\n")
-			break
+// buildOverrideVolumes assembles the service volume list from the workspace
+// bind mount, feature mounts, and plugin mounts. existingTargets contains
+// volume targets already defined in the user's compose files; mounts for
+// those targets are skipped to avoid "duplicate mount destination" errors
+// when compose merges the files.
+func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse, existingTargets map[string]bool) []composetypes.ServiceVolumeConfig {
+	var vols []composetypes.ServiceVolumeConfig
+	if cfg.WorkspaceMount == "" && !existingTargets[workspaceFolder] {
+		vols = append(vols, composetypes.ServiceVolumeConfig{
+			Type: "bind", Source: ws.Source, Target: workspaceFolder,
+		})
+	}
+	for _, m := range featOv.Mounts {
+		if !existingTargets[m.Target] {
+			vols = append(vols, toComposeVolume(m))
 		}
 	}
-	for _, m := range metadata {
-		if m.Init != nil && *m.Init {
-			b.WriteString("    init: true\n")
-			break
+	if pluginResp != nil {
+		for _, m := range pluginResp.Mounts {
+			if !existingTargets[m.Target] {
+				vols = append(vols, toComposeVolume(m))
+			}
 		}
 	}
-	var capAdds, secOpts []string
-	for _, m := range metadata {
-		capAdds = append(capAdds, m.CapAdd...)
-		secOpts = append(secOpts, m.SecurityOpt...)
-	}
-	if len(capAdds) > 0 {
-		b.WriteString("    cap_add:\n")
-		for _, c := range capAdds {
-			fmt.Fprintf(b, "      - %s\n", c)
-		}
-	}
-	if len(secOpts) > 0 {
-		b.WriteString("    security_opt:\n")
-		for _, s := range secOpts {
-			fmt.Fprintf(b, "      - %s\n", s)
-		}
-	}
+	return vols
+}
 
-	env = make(map[string]string)
-	for _, m := range metadata {
-		for k, v := range m.ContainerEnv {
-			env[k] = sub(v)
+// collectNamedVolumes returns top-level volume declarations for any "volume"
+// type mounts. Compose rejects unknown volume references without these.
+func collectNamedVolumes(vols []composetypes.ServiceVolumeConfig) composetypes.Volumes {
+	named := composetypes.Volumes{}
+	for _, v := range vols {
+		if v.Type == "volume" {
+			named[v.Source] = composetypes.VolumeConfig{Name: v.Source}
 		}
 	}
+	if len(named) == 0 {
+		return nil
+	}
+	return named
+}
 
-	for _, m := range metadata {
-		for _, mount := range m.Mounts {
-			mount.Source = sub(mount.Source)
-			mount.Target = sub(mount.Target)
-			mounts = append(mounts, mount)
+// existingVolumeTargets loads the user's compose files and returns the set of
+// volume target paths already defined for the given service. Returns nil on
+// any error (best-effort; the override will include all mounts and compose
+// may report a duplicate if one exists).
+func (e *Engine) existingVolumeTargets(composeFiles []string, service string, extraEnv []string) map[string]bool {
+	if len(composeFiles) == 0 {
+		return nil
+	}
+	project, err := composehelper.LoadProject(context.Background(), composeFiles, nil, extraEnv)
+	if err != nil {
+		e.logger.Debug("failed to load compose files for volume dedup", "error", err)
+		return nil
+	}
+	svc, err := project.GetService(service)
+	if err != nil {
+		return nil
+	}
+	targets := make(map[string]bool, len(svc.Volumes))
+	for _, v := range svc.Volumes {
+		if v.Target != "" {
+			targets[v.Target] = true
 		}
 	}
-	return env, mounts
+	return targets
+}
+
+// toComposeVolume converts a crib config.Mount to a compose ServiceVolumeConfig.
+func toComposeVolume(m config.Mount) composetypes.ServiceVolumeConfig {
+	typ := m.Type
+	if typ == "" {
+		typ = "bind"
+	}
+	return composetypes.ServiceVolumeConfig{
+		Type: typ, Source: m.Source, Target: m.Target,
+	}
 }
 
 // composeDown wraps compose.Down, including a temporary x-podman override when
@@ -345,12 +396,21 @@ func (e *Engine) writePodmanDownOverride(composeFiles []string) (string, bool) {
 	if !e.isRootlessPodman() || composeFilesContainUserns(composeFiles) {
 		return "", false
 	}
+	project := &composetypes.Project{
+		Extensions: composetypes.Extensions{
+			"x-podman": map[string]any{"in_pod": false},
+		},
+	}
+	yamlBytes, err := project.MarshalYAML()
+	if err != nil {
+		return "", false
+	}
 	f, err := os.CreateTemp("", "crib-podman-down-override-*.yml")
 	if err != nil {
 		return "", false
 	}
 	path := f.Name()
-	if _, err := f.WriteString("x-podman:\n  in_pod: false\n"); err != nil {
+	if _, err := f.Write(yamlBytes); err != nil {
 		_ = f.Close()
 		_ = os.Remove(path)
 		return "", false

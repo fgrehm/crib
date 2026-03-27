@@ -19,13 +19,16 @@ import (
 // defaultEntrypoint is used when overrideCommand is not explicitly false.
 const defaultEntrypoint = "/bin/sh"
 
+// sleepScript is the shell command that keeps the container alive.
+const sleepScript = `echo Container started; trap "exit 0" 15; exec "$@"; sleep infinity`
+
 // defaultCmd keeps the container alive when overrideCommand is not false.
 // These are arguments to defaultEntrypoint ("/bin/sh").
-var defaultCmd = []string{"-c", "echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity"}
+var defaultCmd = []string{"-c", sleepScript}
 
 // featureCmd is used when features set an ENTRYPOINT in the image.
 // The feature entrypoint chains via exec "$@", so CMD must be a full command.
-var featureCmd = []string{"/bin/sh", "-c", "echo Container started; trap \"exit 0\" 15; exec \"$@\"; sleep infinity"}
+var featureCmd = []string{"/bin/sh", "-c", sleepScript}
 
 // buildRunOptions constructs RunOptions from the devcontainer config.
 // hasFeatureEntrypoints indicates the image has feature-declared entrypoints
@@ -106,35 +109,22 @@ func (e *Engine) buildRunOptions(cfg *config.DevContainerConfig, imageName, proj
 }
 
 // applyFeatureMetadata merges feature-declared runtime capabilities into the
-// run options. These are capabilities like privileged, init, capAdd that
-// features declare in devcontainer-feature.json but can only be applied at
-// container creation time (not in the Dockerfile).
+// run options using collectFeatureOverrides for the metadata extraction.
 // subCtx is used to substitute variables (e.g. ${devcontainerId}) in mount
 // sources and containerEnv values. If nil, no substitution is performed.
 func applyFeatureMetadata(opts *driver.RunOptions, metadata []*config.ImageMetadata, subCtx *config.SubstitutionContext) {
-	sub := func(s string) string {
-		if subCtx == nil {
-			return s
-		}
-		return config.SubstituteString(subCtx, s)
+	ov := collectFeatureOverrides(metadata, subCtx)
+	if ov.Privileged {
+		opts.Privileged = true
 	}
-	for _, m := range metadata {
-		if m.Privileged != nil && *m.Privileged {
-			opts.Privileged = true
-		}
-		if m.Init != nil && *m.Init {
-			opts.Init = true
-		}
-		opts.CapAdd = append(opts.CapAdd, m.CapAdd...)
-		opts.SecurityOpt = append(opts.SecurityOpt, m.SecurityOpt...)
-		for _, mount := range m.Mounts {
-			mount.Source = sub(mount.Source)
-			mount.Target = sub(mount.Target)
-			opts.Mounts = append(opts.Mounts, mount)
-		}
-		for k, v := range m.ContainerEnv {
-			opts.Env = append(opts.Env, k+"="+sub(v))
-		}
+	if ov.Init {
+		opts.Init = true
+	}
+	opts.CapAdd = append(opts.CapAdd, ov.CapAdd...)
+	opts.SecurityOpt = append(opts.SecurityOpt, ov.SecurityOpt...)
+	opts.Mounts = append(opts.Mounts, ov.Mounts...)
+	for k, v := range ov.Env {
+		opts.Env = append(opts.Env, k+"="+v)
 	}
 }
 

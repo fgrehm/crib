@@ -76,6 +76,7 @@ func writeComposeDevcontainer(t *testing.T, projectDir, wsID string) *workspace.
 // cleanupCompose tears down containers/networks and removes labeled images.
 func cleanupCompose(t *testing.T, e *Engine, d *oci.OCIDriver, ws *workspace.Workspace) {
 	t.Helper()
+	requireTestWorkspace(t, ws.ID)
 	ctx := context.Background()
 	_ = e.Down(ctx, ws)
 	cleanupWorkspaceImages(t, d, ws.ID)

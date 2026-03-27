@@ -100,7 +100,7 @@ func (e *Engine) Restart(ctx context.Context, ws *workspace.Workspace) (*Restart
 		return nil, fmt.Errorf("config changes require a full rebuild (image, Dockerfile, or features changed); run 'crib rebuild' instead")
 
 	case changeSafe:
-		e.reportProgress("Config changes detected, recreating container...")
+		e.reportProgress(PhaseRestart, "Config changes detected, recreating container...")
 		result, err := e.restartRecreate(ctx, ws, cfg, workspaceFolder, b, storedResult)
 		if result != nil {
 			result.Recreated = true
@@ -109,7 +109,7 @@ func (e *Engine) Restart(ctx context.Context, ws *workspace.Workspace) (*Restart
 
 	default:
 		// No changes -- simple restart.
-		e.reportProgress("Restarting container...")
+		e.reportProgress(PhaseRestart, "Restarting container...")
 		return e.restartSimple(ctx, ws, cfg, workspaceFolder, b, storedResult)
 	}
 }
@@ -199,7 +199,7 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 
 	// If no image available, rebuild.
 	if imageName == "" && len(cfg.DockerComposeFile) == 0 {
-		e.reportProgress("No cached image found, rebuilding...")
+		e.reportProgress(PhaseBuild, "No cached image found, rebuilding...")
 	}
 	if imageName == "" {
 		buildRes, err := b.buildImage(ctx)

@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -197,6 +198,59 @@ func TestStore_SaveAndLoadResult_FeatureHooks(t *testing.T) {
 	}
 	if len(loaded.FeaturePostAttachCommands) != 0 {
 		t.Errorf("FeaturePostAttachCommands should be empty, got %v", loaded.FeaturePostAttachCommands)
+	}
+}
+
+func TestStore_Lock(t *testing.T) {
+	store := NewStoreAt(t.TempDir())
+	ctx := context.Background()
+
+	// Lock should succeed and create the workspace directory.
+	lock, err := store.Lock(ctx, "locktest")
+	if err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+
+	// A second Lock with an already-cancelled context should fail immediately
+	// because the lock is held.
+	cancelledCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	_, err = store.Lock(cancelledCtx, "locktest")
+	if err == nil {
+		t.Error("Lock should fail when workspace is already locked and context is cancelled")
+	}
+
+	// Unlock, then Lock should succeed.
+	if err := lock.Unlock(); err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+	lock2, err := store.Lock(ctx, "locktest")
+	if err != nil {
+		t.Fatalf("Lock after unlock: %v", err)
+	}
+	lock2.Unlock()
+}
+
+func TestStore_Lock_DeleteCleansUp(t *testing.T) {
+	store := NewStoreAt(t.TempDir())
+	ctx := context.Background()
+
+	// Create a workspace and lock it.
+	if err := store.Save(&Workspace{ID: "cleanup", Source: "/tmp"}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	lock, err := store.Lock(ctx, "cleanup")
+	if err != nil {
+		t.Fatalf("Lock: %v", err)
+	}
+	lock.Unlock()
+
+	// Delete removes the entire workspace dir including the lock file.
+	if err := store.Delete("cleanup"); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if store.Exists("cleanup") {
+		t.Error("workspace should not exist after delete")
 	}
 }
 

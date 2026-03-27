@@ -1,11 +1,15 @@
 package workspace
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/gofrs/flock"
 )
 
 const (
@@ -49,7 +53,7 @@ func NewStoreAt(baseDir string) *Store {
 
 // Save writes a workspace config to disk.
 func (s *Store) Save(ws *Workspace) error {
-	dir := s.workspaceDir(ws.ID)
+	dir := s.WorkspaceDir(ws.ID)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating workspace directory: %w", err)
 	}
@@ -69,7 +73,7 @@ func (s *Store) Save(ws *Workspace) error {
 
 // Load reads a workspace config from disk.
 func (s *Store) Load(id string) (*Workspace, error) {
-	path := filepath.Join(s.workspaceDir(id), workspaceConfigFile)
+	path := filepath.Join(s.WorkspaceDir(id), workspaceConfigFile)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -88,7 +92,7 @@ func (s *Store) Load(id string) (*Workspace, error) {
 
 // Delete removes a workspace directory from disk.
 func (s *Store) Delete(id string) error {
-	dir := s.workspaceDir(id)
+	dir := s.WorkspaceDir(id)
 	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("deleting workspace: %w", err)
 	}
@@ -121,14 +125,14 @@ func (s *Store) List() ([]string, error) {
 
 // Exists checks if a workspace exists on disk.
 func (s *Store) Exists(id string) bool {
-	path := filepath.Join(s.workspaceDir(id), workspaceConfigFile)
+	path := filepath.Join(s.WorkspaceDir(id), workspaceConfigFile)
 	_, err := os.Stat(path)
 	return err == nil
 }
 
 // SaveResult writes a build result to disk.
 func (s *Store) SaveResult(id string, result *Result) error {
-	dir := s.workspaceDir(id)
+	dir := s.WorkspaceDir(id)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating workspace directory: %w", err)
 	}
@@ -148,7 +152,7 @@ func (s *Store) SaveResult(id string, result *Result) error {
 
 // LoadResult reads a build result from disk. Returns nil, nil if not found.
 func (s *Store) LoadResult(id string) (*Result, error) {
-	path := filepath.Join(s.workspaceDir(id), workspaceResultFile)
+	path := filepath.Join(s.WorkspaceDir(id), workspaceResultFile)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -167,7 +171,7 @@ func (s *Store) LoadResult(id string) (*Result, error) {
 
 // MarkHookDone records that a lifecycle hook has been executed for a workspace.
 func (s *Store) MarkHookDone(id, hookName string) error {
-	dir := filepath.Join(s.workspaceDir(id), "hooks")
+	dir := filepath.Join(s.WorkspaceDir(id), "hooks")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("creating hooks directory: %w", err)
 	}
@@ -180,7 +184,7 @@ func (s *Store) MarkHookDone(id, hookName string) error {
 
 // IsHookDone checks whether a lifecycle hook has already been executed.
 func (s *Store) IsHookDone(id, hookName string) bool {
-	path := filepath.Join(s.workspaceDir(id), "hooks", hookName+".done")
+	path := filepath.Join(s.WorkspaceDir(id), "hooks", hookName+".done")
 	_, err := os.Stat(path)
 	return err == nil
 }
@@ -188,19 +192,44 @@ func (s *Store) IsHookDone(id, hookName string) bool {
 // ClearHookMarkers removes all lifecycle hook markers for a workspace,
 // allowing hooks to run again (used on recreate).
 func (s *Store) ClearHookMarkers(id string) error {
-	dir := filepath.Join(s.workspaceDir(id), "hooks")
+	dir := filepath.Join(s.WorkspaceDir(id), "hooks")
 	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("clearing hook markers: %w", err)
 	}
 	return nil
 }
 
+// Lock is a workspace file lock. Call Unlock to release it.
+type Lock struct{ fl *flock.Flock }
+
+// Unlock releases the workspace lock.
+func (l *Lock) Unlock() error { return l.fl.Unlock() }
+
+// Lock acquires an exclusive file lock for a workspace, preventing concurrent
+// mutations (up, down, rebuild, restart, remove) from racing. The caller must
+// defer lock.Unlock() to release it. The lock respects context cancellation
+// so Ctrl+C works while waiting for a competing process.
+func (s *Store) Lock(ctx context.Context, id string) (*Lock, error) {
+	dir := s.WorkspaceDir(id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating workspace directory: %w", err)
+	}
+	fl := flock.New(filepath.Join(dir, ".lock"))
+	locked, err := fl.TryLockContext(ctx, 200*time.Millisecond)
+	if err != nil {
+		return nil, fmt.Errorf("acquiring workspace lock: %w", err)
+	}
+	if !locked {
+		// TryLockContext only returns locked=false on context cancellation.
+		return nil, fmt.Errorf("workspace %q is locked by another crib process: %w", id, ctx.Err())
+	}
+	return &Lock{fl: fl}, nil
+}
+
+// BaseDir returns the store's base directory (e.g. ~/.crib/workspaces).
+func (s *Store) BaseDir() string { return s.baseDir }
+
 // WorkspaceDir returns the on-disk directory for a workspace.
 func (s *Store) WorkspaceDir(id string) string {
 	return filepath.Join(s.baseDir, id)
-}
-
-// workspaceDir is an internal alias kept for backward compatibility within the package.
-func (s *Store) workspaceDir(id string) string {
-	return s.WorkspaceDir(id)
 }

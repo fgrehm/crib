@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Workspace file lock prevents concurrent state-mutating commands (up, down,
+  rebuild, restart, remove) from racing on the same workspace.
+
+### Changed
+
+- Progress reporting uses typed events internally (`ProgressEvent` with phase
+  and message) instead of raw strings. No user-visible change.
+- Logging consistency: config path change demoted from Info to Debug; removed
+  explicit `slog.String()` wrappers in favor of implicit key-value args.
+- Compose override generation uses compose-go types instead of string
+  concatenation. Volume syntax changes to long form (functionally equivalent).
+- `LoadProject` now threads caller-supplied environment variables (e.g.
+  `localWorkspaceFolder`, `devcontainerId`) through to compose-go's loader
+  for `${VAR}` substitution. Previously accepted but silently ignored.
+
+### Fixed
+
+- Docs website now deploys automatically after releases. The workflow triggers
+  on `stable` branch push instead of the `release` event (which GITHUB_TOKEN
+  cannot trigger).
+- Compose backend now captures stderr for diagnostics when a container is not
+  found after `compose up`, instead of the opaque "container not found" error.
+- Compose override no longer produces duplicate mount destinations when the
+  user's compose files already define a volume for the same target path.
+  Fixes "duplicate mount destination" errors with podman-compose caused by
+  the compose-go long-form volume format not being deduplicated during merge.
+- `crib doctor --fix` no longer deletes containers belonging to a different
+  `CRIB_HOME`. Containers now carry a `crib.home` label recording which store
+  created them; doctor skips containers whose label doesn't match.
+- Integration and e2e tests no longer interfere with active workspaces.
+  `TestMain` warns about running crib containers, cleanup helpers reject
+  non-test workspace IDs, and the e2e doctor test no longer runs `--fix`
+  on an empty store.
+
 ## [0.7.1] - 2026-03-25
 
 ### Fixed

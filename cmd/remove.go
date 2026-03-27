@@ -26,6 +26,11 @@ var removeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		lock, err := store.Lock(cmd.Context(), ws.ID)
+		if err != nil {
+			return err
+		}
+		defer lock.Unlock() //nolint:errcheck // best-effort cleanup
 
 		u.Dim(versionString())
 

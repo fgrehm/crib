@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -60,7 +61,7 @@ type Engine struct {
 	stdout           io.Writer
 	stderr           io.Writer
 	verbose          bool
-	progress         func(string)
+	progress         func(ProgressEvent)
 }
 
 // New creates an Engine with the given dependencies.
@@ -108,11 +109,34 @@ func (e *Engine) composeStderr() io.Writer {
 	return io.Discard
 }
 
-// SetProgress sets a callback for user-facing progress messages.
-func (e *Engine) SetProgress(fn func(string)) {
+// composeStderrTee returns a writer that always captures compose stderr into
+// buf, and also forwards to the engine's stderr in verbose mode. Use this
+// when the caller needs the output for error diagnostics even in non-verbose
+// mode (e.g., "container not found after up").
+func (e *Engine) composeStderrTee(buf *bytes.Buffer) io.Writer {
+	if e.verbose {
+		return io.MultiWriter(buf, e.stderr)
+	}
+	return buf
+}
+
+// SetProgress sets a callback for user-facing progress events.
+func (e *Engine) SetProgress(fn func(ProgressEvent)) {
 	e.progress = fn
 	if e.plugins != nil {
-		e.plugins.SetProgress(fn)
+		e.plugins.SetProgress(progressToString(fn))
+	}
+}
+
+// progressToString adapts a ProgressEvent callback to a plain string callback
+// for use by the plugin manager (which lives in a separate package).
+// TODO: remove once plugin package migrates to ProgressEvent.
+func progressToString(fn func(ProgressEvent)) func(string) {
+	if fn == nil {
+		return nil
+	}
+	return func(msg string) {
+		fn(ProgressEvent{Phase: PhasePlugins, Message: msg})
 	}
 }
 
@@ -120,7 +144,7 @@ func (e *Engine) SetProgress(fn func(string)) {
 func (e *Engine) SetPlugins(m *plugin.Manager) {
 	e.plugins = m
 	if e.progress != nil {
-		m.SetProgress(e.progress)
+		m.SetProgress(progressToString(e.progress))
 	}
 }
 
@@ -135,11 +159,11 @@ func (e *Engine) SetBuildCacheMounts(mounts []string) {
 	e.buildCacheMounts = mounts
 }
 
-// reportProgress sends a message to the progress callback (if set)
-// and logs it at debug level.
-func (e *Engine) reportProgress(msg string) {
+// reportProgress sends a progress event to the callback (if set)
+// and logs the message at debug level.
+func (e *Engine) reportProgress(phase ProgressPhase, msg string) {
 	if e.progress != nil {
-		e.progress(msg)
+		e.progress(ProgressEvent{Phase: phase, Message: msg})
 	}
 	e.logger.Debug(msg)
 }
@@ -186,7 +210,7 @@ func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions
 		return nil, fmt.Errorf("initializeCommand: %w", err)
 	}
 	if cfg.WaitFor == "initializeCommand" {
-		e.reportProgress("Container ready.")
+		e.reportProgress(PhaseInit, "Container ready.")
 	}
 
 	// Compose guards.
@@ -213,7 +237,7 @@ func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions
 
 	// Remove existing container if recreating.
 	if container != nil && opts.Recreate {
-		e.reportProgress("Removing container...")
+		e.reportProgress(PhaseCreate, "Removing container...")
 		if err := e.store.ClearHookMarkers(ws.ID); err != nil {
 			e.logger.Warn("failed to clear hook markers", "error", err)
 		}
@@ -250,14 +274,14 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 	}
 
 	if !container.State.IsRunning() {
-		e.reportProgress("Starting container...")
+		e.reportProgress(PhaseCreate, "Starting container...")
 		newID, err := b.start(ctx, container.ID, pluginResp)
 		if err != nil {
 			return nil, err
 		}
 		cc.containerID = newID
 	} else {
-		e.reportProgress("Container already running")
+		e.reportProgress(PhaseCreate, "Container already running")
 	}
 
 	return e.finalize(ctx, ws, cfg, finalizeOpts{

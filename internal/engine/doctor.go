@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	ocidriver "github.com/fgrehm/crib/internal/driver/oci"
 )
 
 // DoctorIssue describes a single problem found by Doctor.
@@ -87,9 +89,17 @@ func (e *Engine) Doctor(ctx context.Context, fix bool) (*DoctorResult, error) {
 		if err != nil {
 			e.logger.Warn("failed to list containers for doctor check", "error", err)
 		} else {
+			storeDir := e.store.BaseDir()
 			for _, c := range containers {
 				wsID := c.Config.Labels["crib.workspace"]
 				if wsID == "" {
+					continue
+				}
+				// Skip containers that belong to a different CRIB_HOME.
+				// Without this check, running doctor --fix with an isolated
+				// store (e.g. tests using CRIB_HOME=tmpdir) would delete
+				// containers from the user's real store.
+				if home := c.Config.Labels[ocidriver.LabelHome]; home != "" && home != storeDir {
 					continue
 				}
 				if !e.store.Exists(wsID) {

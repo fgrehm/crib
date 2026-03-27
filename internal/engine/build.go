@@ -183,7 +183,7 @@ func (e *Engine) doBuild(ctx context.Context, ws *workspace.Workspace, cfg *conf
 
 	// Check if image already exists.
 	if _, inspErr := e.driver.InspectImage(ctx, imageName); inspErr == nil {
-		e.reportProgress("Image cached, skipping build")
+		e.reportProgress(PhaseBuild, "Image cached, skipping build")
 		return &buildResult{
 			imageName:      imageName,
 			imageMetadata:  metadata,
@@ -219,7 +219,7 @@ func (e *Engine) doBuild(ctx context.Context, ws *workspace.Workspace, cfg *conf
 	// Clean up previous build image if hash changed.
 	e.cleanupPreviousBuildImage(ctx, ws.ID, imageName)
 
-	e.reportProgress("Building image...")
+	e.reportProgress(PhaseBuild, "Building image...")
 	err = e.driver.BuildImage(ctx, ws.ID, &driver.BuildOptions{
 		PrebuildHash: hash,
 		Image:        imageName,

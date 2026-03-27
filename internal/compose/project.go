@@ -27,17 +27,10 @@ type ServiceInfo struct {
 }
 
 // GetServiceInfo loads compose files and extracts configuration for the named service.
-// env provides extra environment variables for ${VAR} substitution in compose files.
+// env provides extra environment variables (KEY=VALUE) for ${VAR} substitution in
+// compose files (e.g. localWorkspaceFolder, devcontainerId).
 func GetServiceInfo(ctx context.Context, paths []string, serviceName string, env []string) (*ServiceInfo, error) {
-	// Merge extra env into env files parameter is not needed here since
-	// LoadProject takes envFiles. Instead, we temporarily set env vars.
-	// Actually, LoadProject uses currentEnv() which reads os.Environ().
-	// The engine passes devcontainer vars via extraEnv to compose CLI,
-	// but LoadProject reads the process env directly.
-	// For now, pass nil envFiles and rely on the caller to have set
-	// the needed env vars, or accept that some ${VAR} references may
-	// not resolve. This matches how compose CLI gets them via cmd.Env.
-	project, err := LoadProject(ctx, paths, nil)
+	project, err := LoadProject(ctx, paths, nil, env)
 	if err != nil {
 		return nil, fmt.Errorf("loading compose project: %w", err)
 	}
@@ -71,7 +64,9 @@ func (h *Helper) BuiltImageName(projectName, serviceName string) string {
 }
 
 // LoadProject loads a Docker Compose project from the given file paths and env files.
-func LoadProject(ctx context.Context, paths []string, envFiles []string) (*types.Project, error) {
+// extraEnv provides additional KEY=VALUE variables for ${VAR} substitution; they take
+// precedence over env file values but NOT over process environment variables.
+func LoadProject(ctx context.Context, paths []string, envFiles []string, extraEnv []string) (*types.Project, error) {
 	if len(paths) == 0 {
 		return nil, fmt.Errorf("no compose files specified")
 	}
@@ -90,15 +85,21 @@ func LoadProject(ctx context.Context, paths []string, envFiles []string) (*types
 		}
 	}
 
-	// Build environment from env files and current process env.
+	// Build environment: process env > extraEnv > env files.
 	env := currentEnv()
+	for _, pair := range extraEnv {
+		if k, v, ok := strings.Cut(pair, "="); ok {
+			if _, exists := env[k]; !exists {
+				env[k] = v
+			}
+		}
+	}
 	for _, ef := range envFiles {
 		parsed, err := dotenv.Read(ef)
 		if err != nil {
 			return nil, fmt.Errorf("reading env file %s: %w", ef, err)
 		}
 		for k, v := range parsed {
-			// Process env takes precedence over env file values.
 			if _, exists := env[k]; !exists {
 				env[k] = v
 			}

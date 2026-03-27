@@ -19,6 +19,47 @@ import (
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
+const testWorkspacePrefix = "test-"
+
+// TestMain warns if non-test crib containers are running, which can lead to
+// interference (stale compose state, network conflicts, etc.).
+func TestMain(m *testing.M) {
+	// Check for active workspaces before running integration tests. We can't
+	// call testing.Short() before flag.Parse(), so check the flag directly.
+	short := false
+	for _, arg := range os.Args[1:] {
+		if arg == "-test.short" || arg == "-test.short=true" {
+			short = true
+			break
+		}
+	}
+	if !short {
+		d, err := oci.NewOCIDriver(slog.Default())
+		if err == nil {
+			containers, _ := d.ListContainers(context.Background())
+			for _, c := range containers {
+				wsID := c.Config.Labels[oci.LabelWorkspace]
+				if wsID != "" && !strings.HasPrefix(wsID, testWorkspacePrefix) {
+					fmt.Fprintf(os.Stderr, "\n⚠ WARNING: active crib workspace %q (container %s) detected.\n", wsID, c.ID[:12])
+					fmt.Fprintf(os.Stderr, "  Integration tests may interfere with running workspaces.\n")
+					fmt.Fprintf(os.Stderr, "  Consider running 'crib down' first.\n\n")
+					break
+				}
+			}
+		}
+	}
+	os.Exit(m.Run())
+}
+
+// requireTestWorkspace fatals if the workspace ID does not start with the test
+// prefix. Prevents test cleanup from accidentally removing real workspaces.
+func requireTestWorkspace(t *testing.T, wsID string) {
+	t.Helper()
+	if !strings.HasPrefix(wsID, testWorkspacePrefix) {
+		t.Fatalf("refusing to operate on non-test workspace %q (must start with %q)", wsID, testWorkspacePrefix)
+	}
+}
+
 func newTestEngine(t *testing.T) (*Engine, *oci.OCIDriver, *workspace.Store) {
 	t.Helper()
 	d, err := oci.NewOCIDriver(slog.Default())
@@ -36,6 +77,7 @@ func newTestEngine(t *testing.T) (*Engine, *oci.OCIDriver, *workspace.Store) {
 // test teardown. Prevents crib-test-* images from accumulating on disk.
 func cleanupWorkspaceImages(t *testing.T, d driver.Driver, wsID string) {
 	t.Helper()
+	requireTestWorkspace(t, wsID)
 	ctx := context.Background()
 	images, err := d.ListImages(ctx, oci.WorkspaceLabel(wsID))
 	if err != nil {

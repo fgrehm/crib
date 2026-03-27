@@ -31,6 +31,11 @@ func (r Runtime) String() string {
 // LabelWorkspace is the container label key used for workspace discovery.
 const LabelWorkspace = "crib.workspace"
 
+// LabelHome is the container label key that records which CRIB_HOME (workspace
+// store) created the container. Used by doctor to avoid deleting containers
+// that belong to a different store (e.g. test isolation via CRIB_HOME).
+const LabelHome = "crib.home"
+
 // OCIDriver implements driver.Driver using docker or podman CLI commands.
 type OCIDriver struct {
 	helper  *Helper

@@ -25,7 +25,7 @@ type lifecycleRunner struct {
 	logger      *slog.Logger
 	stdout      io.Writer
 	stderr      io.Writer
-	progress    func(string)
+	progress    func(ProgressEvent)
 	verbose     bool
 }
 
@@ -142,10 +142,10 @@ func (r *lifecycleRunner) runLifecycleHooks(ctx context.Context, hooks *hookSet,
 	return nil
 }
 
-// signalReadyAt emits a "Container ready." progress message when stage matches waitFor.
+// signalReadyAt emits a "Container ready." progress event when stage matches waitFor.
 func (r *lifecycleRunner) signalReadyAt(stage, waitFor string) {
 	if stage == waitFor && r.progress != nil {
-		r.progress("Container ready.")
+		r.progress(ProgressEvent{Phase: PhaseHooks, Message: "Container ready."})
 	}
 }
 
@@ -219,7 +219,7 @@ func (r *lifecycleRunner) runHook(ctx context.Context, name string, hook config.
 	}
 
 	if r.progress != nil {
-		r.progress("Running " + name + "...")
+		r.progress(ProgressEvent{Phase: PhaseHooks, Message: "Running " + name + "..."})
 	}
 	r.logger.Debug("running lifecycle hook", "hook", name)
 

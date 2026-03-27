@@ -38,7 +38,8 @@ dockerfile/, workspace/}`. No cycles.
 - No agent injection. All container setup via `docker exec` from the host.
 - Docker and Podman through a single `OCIDriver` (not separate implementations).
 - Implicit workspace resolution from `cwd` (walk up to find `.devcontainer/`).
-- Container naming: `crib-{workspace-id}`, labels: `crib.workspace=<id>`.
+- Container naming: `crib-{workspace-id}`, labels: `crib.workspace=<id>`,
+  `crib.home=<store-base-dir>` (for multi-store isolation in tests/CI).
 - State stored in `~/.crib/workspaces/{id}/`.
 - Runtime detection: `CRIB_RUNTIME` env var > podman > docker.
 - Workspace state tracks `CribVersion` (refreshed on every access via
@@ -88,7 +89,8 @@ drivers are good for logic but miss real Docker/Podman behavior.
 - All packages under `internal/`; this is a binary, not a library.
 - CLI: `spf13/cobra`. Logging: `log/slog`.
 - Linting: golangci-lint v2 (errcheck, govet, staticcheck, unused, ineffassign).
-- Pre-commit hooks: gofmt + golangci-lint on staged Go files.
+- Pre-commit hooks: gofmt + golangci-lint + gocyclo (threshold 30, tests excluded)
+  on staged Go files.
 
 ## Key Reference Pages
 

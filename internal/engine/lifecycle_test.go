@@ -212,7 +212,7 @@ func TestRunHook_ProgressCallback(t *testing.T) {
 	var messages []string
 	mock := &mockDriver{}
 	r, _, _ := newTestRunner(t, mock)
-	r.progress = func(msg string) { messages = append(messages, msg) }
+	r.progress = func(ev ProgressEvent) { messages = append(messages, ev.Message) }
 
 	hook := config.LifecycleHook{"": {"echo hi"}}
 	if err := r.runHook(context.Background(), "postStartCommand", hook, ""); err != nil {
@@ -228,7 +228,7 @@ func TestRunHook_NoProgressWhenEmpty(t *testing.T) {
 	var messages []string
 	mock := &mockDriver{}
 	r, _, _ := newTestRunner(t, mock)
-	r.progress = func(msg string) { messages = append(messages, msg) }
+	r.progress = func(ev ProgressEvent) { messages = append(messages, ev.Message) }
 
 	if err := r.runHook(context.Background(), "postStartCommand", config.LifecycleHook{}, ""); err != nil {
 		t.Fatalf("runHook: %v", err)
@@ -242,7 +242,7 @@ func TestRunHook_NoProgressWhenEmpty(t *testing.T) {
 
 func TestSignalReadyAt_Match(t *testing.T) {
 	var got []string
-	r := &lifecycleRunner{progress: func(msg string) { got = append(got, msg) }}
+	r := &lifecycleRunner{progress: func(ev ProgressEvent) { got = append(got, ev.Message) }}
 	r.signalReadyAt("updateContentCommand", "updateContentCommand")
 
 	if len(got) != 1 || got[0] != "Container ready." {
@@ -252,7 +252,7 @@ func TestSignalReadyAt_Match(t *testing.T) {
 
 func TestSignalReadyAt_NoMatch(t *testing.T) {
 	var got []string
-	r := &lifecycleRunner{progress: func(msg string) { got = append(got, msg) }}
+	r := &lifecycleRunner{progress: func(ev ProgressEvent) { got = append(got, ev.Message) }}
 	r.signalReadyAt("onCreateCommand", "updateContentCommand")
 
 	if len(got) != 0 {
@@ -268,9 +268,9 @@ func TestSignalReadyAt_NilProgress(t *testing.T) {
 
 // --- runLifecycleHooks waitFor tests ---
 
-// collectProgress returns a progress callback that appends to a slice.
-func collectProgress(msgs *[]string) func(string) {
-	return func(msg string) { *msgs = append(*msgs, msg) }
+// collectProgress returns a progress callback that appends messages to a slice.
+func collectProgress(msgs *[]string) func(ProgressEvent) {
+	return func(ev ProgressEvent) { *msgs = append(*msgs, ev.Message) }
 }
 
 // indexOfMsg returns the first index where pred matches, or -1.

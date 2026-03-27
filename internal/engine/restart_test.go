@@ -345,7 +345,7 @@ func TestRestartRecreateSingle_RunsPlugins(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -429,7 +429,7 @@ func TestRestartRecreateSingle_NoPlugins(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -473,7 +473,7 @@ func TestRunResumeHooks_PropagatesVerbose(t *testing.T) {
 		logger:   slog.Default(),
 		stdout:   io.Discard,
 		stderr:   io.Discard,
-		progress: func(string) {},
+		progress: func(ProgressEvent) {},
 		verbose:  true,
 	}
 
@@ -541,7 +541,7 @@ func TestRestartSimple_NonCompose_UsesStoredRemoteUser(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	// Config has no RemoteUser — the stored result's RemoteUser should be used.
@@ -592,7 +592,7 @@ func TestRestartSimple_NonCompose_PreservesImageName(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -654,7 +654,7 @@ func TestRestartSimple_NonCompose_PreservesPathPrepend(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -739,7 +739,7 @@ func TestRestartSimple_NonCompose_PreservesProbedEnv(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -823,7 +823,7 @@ func TestRestartRecreateSingle_WithSnapshot_PreservesProbedEnv(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -895,7 +895,7 @@ func TestRestartSimple_NonCompose_ConfigEnvOverridesStored(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -979,7 +979,7 @@ func TestRestartSimple_NonCompose_PluginEnvMerged(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -1064,7 +1064,7 @@ func TestRestartSimple_NonCompose_PluginEnvDoesNotOverrideConfig(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -1117,7 +1117,7 @@ func TestRestartRecreateSingle_PreservesFeatureEntrypoints(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
@@ -1187,7 +1187,7 @@ func TestRestartRecreateSingle_ResolvedConfigEnv(t *testing.T) {
 		logger:      slog.Default(),
 		stdout:      io.Discard,
 		stderr:      io.Discard,
-		progress:    func(string) {},
+		progress:    func(ProgressEvent) {},
 	}
 
 	cfg := &config.DevContainerConfig{}
