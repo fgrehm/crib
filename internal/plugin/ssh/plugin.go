@@ -26,6 +26,7 @@ const agentSocketTarget = "/run/ssh-agent.sock"
 //   - SSH public key injection (~/.ssh/*.pub, for git commit signing)
 //   - Git SSH signing config extraction (only when gpg.format=ssh)
 type Plugin struct {
+	plugin.BasePlugin
 	homeDir      string // overridable for testing
 	getenvFunc   func(string) string
 	gitConfigCmd func(key string) string

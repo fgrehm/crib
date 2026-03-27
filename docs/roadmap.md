@@ -11,26 +11,20 @@ Items move between sections as priorities shift.
 
 Detect project type (Ruby, Node, Go, etc.) from conventions and generate a working devcontainer config without the user writing one. See the [RFC](https://github.com/fgrehm/crib/blob/main/docs/rfcs/init.md) for the full design.
 
-### Reconsider `stop` / `down` semantics
-
-`crib stop` is an alias for `crib down`, which removes the container rather than pausing it. This is surprising: users expect `stop` to be non-destructive (like `docker stop`), but it tears down the container and clears hook markers, causing all lifecycle hooks to re-run on the next `crib up`. Named compose volumes survive, but anything in the container's writable layer is gone, and setup commands like `db:seed` re-run unconditionally.
-
-Options to consider: split `stop` (pause, preserve container) from `down` (remove), make hook-marker clearing opt-in, or at minimum update the command description and docs to set the right expectations. The driver already has `StopContainer`/`StartContainer` methods, so a non-destructive stop is feasible.
-
 ## Considering
 
 ### Features
 
 #### Global user config (mounts, env vars)
 
-A global config file (`~/.config/crib/` or similar, format TBD) that declares mounts and environment variables applied to every `crib up`. This is an escape hatch for simple "bind this path" use cases that don't need plugin logic. Plugins stay for anything requiring detection, file copying, or env var computation.
+Global config (`~/.config/crib/config.toml`, respects `$XDG_CONFIG_HOME`) is partially implemented: the `[dotfiles]` section is supported as of v0.8.0. The remaining scope is user-level mounts and environment variables applied to every `crib up`, as an escape hatch for simple "bind this path" use cases that don't need plugin logic.
 
 Motivating examples:
 
 - Mount `~/.mem/` (read-write) so [dotmem](https://github.com/fgrehm/dotmem) memory is available inside containers and across all workspace projects
 - Mount the [cartage](https://github.com/fgrehm/cartage) socket so notifications and `xdg-open` forwarding work without per-project config
 
-Open questions: config file format (TOML, extended `.cribrc`, or something else), full scope of supported fields (just mounts? env vars? both?), merge semantics with per-project devcontainer.json.
+Open questions: full scope of supported fields (just mounts? env vars? both?), merge semantics with per-project devcontainer.json.
 
 Prior art: [devstep](https://github.com/fgrehm/devstep) had `~/devstep.yml` (global) merged with per-project `devstep.yml`, supporting `volumes`, `environment`, `links`, and more.
 
@@ -75,10 +69,6 @@ The official devcontainers CLI has an experimental `devcontainer-lock.json` that
 #### Standardize container-side plugin paths
 
 Currently plugin mounts land at ad-hoc paths (`~/.crib_history/`, `/tmp/ssh-agent.sock`). A standard base (XDG `$XDG_DATA_HOME/crib/` for persistent data, `/tmp/crib/` for runtime sockets) would be cleaner, but we need more plugins and real-world usage to understand the right shape before committing to a convention. The cartage plugin (above) would be a good forcing function for settling on a convention.
-
-#### Dotfiles plugin
-
-Clone and install a user's [dotfiles repository](https://dotfiles.github.io/) inside the container on creation. The devcontainer spec doesn't standardize dotfiles, but VS Code, GitHub Codespaces, and DevPod all support them. A crib plugin would clone the repo to a configurable path (default `~/dotfiles`) and run an install script (`install.sh`, `bootstrap.sh`, or a custom command). Configuration via `.cribrc` or global config (`dotfiles.repository`, `dotfiles.installCommand`). See [#17](https://github.com/fgrehm/crib/issues/17).
 
 #### Cartage plugin
 

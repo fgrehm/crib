@@ -39,6 +39,9 @@ Use -- to separate crib flags from the container command:
 		if status.Container == nil {
 			return errNoContainer
 		}
+		if !status.Container.State.IsRunning() {
+			return errContainerStopped
+		}
 		container := status.Container
 
 		shellArgs := args

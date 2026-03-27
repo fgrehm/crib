@@ -279,16 +279,3 @@ func resolveConfigEnvFromStored(cfg *config.DevContainerConfig, storedEnv map[st
 	resolveBareVarRefs(resolvedEnv, storedEnv)
 	return resolvedEnv
 }
-
-// runResumeHooks executes only the resume-flow lifecycle hooks
-// (postStartCommand + postAttachCommand) for a container, including stored
-// feature hooks if available.
-func (e *Engine) runResumeHooks(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, cc containerContext) error {
-	stored, err := e.store.LoadResult(ws.ID)
-	if err != nil {
-		e.logger.Warn("failed to load stored result for resume hooks, feature hooks may be skipped", "error", err)
-	}
-	hooks := hookSetWithStoredFeatures(cfg, stored)
-	runner := e.newLifecycleRunner(ws, cc, cfg.RemoteEnv)
-	return runner.runResumeHooks(ctx, hooks, cc.workspaceFolder)
-}

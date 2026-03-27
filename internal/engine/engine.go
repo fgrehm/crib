@@ -443,7 +443,7 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
 			if e.compose != nil {
 				inv := newComposeInvocation(ws, &cfg, result.WorkspaceFolder)
-				return e.composeDown(ctx, inv, false)
+				return e.composeDown(ctx, inv, ws.ID, false)
 			}
 		}
 	}
@@ -458,6 +458,40 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 	}
 
 	return e.driver.DeleteContainer(ctx, ws.ID, container.ID)
+}
+
+// Stop stops the container for the given workspace without removing it.
+// Hook markers are preserved so that a subsequent "up" runs only resume-flow
+// hooks (postStartCommand, postAttachCommand).
+func (e *Engine) Stop(ctx context.Context, ws *workspace.Workspace) error {
+	e.logger.Debug("stop", "workspace", ws.ID)
+
+	// For compose workspaces, use compose stop.
+	if result, err := e.store.LoadResult(ws.ID); err == nil && result != nil {
+		var cfg config.DevContainerConfig
+		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
+			if e.compose != nil {
+				inv := newComposeInvocation(ws, &cfg, result.WorkspaceFolder)
+				return e.composeStop(ctx, inv, ws.ID)
+			}
+		}
+	}
+
+	// Non-compose path: stop the individual container.
+	container, err := e.driver.FindContainer(ctx, ws.ID)
+	if err != nil {
+		return fmt.Errorf("finding container: %w", err)
+	}
+	if container == nil {
+		return fmt.Errorf("no container found for workspace %s", ws.ID)
+	}
+
+	if !container.State.IsRunning() {
+		e.logger.Debug("container already stopped", "workspace", ws.ID, "containerID", container.ID)
+		return nil
+	}
+
+	return e.driver.StopContainer(ctx, ws.ID, container.ID)
 }
 
 // RemovePreview describes what Remove() will delete.
@@ -515,7 +549,7 @@ func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
 		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
 			if e.compose != nil {
 				inv := newComposeInvocation(ws, &cfg, result.WorkspaceFolder)
-				if err := e.composeDown(ctx, inv, true); err != nil {
+				if err := e.composeDown(ctx, inv, ws.ID, true); err != nil {
 					e.logger.Warn("failed to remove compose services", "error", err)
 				}
 				composeTornDown = true

@@ -28,11 +28,22 @@ func TestE2EAliases(t *testing.T) {
 		t.Errorf("ps: want 'running', got %q", out)
 	}
 
-	// "stop" alias for "down".
+	// "stop" is its own command (non-destructive), not an alias for "down".
 	mustRunCrib(t, projectDir, cribHome, "stop")
 	out = mustRunCrib(t, projectDir, cribHome, "ps")
 	if strings.Contains(strings.ToLower(out), "running") {
 		t.Errorf("ps after stop: want not-running, got %q", out)
+	}
+	// Container should still exist after stop (not removed).
+	out = mustRunCrib(t, projectDir, cribHome, "ls")
+	if strings.Contains(strings.ToLower(out), "no workspaces") {
+		t.Errorf("ls after stop: workspace should still exist, got %q", out)
+	}
+	// Resume with up.
+	mustRunCrib(t, projectDir, cribHome, "up")
+	out = mustRunCrib(t, projectDir, cribHome, "ps")
+	if !strings.Contains(strings.ToLower(out), "running") {
+		t.Errorf("ps after stop+up: want 'running', got %q", out)
 	}
 
 	// "ls" alias for "list".

@@ -19,6 +19,7 @@ import (
 // for ~/.claude/ so credentials created inside the container survive
 // rebuilds. The user authenticates inside the container on first use.
 type Plugin struct {
+	plugin.BasePlugin
 	homeDir string // overridable for testing; defaults to os.UserHomeDir()
 }
 

@@ -17,6 +17,7 @@ import (
 
 // testPlugin returns a fixed response for testing.
 type testPlugin struct {
+	plugin.BasePlugin
 	resp *plugin.PreContainerRunResponse
 	req  *plugin.PreContainerRunRequest // captured from last call
 }

@@ -31,6 +31,8 @@ jobs:
             echo "$out"
             exit 1
           fi
+      - name: Dead code gate
+        run: make deadcode
 
   e2e-podman:
     name: E2E tests (Podman)

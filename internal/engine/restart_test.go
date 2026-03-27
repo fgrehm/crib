@@ -459,49 +459,6 @@ func TestRestartRecreateSingle_NoPlugins(t *testing.T) {
 	}
 }
 
-func TestRunResumeHooks_PropagatesVerbose(t *testing.T) {
-	store := workspace.NewStoreAt(t.TempDir())
-	ws := &workspace.Workspace{ID: "ws-verbose"}
-	if err := store.Save(ws); err != nil {
-		t.Fatal(err)
-	}
-
-	mockDrv := &mockDriver{responses: map[string]string{}}
-	eng := &Engine{
-		driver:   mockDrv,
-		store:    store,
-		logger:   slog.Default(),
-		stdout:   io.Discard,
-		stderr:   io.Discard,
-		progress: func(ProgressEvent) {},
-		verbose:  true,
-	}
-
-	cfg := &config.DevContainerConfig{}
-	cfg.PostStartCommand = config.LifecycleHook{"": {"echo hello"}}
-
-	// runResumeHooks should not panic and should execute the hook.
-	// The key thing we're testing is that the verbose field is set on the
-	// lifecycleRunner (previously it was missing, causing --verbose to not
-	// print hook commands during restart).
-	err := eng.runResumeHooks(context.Background(), ws, cfg, containerContext{workspaceID: ws.ID, containerID: "container-1", remoteUser: "vscode", workspaceFolder: "/workspaces/project"})
-	if err != nil {
-		t.Fatalf("runResumeHooks: %v", err)
-	}
-
-	// Verify the hook was executed.
-	found := false
-	for _, call := range mockDrv.execCalls {
-		cmdStr := strings.Join(call.cmd, " ")
-		if strings.Contains(cmdStr, "echo hello") {
-			found = true
-		}
-	}
-	if !found {
-		t.Error("postStartCommand was not executed during runResumeHooks")
-	}
-}
-
 func TestRestartSimple_NonCompose_UsesStoredRemoteUser(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-restart-user", Source: "/home/user/project"}

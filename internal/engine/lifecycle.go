@@ -95,15 +95,14 @@ func hookSetFromConfig(cfg *config.DevContainerConfig) *hookSet {
 	return hs
 }
 
-// runLifecycleHooks executes the devcontainer lifecycle hooks in order.
-// Hooks run as the remote user. Marker files provide idempotency for
-// create-time hooks (onCreate, updateContent, postCreate).
-// After the stage named by hooks.WaitFor (default: "updateContentCommand"),
-// a "Container ready." progress message is emitted.
+// runCreateHooks executes the create-time lifecycle hooks: onCreateCommand,
+// updateContentCommand, and postCreateCommand. Each is guarded by a marker
+// file for idempotency. After the stage named by hooks.WaitFor (default:
+// "updateContentCommand"), a "Container ready." progress message is emitted.
 //
-// Each hook list may contain feature hooks (first) followed by the user hook
-// (last), as produced by config.MergeConfiguration.
-func (r *lifecycleRunner) runLifecycleHooks(ctx context.Context, hooks *hookSet, workspaceFolder string) error {
+// Callers are responsible for running start-time hooks (runStartHooks) after
+// any post-create work (e.g. plugin PostContainerCreate dispatch).
+func (r *lifecycleRunner) runCreateHooks(ctx context.Context, hooks *hookSet, workspaceFolder string) error {
 	waitFor := hooks.WaitFor
 	if waitFor == "" {
 		waitFor = "updateContentCommand"
@@ -127,13 +126,23 @@ func (r *lifecycleRunner) runLifecycleHooks(ctx context.Context, hooks *hookSet,
 	}
 	r.signalReadyAt("postCreateCommand", waitFor)
 
-	// postStart hooks: run every time the container starts.
+	return nil
+}
+
+// runStartHooks executes the start-time lifecycle hooks: postStartCommand and
+// postAttachCommand. These run every time the container starts (both fresh
+// creation and resume). Also handles waitFor signaling for these stages.
+func (r *lifecycleRunner) runStartHooks(ctx context.Context, hooks *hookSet, workspaceFolder string) error {
+	waitFor := hooks.WaitFor
+	if waitFor == "" {
+		waitFor = "updateContentCommand"
+	}
+
 	if err := r.runStage(ctx, "postStartCommand", hooks.PostStart, workspaceFolder); err != nil {
 		return err
 	}
 	r.signalReadyAt("postStartCommand", waitFor)
 
-	// postAttach hooks: run every time.
 	if err := r.runStage(ctx, "postAttachCommand", hooks.PostAttach, workspaceFolder); err != nil {
 		return err
 	}

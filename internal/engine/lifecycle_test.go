@@ -266,7 +266,16 @@ func TestSignalReadyAt_NilProgress(t *testing.T) {
 	r.signalReadyAt("updateContentCommand", "updateContentCommand")
 }
 
-// --- runLifecycleHooks waitFor tests ---
+// runAllHooks is a test helper that calls both runCreateHooks and runStartHooks,
+// mirroring what setupContainer does (minus the plugin dispatch in between).
+func runAllHooks(r *lifecycleRunner, ctx context.Context, hooks *hookSet, workspaceFolder string) error {
+	if err := r.runCreateHooks(ctx, hooks, workspaceFolder); err != nil {
+		return err
+	}
+	return r.runStartHooks(ctx, hooks, workspaceFolder)
+}
+
+// --- waitFor tests ---
 
 // collectProgress returns a progress callback that appends messages to a slice.
 func collectProgress(msgs *[]string) func(ProgressEvent) {
@@ -298,8 +307,8 @@ func TestRunLifecycleHooks_WaitFor_Default(t *testing.T) {
 	cfg.PostCreateCommand = config.LifecycleHook{"": {"echo postcreate"}}
 	// WaitFor = "" → defaults to updateContentCommand
 
-	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
-		t.Fatalf("runLifecycleHooks: %v", err)
+	if err := runAllHooks(r, context.Background(), hookSetFromConfig(cfg), ""); err != nil {
+		t.Fatalf("runAllHooks: %v", err)
 	}
 
 	readyIdx := indexOfMsg(msgs, func(m string) bool { return m == "Container ready." })
@@ -336,8 +345,8 @@ func TestRunLifecycleHooks_WaitFor_OnCreate(t *testing.T) {
 	cfg.OnCreateCommand = config.LifecycleHook{"": {"echo create"}}
 	cfg.UpdateContentCommand = config.LifecycleHook{"": {"echo update"}}
 
-	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
-		t.Fatalf("runLifecycleHooks: %v", err)
+	if err := runAllHooks(r, context.Background(), hookSetFromConfig(cfg), ""); err != nil {
+		t.Fatalf("runAllHooks: %v", err)
 	}
 
 	readyIdx := indexOfMsg(msgs, func(m string) bool { return m == "Container ready." })
@@ -370,8 +379,8 @@ func TestRunLifecycleHooks_WaitFor_PostCreate(t *testing.T) {
 	cfg.PostCreateCommand = config.LifecycleHook{"": {"echo postcreate"}}
 	cfg.PostStartCommand = config.LifecycleHook{"": {"echo poststart"}}
 
-	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
-		t.Fatalf("runLifecycleHooks: %v", err)
+	if err := runAllHooks(r, context.Background(), hookSetFromConfig(cfg), ""); err != nil {
+		t.Fatalf("runAllHooks: %v", err)
 	}
 
 	readyIdx := indexOfMsg(msgs, func(m string) bool { return m == "Container ready." })
@@ -404,8 +413,8 @@ func TestRunLifecycleHooks_WaitFor_PostStart(t *testing.T) {
 	cfg.PostStartCommand = config.LifecycleHook{"": {"echo poststart"}}
 	cfg.PostAttachCommand = config.LifecycleHook{"": {"echo postattach"}}
 
-	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
-		t.Fatalf("runLifecycleHooks: %v", err)
+	if err := runAllHooks(r, context.Background(), hookSetFromConfig(cfg), ""); err != nil {
+		t.Fatalf("runAllHooks: %v", err)
 	}
 
 	readyIdx := indexOfMsg(msgs, func(m string) bool { return m == "Container ready." })
@@ -444,8 +453,8 @@ func TestRunLifecycleHooks_FeatureHooksBeforeUser(t *testing.T) {
 		},
 	}
 
-	if err := r.runLifecycleHooks(context.Background(), hooks, ""); err != nil {
-		t.Fatalf("runLifecycleHooks: %v", err)
+	if err := runAllHooks(r, context.Background(), hooks, ""); err != nil {
+		t.Fatalf("runAllHooks: %v", err)
 	}
 
 	// Collect exec commands in order.
@@ -487,8 +496,8 @@ func TestRunLifecycleHooks_FeatureHooksOnly(t *testing.T) {
 		},
 	}
 
-	if err := r.runLifecycleHooks(context.Background(), hooks, ""); err != nil {
-		t.Fatalf("runLifecycleHooks: %v", err)
+	if err := runAllHooks(r, context.Background(), hooks, ""); err != nil {
+		t.Fatalf("runAllHooks: %v", err)
 	}
 
 	if len(mock.execCalls) != 2 {
@@ -647,12 +656,76 @@ func TestRunLifecycleHooks_NoReadyWhenNoHooks(t *testing.T) {
 	cfg := &config.DevContainerConfig{}
 	// No hooks configured; waitFor defaults to updateContentCommand.
 
-	if err := r.runLifecycleHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
-		t.Fatalf("runLifecycleHooks: %v", err)
+	if err := runAllHooks(r, context.Background(), hookSetFromConfig(cfg), ""); err != nil {
+		t.Fatalf("runAllHooks: %v", err)
 	}
 
 	readyIdx := indexOfMsg(msgs, func(m string) bool { return m == "Container ready." })
 	if readyIdx < 0 {
 		t.Errorf("Container ready. should be emitted even when no hooks run: %v", msgs)
+	}
+}
+
+func TestRunCreateHooks_OnlyRunsCreateTimeStages(t *testing.T) {
+	mock := &mockDriver{}
+	r, _, _ := newTestRunner(t, mock)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.OnCreateCommand = config.LifecycleHook{"": {"echo onCreate"}}
+	cfg.PostCreateCommand = config.LifecycleHook{"": {"echo postCreate"}}
+	cfg.PostStartCommand = config.LifecycleHook{"": {"echo postStart"}}
+
+	if err := r.runCreateHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
+		t.Fatalf("runCreateHooks: %v", err)
+	}
+
+	var ran []string
+	for _, call := range mock.execCalls {
+		cmdStr := strings.Join(call.cmd, " ")
+		if strings.Contains(cmdStr, "echo onCreate") {
+			ran = append(ran, "onCreate")
+		}
+		if strings.Contains(cmdStr, "echo postCreate") {
+			ran = append(ran, "postCreate")
+		}
+		if strings.Contains(cmdStr, "echo postStart") {
+			ran = append(ran, "postStart")
+		}
+	}
+
+	if len(ran) != 2 || ran[0] != "onCreate" || ran[1] != "postCreate" {
+		t.Errorf("expected [onCreate postCreate], got %v", ran)
+	}
+}
+
+func TestRunStartHooks_OnlyRunsStartTimeStages(t *testing.T) {
+	mock := &mockDriver{}
+	r, _, _ := newTestRunner(t, mock)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.PostCreateCommand = config.LifecycleHook{"": {"echo postCreate"}}
+	cfg.PostStartCommand = config.LifecycleHook{"": {"echo postStart"}}
+	cfg.PostAttachCommand = config.LifecycleHook{"": {"echo postAttach"}}
+
+	if err := r.runStartHooks(context.Background(), hookSetFromConfig(cfg), ""); err != nil {
+		t.Fatalf("runStartHooks: %v", err)
+	}
+
+	var ran []string
+	for _, call := range mock.execCalls {
+		cmdStr := strings.Join(call.cmd, " ")
+		if strings.Contains(cmdStr, "echo postCreate") {
+			ran = append(ran, "postCreate")
+		}
+		if strings.Contains(cmdStr, "echo postStart") {
+			ran = append(ran, "postStart")
+		}
+		if strings.Contains(cmdStr, "echo postAttach") {
+			ran = append(ran, "postAttach")
+		}
+	}
+
+	if len(ran) != 2 || ran[0] != "postStart" || ran[1] != "postAttach" {
+		t.Errorf("expected [postStart postAttach], got %v", ran)
 	}
 }

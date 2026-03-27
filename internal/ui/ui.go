@@ -30,8 +30,3 @@ func New(out, errOut io.Writer) *UI {
 		renderer: lipgloss.NewRenderer(out),
 	}
 }
-
-// IsTTY reports whether the output is a terminal.
-func (u *UI) IsTTY() bool {
-	return u.isTTY
-}

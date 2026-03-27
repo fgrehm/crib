@@ -4,10 +4,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var downCmd = &cobra.Command{
-	Use:   "down",
-	Short: "Stop and remove the workspace container",
-	Long:  "Stop and remove the workspace container. Hook markers are cleared so the next 'up' runs all lifecycle hooks. Use 'stop' for a non-destructive pause.",
+var stopCmd = &cobra.Command{
+	Use:   "stop",
+	Short: "Stop the workspace container",
+	Long:  "Stop the workspace container without removing it. Hook markers are preserved so the next 'up' resumes with only postStartCommand and postAttachCommand. Use 'down' to remove the container and re-run all hooks on next 'up'.",
 	Args:  noArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
@@ -29,7 +29,7 @@ var downCmd = &cobra.Command{
 
 		u.Dim(versionString())
 
-		if err := eng.Down(cmd.Context(), ws); err != nil {
+		if err := eng.Stop(cmd.Context(), ws); err != nil {
 			return err
 		}
 

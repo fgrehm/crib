@@ -41,10 +41,10 @@ func TestGraphAddEdge(t *testing.T) {
 	if err := g.AddEdge("a", "b"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !g.HasEdge("a", "b") {
+	if !g.edges["a"]["b"] {
 		t.Error("expected edge a -> b")
 	}
-	if g.HasEdge("b", "a") {
+	if g.edges["b"]["a"] {
 		t.Error("edge b -> a should not exist")
 	}
 }

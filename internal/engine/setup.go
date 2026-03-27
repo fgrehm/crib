@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/fgrehm/crib/internal/config"
+	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
@@ -76,9 +77,37 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 	envb.SetProbed(probedEnv)
 	preHookEnv := envb.Build()
 
-	// Run lifecycle hooks with the pre-hook merged environment.
+	// Run create-time lifecycle hooks (onCreate, updateContent, postCreate).
 	runner := e.newLifecycleRunner(ws, cc, preHookEnv)
-	hookErr := runner.runLifecycleHooks(ctx, hooks, cc.workspaceFolder)
+	hookErr := runner.runCreateHooks(ctx, hooks, cc.workspaceFolder)
+
+	// PostContainerCreate plugins (e.g. dotfiles installation).
+	// Runs between postCreateCommand and postStartCommand, matching
+	// VS Code/Codespaces ordering. Fail-open (errors logged by manager).
+	if hookErr == nil && e.plugins != nil {
+		e.plugins.RunPostContainerCreate(ctx, &plugin.PostContainerCreateRequest{
+			WorkspaceID:     ws.ID,
+			WorkspaceDir:    e.store.WorkspaceDir(ws.ID),
+			ContainerID:     cc.containerID,
+			RemoteUser:      cc.remoteUser,
+			WorkspaceFolder: cc.workspaceFolder,
+			Exec: func(ctx context.Context, cmd []string, user string, workDir string) ([]byte, error) {
+				return e.execInContainer(ctx, cc, cmd, user, workDir, preHookEnv)
+			},
+			StreamExec: func(ctx context.Context, cmd []string, user string, workDir string, stdout, stderr io.Writer) error {
+				return e.streamExecInContainer(ctx, cc, cmd, user, workDir, preHookEnv, stdout, stderr)
+			},
+		})
+	}
+
+	// Run start-time lifecycle hooks (postStart, postAttach).
+	// Only run if create hooks succeeded, matching the pre-split behavior
+	// where later stages wouldn't execute after an earlier hook failure.
+	if hookErr == nil {
+		if startErr := runner.runStartHooks(ctx, hooks, cc.workspaceFolder); startErr != nil {
+			hookErr = startErr
+		}
+	}
 
 	// Post-hook environment probe: re-captures the environment to pick up
 	// any changes from lifecycle hooks (e.g. tools installed via mise, nvm).
@@ -423,4 +452,33 @@ func (e *Engine) detectShellFallback(ctx context.Context, cc containerContext) s
 		}
 	}
 	return "/bin/sh"
+}
+
+// prepareExecCmd wraps cmd with cd if workDir is specified and resolves the user.
+func (e *Engine) prepareExecCmd(cc containerContext, cmd []string, user, workDir string) ([]string, string) {
+	execCmd := cmd
+	if workDir != "" {
+		inner := fmt.Sprintf("cd %q 2>/dev/null; %s", workDir, plugin.ShellQuoteJoin(cmd))
+		execCmd = []string{"sh", "-c", inner}
+	}
+	if user == "" {
+		user = cc.remoteUser
+	}
+	return execCmd, user
+}
+
+// execInContainer runs a command inside the container and returns combined
+// stdout+stderr. Used as the ExecFunc adapter for PostContainerCreate plugins.
+func (e *Engine) execInContainer(ctx context.Context, cc containerContext, cmd []string, user string, workDir string, env map[string]string) ([]byte, error) {
+	execCmd, execUser := e.prepareExecCmd(cc, cmd, user, workDir)
+	var buf bytes.Buffer
+	err := e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID, execCmd, nil, &buf, &buf, envSlice(env), execUser)
+	return buf.Bytes(), err
+}
+
+// streamExecInContainer runs a command inside the container, streaming output
+// to the provided writers. Used for long-running plugin commands (e.g. dotfiles).
+func (e *Engine) streamExecInContainer(ctx context.Context, cc containerContext, cmd []string, user string, workDir string, env map[string]string, stdout, stderr io.Writer) error {
+	execCmd, execUser := e.prepareExecCmd(cc, cmd, user, workDir)
+	return e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID, execCmd, nil, stdout, stderr, envSlice(env), execUser)
 }

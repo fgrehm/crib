@@ -99,7 +99,13 @@ func (e *Engine) Doctor(ctx context.Context, fix bool) (*DoctorResult, error) {
 				// Without this check, running doctor --fix with an isolated
 				// store (e.g. tests using CRIB_HOME=tmpdir) would delete
 				// containers from the user's real store.
-				if home := c.Config.Labels[ocidriver.LabelHome]; home != "" && home != storeDir {
+				// When running with an explicit CRIB_HOME, also skip containers
+				// that have no home label (they belong to the default store).
+				home := c.Config.Labels[ocidriver.LabelHome]
+				if home != "" && home != storeDir {
+					continue
+				}
+				if home == "" && e.store.IsExplicitHome() {
 					continue
 				}
 				if !e.store.Exists(wsID) {

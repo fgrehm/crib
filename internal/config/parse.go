@@ -90,19 +90,6 @@ func ParseBytes(data []byte) (*DevContainerConfig, error) {
 	return &config, nil
 }
 
-// FindAndParse finds a devcontainer.json from the given folder and parses it.
-// Returns ErrNotFound if no config file is found.
-func FindAndParse(folder string) (*DevContainerConfig, error) {
-	path, err := Find(folder)
-	if err != nil {
-		return nil, err
-	}
-	if path == "" {
-		return nil, ErrNotFound
-	}
-	return Parse(path)
-}
-
 // replaceLegacy migrates deprecated fields to their modern equivalents.
 // - extensions -> customizations.vscode.extensions
 // - settings -> customizations.vscode.settings

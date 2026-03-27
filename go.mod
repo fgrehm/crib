@@ -9,6 +9,7 @@ tool (
 )
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/term v0.2.1
 	github.com/compose-spec/compose-go/v2 v2.10.1
@@ -35,7 +36,6 @@ require (
 	github.com/Antonboom/errname v1.1.1 // indirect
 	github.com/Antonboom/nilnil v1.1.1 // indirect
 	github.com/Antonboom/testifylint v1.6.4 // indirect
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/Djarvur/go-err113 v0.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/MirrexOne/unqueryvet v1.5.4 // indirect

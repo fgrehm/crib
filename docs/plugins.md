@@ -3,7 +3,7 @@ title: Built-in Plugins
 description: What crib's built-in plugins do and how to configure them.
 ---
 
-`crib` ships four built-in plugins that hook into the dev container lifecycle before each container is created. They inject credentials, SSH config, shell history persistence, and shared package caches into a workspace without extra devcontainer.json boilerplate for the ones that need no configuration.
+`crib` ships five built-in plugins that hook into the dev container lifecycle. They inject credentials, SSH config, shell history persistence, dotfiles, and shared package caches into a workspace without extra devcontainer.json boilerplate for the ones that need no configuration.
 
 Plugins run during `crib up` and `crib rebuild`. They are fail-open: if a plugin can't find something it needs (no SSH agent running, no Claude credentials on disk), it skips silently and doesn't block container creation.
 
@@ -136,6 +136,43 @@ After switching to workspace mode, run `claude` inside the container and authent
 In both modes, plugin data (including credentials) is stored on the host under `~/.crib/workspaces/{id}/plugins/coding-agents/`. Running `crib remove` deletes the workspace and all plugin data with it.
 
 If you delete the project directory without running `crib remove` first, the workspace state (including any cached credentials) remains on disk. To clean it up manually, delete the workspace directory listed by `crib list`, or remove it directly from `~/.crib/workspaces/`.
+
+---
+
+## Dotfiles
+
+Clones and installs your dotfiles repository inside the container on creation. Useful for shell aliases, editor config, git settings, and other personal customizations.
+
+**Configure in `~/.config/crib/config.toml`** (or `$XDG_CONFIG_HOME/crib/config.toml`):
+
+```toml
+[dotfiles]
+repository = "https://github.com/user/dotfiles"
+targetPath = "~/dotfiles"        # optional, default ~/dotfiles
+installCommand = "make install"  # optional, auto-detects if omitted
+```
+
+**What it does:**
+
+1. Clones the repository into `targetPath` inside the container (default `~/dotfiles`)
+2. Looks for an install script in the cloned repo, checking in order: `install.sh`, `bootstrap.sh`, `setup.sh`
+3. Runs the first script found, or skips if none exist
+
+If `installCommand` is set, it runs that instead of auto-detecting.
+
+Tilde (`~`) in `targetPath` expands to the remote user's home directory inside the container.
+
+The plugin runs during `crib up` (first creation only). Because the effects are baked into the snapshot, dotfiles survive `crib stop` + `crib up` and restarts. A `crib rebuild` re-runs the clone and install.
+
+**No-op when `repository` is not set.** If you don't configure dotfiles, the plugin does nothing.
+
+:::note[Git required]
+The container must have `git` installed for the clone to work. Most devcontainer base images include it. If yours doesn't, add it via a Feature or `postCreateCommand`.
+:::
+
+:::caution[SSH repos on rootless Podman with root containers]
+If your container runs as `root` and you use rootless Podman, SSH-based repository URLs (e.g. `git@github.com:user/dotfiles`) will fail to authenticate. The SSH agent socket is bind-mounted with the host user's permissions, and rootless Podman's UID remapping prevents the container's `root` from accessing it. Use an HTTPS URL instead, or switch to a non-root `remoteUser`.
+:::
 
 ---
 

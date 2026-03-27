@@ -15,8 +15,10 @@ import (
 	"github.com/fgrehm/crib/internal/driver"
 	"github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/engine"
+	"github.com/fgrehm/crib/internal/globalconfig"
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/plugin/codingagents"
+	"github.com/fgrehm/crib/internal/plugin/dotfiles"
 	"github.com/fgrehm/crib/internal/plugin/packagecache"
 	"github.com/fgrehm/crib/internal/plugin/shellhistory"
 	pluginssh "github.com/fgrehm/crib/internal/plugin/ssh"
@@ -28,6 +30,9 @@ import (
 // errNoContainer is returned when a command requires a running container but
 // none exists for the workspace. Used by exec, run, and shell.
 var errNoContainer = fmt.Errorf("no container found (run 'crib up' first)")
+
+// errContainerStopped is returned when the container exists but is not running.
+var errContainerStopped = fmt.Errorf("container is stopped (run 'crib up' to start it)")
 
 // noArgs rejects any positional arguments with a clear error message.
 // Prefer this over cobra.NoArgs, whose error says "unknown command" which is
@@ -111,6 +116,7 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(downCmd)
+	rootCmd.AddCommand(stopCmd)
 	rootCmd.AddCommand(removeCmd)
 	rootCmd.AddCommand(execCmd)
 	rootCmd.AddCommand(runCmd)
@@ -305,6 +311,11 @@ func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
 	mgr.Register(codingagents.New())
 	mgr.Register(shellhistory.New())
 	mgr.Register(pluginssh.New())
+	if gcfg, err := globalconfig.Load(); err != nil {
+		logger.Warn("failed to load global config", "error", err)
+	} else if gcfg.Dotfiles.Repository != "" {
+		mgr.Register(dotfiles.New(gcfg.Dotfiles))
+	}
 	if len(cacheProviders) > 0 {
 		if unknown := packagecache.ValidateProviders(cacheProviders); len(unknown) > 0 {
 			logger.Warn("unknown cache providers in .cribrc", "unknown", unknown, "supported", packagecache.SupportedProviders())

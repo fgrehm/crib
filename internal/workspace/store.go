@@ -22,15 +22,18 @@ var ErrWorkspaceNotFound = errors.New("workspace not found")
 
 // Store manages workspace state on disk at a base directory.
 type Store struct {
-	baseDir string
+	baseDir      string
+	explicitHome bool // true when CRIB_HOME was explicitly set
 }
 
 // NewStore creates a Store at the default location (~/.crib/workspaces).
 // The CRIB_HOME env var overrides the base directory: $CRIB_HOME/workspaces.
 func NewStore() (*Store, error) {
 	var baseDir string
+	var explicit bool
 	if cribHome := os.Getenv("CRIB_HOME"); cribHome != "" {
 		baseDir = filepath.Join(cribHome, "workspaces")
+		explicit = true
 	} else {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -43,7 +46,9 @@ func NewStore() (*Store, error) {
 		return nil, fmt.Errorf("creating workspaces directory: %w", err)
 	}
 
-	return &Store{baseDir: baseDir}, nil
+	s := NewStoreAt(baseDir)
+	s.explicitHome = explicit
+	return s, nil
 }
 
 // NewStoreAt creates a Store with a custom base directory. Useful for testing.
@@ -228,6 +233,10 @@ func (s *Store) Lock(ctx context.Context, id string) (*Lock, error) {
 
 // BaseDir returns the store's base directory (e.g. ~/.crib/workspaces).
 func (s *Store) BaseDir() string { return s.baseDir }
+
+// IsExplicitHome reports whether the store's base directory was set via the
+// CRIB_HOME environment variable (as opposed to the default ~/.crib path).
+func (s *Store) IsExplicitHome() bool { return s.explicitHome }
 
 // WorkspaceDir returns the on-disk directory for a workspace.
 func (s *Store) WorkspaceDir(id string) string {

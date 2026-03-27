@@ -45,6 +45,9 @@ Working directory is set to the workspace folder if available.`,
 		if status.Container == nil {
 			return errNoContainer
 		}
+		if !status.Container.State.IsRunning() {
+			return errContainerStopped
+		}
 		container := status.Container
 
 		// Detect which shell is available in the container

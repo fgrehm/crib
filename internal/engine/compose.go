@@ -178,11 +178,15 @@ func collectFeatureOverrides(metadata []*config.ImageMetadata, subCtx *config.Su
 func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, composeFiles []string, featureImage string, pluginResp *plugin.PreContainerRunResponse, featureMetadata ...*config.ImageMetadata) (string, error) {
 	serviceName := cfg.Service
 
+	labels := composetypes.Labels{
+		ocidriver.LabelWorkspace: ws.ID,
+	}
+	if e.store.IsExplicitHome() {
+		labels[ocidriver.LabelHome] = e.store.BaseDir()
+	}
+
 	svc := composetypes.ServiceConfig{
-		Labels: composetypes.Labels{
-			ocidriver.LabelWorkspace: ws.ID,
-			ocidriver.LabelHome:      e.store.BaseDir(),
-		},
+		Labels: labels,
 	}
 
 	if featureImage != "" {
@@ -377,46 +381,28 @@ func toComposeVolume(m config.Mount) composetypes.ServiceVolumeConfig {
 	}
 }
 
-// composeDown wraps compose.Down, including a temporary x-podman override when
-// running rootless Podman. Without this override, podman-compose tries to
-// remove a pod that was never created (because Up used in_pod: false).
-func (e *Engine) composeDown(ctx context.Context, inv composeInvocation, removeVolumes bool) error {
-	files := inv.files
-	if overridePath, ok := e.writePodmanDownOverride(inv.files); ok {
-		defer func() { _ = os.Remove(overridePath) }()
-		files = append(inv.files[:len(inv.files):len(inv.files)], overridePath)
-	}
+// composeStop wraps compose.Stop, including the persisted compose override
+// (which carries x-podman: {in_pod: false} for rootless Podman).
+func (e *Engine) composeStop(ctx context.Context, inv composeInvocation, wsID string) error {
+	files := e.composeFilesWithOverride(inv.files, wsID)
+	return e.compose.Stop(ctx, inv.projectName, files, e.composeStdout(), e.composeStderr(), inv.env)
+}
+
+// composeDown wraps compose.Down, including the persisted compose override.
+func (e *Engine) composeDown(ctx context.Context, inv composeInvocation, wsID string, removeVolumes bool) error {
+	files := e.composeFilesWithOverride(inv.files, wsID)
 	return e.compose.Down(ctx, inv.projectName, files, e.composeStdout(), e.composeStderr(), inv.env, removeVolumes)
 }
 
-// writePodmanDownOverride creates a temporary override file for podman-compose
-// down that disables pod creation. Returns the file path and true if written,
-// or empty string and false if not needed.
-func (e *Engine) writePodmanDownOverride(composeFiles []string) (string, bool) {
-	if !e.isRootlessPodman() || composeFilesContainUserns(composeFiles) {
-		return "", false
+// composeFilesWithOverride appends the persisted compose override to the file
+// list if it exists. The override carries labels, volumes, userns_mode, and
+// x-podman settings generated during up.
+func (e *Engine) composeFilesWithOverride(files []string, wsID string) []string {
+	overridePath := filepath.Join(e.store.WorkspaceDir(wsID), "compose-override.yml")
+	if _, err := os.Stat(overridePath); err == nil {
+		return append(files[:len(files):len(files)], overridePath)
 	}
-	project := &composetypes.Project{
-		Extensions: composetypes.Extensions{
-			"x-podman": map[string]any{"in_pod": false},
-		},
-	}
-	yamlBytes, err := project.MarshalYAML()
-	if err != nil {
-		return "", false
-	}
-	f, err := os.CreateTemp("", "crib-podman-down-override-*.yml")
-	if err != nil {
-		return "", false
-	}
-	path := f.Name()
-	if _, err := f.Write(yamlBytes); err != nil {
-		_ = f.Close()
-		_ = os.Remove(path)
-		return "", false
-	}
-	_ = f.Close()
-	return path, true
+	return files
 }
 
 // isRootlessPodman returns true when the compose runtime is Podman and the

@@ -8,6 +8,39 @@ import (
 	"time"
 )
 
+func TestNewStore_ExplicitHome(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("CRIB_HOME", tmp)
+
+	store, err := NewStore()
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if !store.IsExplicitHome() {
+		t.Error("IsExplicitHome should be true when CRIB_HOME is set")
+	}
+}
+
+func TestNewStore_DefaultHome(t *testing.T) {
+	t.Setenv("CRIB_HOME", "")
+	t.Setenv("HOME", t.TempDir())
+
+	store, err := NewStore()
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if store.IsExplicitHome() {
+		t.Error("IsExplicitHome should be false when CRIB_HOME is not set")
+	}
+}
+
+func TestNewStoreAt_NotExplicitHome(t *testing.T) {
+	store := NewStoreAt(t.TempDir())
+	if store.IsExplicitHome() {
+		t.Error("NewStoreAt should not be explicit home")
+	}
+}
+
 func TestStore_SaveAndLoad(t *testing.T) {
 	store := NewStoreAt(t.TempDir())
 	ws := &Workspace{

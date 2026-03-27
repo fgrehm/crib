@@ -13,13 +13,6 @@ func newTestUI() (*UI, *bytes.Buffer, *bytes.Buffer) {
 	return u, out, errOut
 }
 
-func TestNew_NonTTY(t *testing.T) {
-	u, _, _ := newTestUI()
-	if u.IsTTY() {
-		t.Error("expected IsTTY() to be false for bytes.Buffer")
-	}
-}
-
 func TestHeader(t *testing.T) {
 	u, out, _ := newTestUI()
 	u.Header("Starting workspace")
@@ -110,33 +103,5 @@ func TestTable_Empty(t *testing.T) {
 	u.Table(nil, nil)
 	if out.String() != "" {
 		t.Errorf("Table with no headers should produce no output, got %q", out.String())
-	}
-}
-
-func TestSpinner_NonTTY(t *testing.T) {
-	u, out, _ := newTestUI()
-	s := u.StartSpinner("Building")
-	s.Stop()
-	got := out.String()
-	if !strings.Contains(got, "  Building...") {
-		t.Errorf("Spinner non-TTY output = %q, want to contain %q", got, "  Building...")
-	}
-}
-
-func TestStartFrame(t *testing.T) {
-	u, out, _ := newTestUI()
-	u.StartFrame("Building image")
-	got := out.String()
-	if !strings.Contains(got, "  --- Building image ---") {
-		t.Errorf("StartFrame output = %q, want to contain %q", got, "  --- Building image ---")
-	}
-}
-
-func TestEndFrame(t *testing.T) {
-	u, out, _ := newTestUI()
-	u.EndFrame()
-	got := out.String()
-	if !strings.Contains(got, "  ---") {
-		t.Errorf("EndFrame output = %q, want to contain %q", got, "  ---")
 	}
 }

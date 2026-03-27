@@ -1,10 +1,5 @@
 package config
 
-import (
-	"encoding/json"
-	"fmt"
-)
-
 // ImageMetadata represents metadata embedded in an image label or
 // extracted from a feature's devcontainer-feature.json.
 type ImageMetadata struct {
@@ -20,32 +15,4 @@ type ImageMetadata struct {
 type ImageMetadataConfig struct {
 	Raw    []*ImageMetadata
 	Config []*ImageMetadata
-}
-
-// ImageMetadataFromConfig creates an ImageMetadata entry from a DevContainerConfig.
-func ImageMetadataFromConfig(config *DevContainerConfig) *ImageMetadata {
-	return &ImageMetadata{
-		DevContainerConfigBase: config.DevContainerConfigBase,
-		DevContainerActions:    config.DevContainerActions,
-		NonComposeBase:         config.NonComposeBase,
-	}
-}
-
-// ParseImageMetadata parses the devcontainer.metadata image label value.
-// The label contains a JSON array of ImageMetadata entries.
-func ParseImageMetadata(label string) ([]*ImageMetadata, error) {
-	if label == "" {
-		return nil, nil
-	}
-
-	var entries []*ImageMetadata
-	if err := json.Unmarshal([]byte(label), &entries); err != nil {
-		// Try single object (not array).
-		var single ImageMetadata
-		if err2 := json.Unmarshal([]byte(label), &single); err2 != nil {
-			return nil, fmt.Errorf("parsing image metadata: as array: %w, as object: %w", err, err2)
-		}
-		entries = []*ImageMetadata{&single}
-	}
-	return entries, nil
 }

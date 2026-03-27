@@ -1,4 +1,4 @@
-.PHONY: build install clean test lint audit test-integration test-e2e setup-hooks help docs
+.PHONY: build install clean test lint audit deadcode test-integration test-e2e setup-hooks help docs
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -28,6 +28,15 @@ audit: ## Run complexity and dead-code analysis (informational)
 	@echo ""
 	@echo "=== Dead code ==="
 	@go tool deadcode ./... 2>&1 || true
+
+deadcode: ## Check for dead code (hard gate, matches CI)
+	@out=$$(go tool deadcode ./...); \
+	if [ -n "$$out" ]; then \
+		echo "Unreachable functions detected by deadcode:"; \
+		echo "$$out"; \
+		exit 1; \
+	fi; \
+	echo "No dead code found."
 
 test-integration: ## Run integration tests (requires Docker or Podman)
 	go test $(GO_TEST_FLAGS) ./internal/... -run Integration -v -count=1

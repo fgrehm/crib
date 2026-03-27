@@ -33,7 +33,7 @@ func NewFeatureCache() (*FeatureCache, error) {
 		return nil, fmt.Errorf("creating feature cache directory: %w", err)
 	}
 
-	return &FeatureCache{baseDir: baseDir}, nil
+	return NewFeatureCacheAt(baseDir), nil
 }
 
 // NewFeatureCacheAt creates a FeatureCache at a custom directory. Useful for testing.

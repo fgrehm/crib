@@ -38,7 +38,9 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (s
 	if err != nil {
 		return "", err
 	}
-	runOpts.Labels[ocidriver.LabelHome] = b.e.store.BaseDir()
+	if b.e.store.IsExplicitHome() {
+		runOpts.Labels[ocidriver.LabelHome] = b.e.store.BaseDir()
+	}
 
 	subCtx := &config.SubstitutionContext{
 		DevContainerID:           b.ws.ID,
