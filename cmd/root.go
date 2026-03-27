@@ -111,6 +111,7 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(downCmd)
+	rootCmd.AddCommand(stopCmd)
 	rootCmd.AddCommand(removeCmd)
 	rootCmd.AddCommand(execCmd)
 	rootCmd.AddCommand(runCmd)

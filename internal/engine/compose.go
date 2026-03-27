@@ -377,6 +377,18 @@ func toComposeVolume(m config.Mount) composetypes.ServiceVolumeConfig {
 	}
 }
 
+// composeStop wraps compose.Stop, including a temporary x-podman override when
+// running rootless Podman. Without this override, podman-compose may try to
+// interact with a pod that was never created.
+func (e *Engine) composeStop(ctx context.Context, inv composeInvocation) error {
+	files := inv.files
+	if overridePath, ok := e.writePodmanDownOverride(inv.files); ok {
+		defer func() { _ = os.Remove(overridePath) }()
+		files = append(inv.files[:len(inv.files):len(inv.files)], overridePath)
+	}
+	return e.compose.Stop(ctx, inv.projectName, files, e.composeStdout(), e.composeStderr(), inv.env)
+}
+
 // composeDown wraps compose.Down, including a temporary x-podman override when
 // running rootless Podman. Without this override, podman-compose tries to
 // remove a pod that was never created (because Up used in_pod: false).

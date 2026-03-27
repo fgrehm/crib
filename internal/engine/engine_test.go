@@ -102,6 +102,114 @@ func TestDown_ClearsHookMarkers(t *testing.T) {
 	}
 }
 
+func TestStop_PreservesHookMarkers(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+
+	ws := &workspace.Workspace{
+		ID:               "test-stop-markers",
+		Source:           t.TempDir(),
+		DevContainerPath: ".devcontainer/devcontainer.json",
+	}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create hook markers.
+	for _, hook := range []string{"onCreateCommand", "updateContentCommand", "postCreateCommand"} {
+		if err := store.MarkHookDone(ws.ID, hook); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "abc123",
+			State: driver.ContainerState{Status: "running"},
+		},
+	}
+
+	e := &Engine{
+		driver: drv,
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+	}
+
+	if err := e.Stop(context.Background(), ws); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+
+	// Verify markers are still present (not cleared like Down).
+	for _, hook := range []string{"onCreateCommand", "updateContentCommand", "postCreateCommand"} {
+		if !store.IsHookDone(ws.ID, hook) {
+			t.Errorf("expected marker for %s to survive Stop", hook)
+		}
+	}
+}
+
+func TestStop_NoContainer(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+
+	ws := &workspace.Workspace{
+		ID:               "test-stop-nocontainer",
+		Source:           t.TempDir(),
+		DevContainerPath: ".devcontainer/devcontainer.json",
+	}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	e := &Engine{
+		driver: &mockDriver{}, // FindContainer returns nil
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+	}
+
+	err := e.Stop(context.Background(), ws)
+	if err == nil {
+		t.Fatal("expected error when no container exists")
+	}
+	if !strings.Contains(err.Error(), "no container found") {
+		t.Errorf("expected 'no container found' in error, got: %v", err)
+	}
+}
+
+func TestStop_AlreadyStopped(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+
+	ws := &workspace.Workspace{
+		ID:               "test-stop-exited",
+		Source:           t.TempDir(),
+		DevContainerPath: ".devcontainer/devcontainer.json",
+	}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{
+			ID:    "abc123",
+			State: driver.ContainerState{Status: "exited"},
+		},
+	}
+
+	e := &Engine{
+		driver: drv,
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+	}
+
+	// Stopping an already-stopped container should not error.
+	if err := e.Stop(context.Background(), ws); err != nil {
+		t.Fatalf("Stop on exited container should succeed, got: %v", err)
+	}
+}
+
 func TestRemove_DeletesWorkspaceState(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 
