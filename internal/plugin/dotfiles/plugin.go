@@ -63,7 +63,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 			continue
 		}
 		// Found a script, execute it.
-		runCmd := []string{"sh", "-c", scriptPath}
+		runCmd := []string{"sh", scriptPath}
 		if _, err := req.Exec(ctx, runCmd, req.RemoteUser, targetPath); err != nil {
 			slog.Warn("dotfiles: install script failed", "script", script, "error", err)
 		}

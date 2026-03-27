@@ -486,6 +486,11 @@ func (e *Engine) Stop(ctx context.Context, ws *workspace.Workspace) error {
 		return fmt.Errorf("no container found for workspace %s", ws.ID)
 	}
 
+	if !container.State.IsRunning() {
+		e.logger.Debug("container already stopped", "workspace", ws.ID, "containerID", container.ID)
+		return nil
+	}
+
 	return e.driver.StopContainer(ctx, ws.ID, container.ID)
 }
 

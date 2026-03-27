@@ -98,8 +98,12 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 	}
 
 	// Run start-time lifecycle hooks (postStart, postAttach).
-	if startErr := runner.runStartHooks(ctx, hooks, cc.workspaceFolder); startErr != nil && hookErr == nil {
-		hookErr = startErr
+	// Only run if create hooks succeeded, matching the pre-split behavior
+	// where later stages wouldn't execute after an earlier hook failure.
+	if hookErr == nil {
+		if startErr := runner.runStartHooks(ctx, hooks, cc.workspaceFolder); startErr != nil {
+			hookErr = startErr
+		}
 	}
 
 	// Post-hook environment probe: re-captures the environment to pick up

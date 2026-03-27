@@ -23,6 +23,7 @@ func TestNewStore_ExplicitHome(t *testing.T) {
 
 func TestNewStore_DefaultHome(t *testing.T) {
 	t.Setenv("CRIB_HOME", "")
+	t.Setenv("HOME", t.TempDir())
 
 	store, err := NewStore()
 	if err != nil {
