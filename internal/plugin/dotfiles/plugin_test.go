@@ -98,6 +98,30 @@ func TestPostContainerCreate_ClonesRepository(t *testing.T) {
 	}
 }
 
+func TestPostContainerCreate_SSHRepo_AcceptsNewHostKey(t *testing.T) {
+	p := New(globalconfig.DotfilesConfig{
+		Repository: "git@github.com:user/dotfiles",
+	})
+	exec := &fakeExec{}
+
+	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
+		RemoteUser: "vscode",
+		Exec:       exec.fn,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Clone via SSH should use sh -c with GIT_SSH_COMMAND.
+	cloneCmd := strings.Join(exec.calls[1].cmd, " ")
+	if !strings.Contains(cloneCmd, "StrictHostKeyChecking=accept-new") {
+		t.Errorf("expected StrictHostKeyChecking=accept-new for SSH repo, got: %s", cloneCmd)
+	}
+	if !strings.Contains(cloneCmd, "git@github.com:user/dotfiles") {
+		t.Errorf("expected repository URL in command, got: %s", cloneCmd)
+	}
+}
+
 func TestPostContainerCreate_CustomTargetPath(t *testing.T) {
 	p := New(globalconfig.DotfilesConfig{
 		Repository: "https://github.com/user/dotfiles",

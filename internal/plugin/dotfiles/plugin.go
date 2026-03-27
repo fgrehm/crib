@@ -44,8 +44,12 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	remoteHome := plugin.InferRemoteHome(req.RemoteUser)
 	targetPath := p.resolveTargetPath(remoteHome)
 
-	// Clone the repository.
+	// Clone the repository. Use accept-new so the first connection to a host
+	// (e.g. github.com) auto-accepts its key without a known_hosts entry.
 	cloneCmd := []string{"git", "clone", p.cfg.Repository, targetPath}
+	if strings.Contains(p.cfg.Repository, "@") || strings.HasPrefix(p.cfg.Repository, "ssh://") {
+		cloneCmd = []string{"sh", "-c", "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone " + shellQuote(p.cfg.Repository) + " " + shellQuote(targetPath)}
+	}
 	if _, err := req.Exec(ctx, cloneCmd, req.RemoteUser, ""); err != nil {
 		slog.Warn("dotfiles: clone failed", "repo", p.cfg.Repository, "error", err)
 		return nil, nil
@@ -77,6 +81,11 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	}
 
 	return nil, nil
+}
+
+// shellQuote wraps s in single quotes, escaping any embedded single quotes.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 // resolveTargetPath expands ~ to the remote user's home directory.
