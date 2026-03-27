@@ -132,6 +132,9 @@ func (p *Plugin) resolveTargetPath(remoteHome string) string {
 	if target == "" {
 		target = "~/dotfiles"
 	}
+	if target == "~" {
+		return remoteHome
+	}
 	if strings.HasPrefix(target, "~/") {
 		return remoteHome + target[1:]
 	}
