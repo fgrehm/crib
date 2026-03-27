@@ -35,6 +35,12 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 		return nil, nil
 	}
 
+	// Check that git is available in the container.
+	if _, err := req.Exec(ctx, []string{"which", "git"}, req.RemoteUser, ""); err != nil {
+		slog.Warn("dotfiles: git not found in container, skipping")
+		return nil, nil
+	}
+
 	remoteHome := plugin.InferRemoteHome(req.RemoteUser)
 	targetPath := p.resolveTargetPath(remoteHome)
 

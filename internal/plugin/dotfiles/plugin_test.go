@@ -41,6 +41,28 @@ func TestPostContainerCreate_NoRepository_Noop(t *testing.T) {
 	}
 }
 
+func TestPostContainerCreate_NoGit_Skips(t *testing.T) {
+	p := New(globalconfig.DotfilesConfig{
+		Repository: "https://github.com/user/dotfiles",
+	})
+
+	exec := func(_ context.Context, cmd []string, _ string, _ string) ([]byte, error) {
+		if cmd[0] == "which" {
+			return nil, &fakeError{}
+		}
+		t.Fatal("should not exec anything after which fails")
+		return nil, nil
+	}
+
+	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
+		RemoteUser: "vscode",
+		Exec:       exec,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestPostContainerCreate_ClonesRepository(t *testing.T) {
 	p := New(globalconfig.DotfilesConfig{
 		Repository: "https://github.com/user/dotfiles",
@@ -59,8 +81,8 @@ func TestPostContainerCreate_ClonesRepository(t *testing.T) {
 		t.Fatal("expected at least one exec call for clone")
 	}
 
-	// First call should be git clone.
-	cloneCmd := strings.Join(exec.calls[0].cmd, " ")
+	// First call is which git, second is git clone.
+	cloneCmd := strings.Join(exec.calls[1].cmd, " ")
 	if !strings.Contains(cloneCmd, "git clone") {
 		t.Errorf("expected git clone command, got: %s", cloneCmd)
 	}
@@ -71,8 +93,8 @@ func TestPostContainerCreate_ClonesRepository(t *testing.T) {
 	if !strings.Contains(cloneCmd, "/home/vscode/dotfiles") {
 		t.Errorf("expected default target path, got: %s", cloneCmd)
 	}
-	if exec.calls[0].user != "vscode" {
-		t.Errorf("expected user vscode, got %s", exec.calls[0].user)
+	if exec.calls[1].user != "vscode" {
+		t.Errorf("expected user vscode, got %s", exec.calls[1].user)
 	}
 }
 
@@ -91,7 +113,7 @@ func TestPostContainerCreate_CustomTargetPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cloneCmd := strings.Join(exec.calls[0].cmd, " ")
+	cloneCmd := strings.Join(exec.calls[1].cmd, " ")
 	if !strings.Contains(cloneCmd, "/home/vscode/my-dotfiles") {
 		t.Errorf("expected custom target path with tilde expanded, got: %s", cloneCmd)
 	}
@@ -111,12 +133,12 @@ func TestPostContainerCreate_RootUser(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cloneCmd := strings.Join(exec.calls[0].cmd, " ")
+	cloneCmd := strings.Join(exec.calls[1].cmd, " ")
 	if !strings.Contains(cloneCmd, "/root/dotfiles") {
 		t.Errorf("expected root home path, got: %s", cloneCmd)
 	}
-	if exec.calls[0].user != "root" {
-		t.Errorf("expected user root, got %s", exec.calls[0].user)
+	if exec.calls[1].user != "root" {
+		t.Errorf("expected user root, got %s", exec.calls[1].user)
 	}
 }
 
@@ -127,12 +149,10 @@ func TestPostContainerCreate_AutoDetectsInstallScript(t *testing.T) {
 		Repository: "https://github.com/user/dotfiles",
 	})
 
-	callIdx := 0
-	exec := func(_ context.Context, cmd []string, user string, workDir string) ([]byte, error) {
-		callIdx++
+	exec := func(_ context.Context, cmd []string, _ string, _ string) ([]byte, error) {
 		cmdStr := strings.Join(cmd, " ")
-		// First call is git clone, succeed.
-		if strings.Contains(cmdStr, "git clone") {
+		// which git and git clone succeed.
+		if cmd[0] == "which" || strings.Contains(cmdStr, "git clone") {
 			return nil, nil
 		}
 		// For test -f checks, succeed on install.sh only.
@@ -176,18 +196,18 @@ func TestPostContainerCreate_InstallCommandOverride(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should have clone + install command (no test -f probing).
-	if len(calls) != 2 {
-		t.Fatalf("expected 2 exec calls (clone + install), got %d", len(calls))
+	// Should have which git + clone + install command (no test -f probing).
+	if len(calls) != 3 {
+		t.Fatalf("expected 3 exec calls (which + clone + install), got %d", len(calls))
 	}
 
-	installCmd := strings.Join(calls[1].cmd, " ")
+	installCmd := strings.Join(calls[2].cmd, " ")
 	if !strings.Contains(installCmd, "make install") {
 		t.Errorf("expected install command override, got: %s", installCmd)
 	}
 	// Install should run in the target directory.
-	if calls[1].workDir != "/home/vscode/dotfiles" {
-		t.Errorf("expected workDir /home/vscode/dotfiles, got %s", calls[1].workDir)
+	if calls[2].workDir != "/home/vscode/dotfiles" {
+		t.Errorf("expected workDir /home/vscode/dotfiles, got %s", calls[2].workDir)
 	}
 }
 
@@ -206,7 +226,7 @@ func TestPostContainerCreate_AbsoluteTargetPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cloneCmd := strings.Join(exec.calls[0].cmd, " ")
+	cloneCmd := strings.Join(exec.calls[1].cmd, " ")
 	if !strings.Contains(cloneCmd, "/opt/dotfiles") {
 		t.Errorf("expected absolute target path, got: %s", cloneCmd)
 	}
