@@ -170,6 +170,10 @@ The plugin runs during `crib up` (first creation only). Because the effects are 
 The container must have `git` installed for the clone to work. Most devcontainer base images include it. If yours doesn't, add it via a Feature or `postCreateCommand`.
 :::
 
+:::caution[SSH repos on rootless Podman with root containers]
+If your container runs as `root` and you use rootless Podman, SSH-based repository URLs (e.g. `git@github.com:user/dotfiles`) will fail to authenticate. The SSH agent socket is bind-mounted with the host user's permissions, and rootless Podman's UID remapping prevents the container's `root` from accessing it. Use an HTTPS URL instead, or switch to a non-root `remoteUser`.
+:::
+
 ---
 
 ## SSH
