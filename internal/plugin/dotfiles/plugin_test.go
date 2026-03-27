@@ -2,6 +2,7 @@ package dotfiles
 
 import (
 	"context"
+	"io"
 	"strings"
 	"testing"
 
@@ -25,14 +26,24 @@ func (f *fakeExec) fn(_ context.Context, cmd []string, user string, workDir stri
 	return nil, nil
 }
 
+func (f *fakeExec) streamFn(_ context.Context, cmd []string, user string, workDir string, _, _ io.Writer) error {
+	f.calls = append(f.calls, fakeExecCall{cmd: cmd, user: user, workDir: workDir})
+	return nil
+}
+
+func (f *fakeExec) request(user string) *plugin.PostContainerCreateRequest {
+	return &plugin.PostContainerCreateRequest{
+		RemoteUser: user,
+		Exec:       f.fn,
+		StreamExec: f.streamFn,
+	}
+}
+
 func TestPostContainerCreate_NoRepository_Noop(t *testing.T) {
 	p := New(globalconfig.DotfilesConfig{})
 	exec := &fakeExec{}
 
-	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
-		RemoteUser: "vscode",
-		Exec:       exec.fn,
-	})
+	_, err := p.PostContainerCreate(context.Background(), exec.request("vscode"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -46,7 +57,7 @@ func TestPostContainerCreate_NoGit_Skips(t *testing.T) {
 		Repository: "https://github.com/user/dotfiles",
 	})
 
-	exec := func(_ context.Context, cmd []string, _ string, _ string) ([]byte, error) {
+	execFn := func(_ context.Context, cmd []string, _ string, _ string) ([]byte, error) {
 		if cmd[0] == "which" {
 			return nil, &fakeError{}
 		}
@@ -56,7 +67,7 @@ func TestPostContainerCreate_NoGit_Skips(t *testing.T) {
 
 	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
 		RemoteUser: "vscode",
-		Exec:       exec,
+		Exec:       execFn,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -69,10 +80,7 @@ func TestPostContainerCreate_ClonesRepository(t *testing.T) {
 	})
 	exec := &fakeExec{}
 
-	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
-		RemoteUser: "vscode",
-		Exec:       exec.fn,
-	})
+	_, err := p.PostContainerCreate(context.Background(), exec.request("vscode"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -104,10 +112,7 @@ func TestPostContainerCreate_SSHRepo_AcceptsNewHostKey(t *testing.T) {
 	})
 	exec := &fakeExec{}
 
-	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
-		RemoteUser: "vscode",
-		Exec:       exec.fn,
-	})
+	_, err := p.PostContainerCreate(context.Background(), exec.request("vscode"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -129,10 +134,7 @@ func TestPostContainerCreate_CustomTargetPath(t *testing.T) {
 	})
 	exec := &fakeExec{}
 
-	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
-		RemoteUser: "vscode",
-		Exec:       exec.fn,
-	})
+	_, err := p.PostContainerCreate(context.Background(), exec.request("vscode"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -149,10 +151,7 @@ func TestPostContainerCreate_RootUser(t *testing.T) {
 	})
 	exec := &fakeExec{}
 
-	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
-		RemoteUser: "root",
-		Exec:       exec.fn,
-	})
+	_, err := p.PostContainerCreate(context.Background(), exec.request("root"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -173,10 +172,10 @@ func TestPostContainerCreate_AutoDetectsInstallScript(t *testing.T) {
 		Repository: "https://github.com/user/dotfiles",
 	})
 
-	exec := func(_ context.Context, cmd []string, _ string, _ string) ([]byte, error) {
+	execFn := func(_ context.Context, cmd []string, _ string, _ string) ([]byte, error) {
 		cmdStr := strings.Join(cmd, " ")
-		// which git and git clone succeed.
-		if cmd[0] == "which" || strings.Contains(cmdStr, "git clone") {
+		// which git succeeds.
+		if cmd[0] == "which" {
 			return nil, nil
 		}
 		// For test -f checks, succeed on install.sh only.
@@ -187,13 +186,21 @@ func TestPostContainerCreate_AutoDetectsInstallScript(t *testing.T) {
 		if strings.Contains(cmdStr, "test -f") {
 			return nil, &fakeError{}
 		}
-		// The actual install.sh execution.
 		return nil, nil
+	}
+	streamFn := func(_ context.Context, cmd []string, _ string, _ string, _, _ io.Writer) error {
+		cmdStr := strings.Join(cmd, " ")
+		// git clone and install script execution succeed.
+		if strings.Contains(cmdStr, "git clone") || strings.Contains(cmdStr, "install.sh") {
+			return nil
+		}
+		return nil
 	}
 
 	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
 		RemoteUser: "vscode",
-		Exec:       exec,
+		Exec:       execFn,
+		StreamExec: streamFn,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -205,33 +212,25 @@ func TestPostContainerCreate_InstallCommandOverride(t *testing.T) {
 		Repository:     "https://github.com/user/dotfiles",
 		InstallCommand: "make install",
 	})
+	exec := &fakeExec{}
 
-	var calls []fakeExecCall
-	exec := func(_ context.Context, cmd []string, user string, workDir string) ([]byte, error) {
-		calls = append(calls, fakeExecCall{cmd: cmd, user: user, workDir: workDir})
-		return nil, nil
-	}
-
-	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
-		RemoteUser: "vscode",
-		Exec:       exec,
-	})
+	_, err := p.PostContainerCreate(context.Background(), exec.request("vscode"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should have which git + clone + install command (no test -f probing).
-	if len(calls) != 3 {
-		t.Fatalf("expected 3 exec calls (which + clone + install), got %d", len(calls))
+	// Should have which git (exec) + clone (stream) + install (stream).
+	if len(exec.calls) != 3 {
+		t.Fatalf("expected 3 exec calls (which + clone + install), got %d", len(exec.calls))
 	}
 
-	installCmd := strings.Join(calls[2].cmd, " ")
+	installCmd := strings.Join(exec.calls[2].cmd, " ")
 	if !strings.Contains(installCmd, "make install") {
 		t.Errorf("expected install command override, got: %s", installCmd)
 	}
 	// Install should run in the target directory.
-	if calls[2].workDir != "/home/vscode/dotfiles" {
-		t.Errorf("expected workDir /home/vscode/dotfiles, got %s", calls[2].workDir)
+	if exec.calls[2].workDir != "/home/vscode/dotfiles" {
+		t.Errorf("expected workDir /home/vscode/dotfiles, got %s", exec.calls[2].workDir)
 	}
 }
 
@@ -242,10 +241,7 @@ func TestPostContainerCreate_AbsoluteTargetPath(t *testing.T) {
 	})
 	exec := &fakeExec{}
 
-	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
-		RemoteUser: "vscode",
-		Exec:       exec.fn,
-	})
+	_, err := p.PostContainerCreate(context.Background(), exec.request("vscode"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

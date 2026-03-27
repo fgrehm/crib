@@ -3,6 +3,7 @@ package dotfiles
 import (
 	"context"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -51,7 +52,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	if strings.Contains(p.cfg.Repository, "@") || strings.HasPrefix(p.cfg.Repository, "ssh://") {
 		cloneCmd = []string{"sh", "-c", "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone " + shellQuote(p.cfg.Repository) + " " + shellQuote(targetPath)}
 	}
-	if err := execWithRetry(ctx, req, cloneCmd, req.RemoteUser, "", 3); err != nil {
+	if err := streamExecWithRetry(ctx, req, cloneCmd, req.RemoteUser, "", 3); err != nil {
 		slog.Warn("dotfiles: clone failed", "repo", p.cfg.Repository, "error", err)
 		return nil, nil
 	}
@@ -60,7 +61,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	if p.cfg.InstallCommand != "" {
 		// Explicit install command from config.
 		installCmd := []string{"sh", "-c", p.cfg.InstallCommand}
-		if _, err := req.Exec(ctx, installCmd, req.RemoteUser, targetPath); err != nil {
+		if err := req.StreamExec(ctx, installCmd, req.RemoteUser, targetPath, os.Stdout, os.Stderr); err != nil {
 			slog.Warn("dotfiles: install command failed", "cmd", p.cfg.InstallCommand, "error", err)
 		}
 		return nil, nil
@@ -75,7 +76,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 		}
 		// Found a script, execute it.
 		runCmd := []string{"sh", scriptPath}
-		if _, err := req.Exec(ctx, runCmd, req.RemoteUser, targetPath); err != nil {
+		if err := req.StreamExec(ctx, runCmd, req.RemoteUser, targetPath, os.Stdout, os.Stderr); err != nil {
 			slog.Warn("dotfiles: install script failed", "script", script, "error", err)
 		}
 		break
@@ -84,13 +85,13 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	return nil, nil
 }
 
-// execWithRetry runs a command up to maxAttempts times, waiting briefly
-// between attempts. Retries help with transient DNS failures that are
-// common on rootless Podman.
-func execWithRetry(ctx context.Context, req *plugin.PostContainerCreateRequest, cmd []string, user, workDir string, maxAttempts int) error {
+// streamExecWithRetry runs a command up to maxAttempts times with streaming
+// output, waiting briefly between attempts. Retries help with transient DNS
+// failures that are common on rootless Podman.
+func streamExecWithRetry(ctx context.Context, req *plugin.PostContainerCreateRequest, cmd []string, user, workDir string, maxAttempts int) error {
 	var err error
 	for i := range maxAttempts {
-		if _, err = req.Exec(ctx, cmd, user, workDir); err == nil {
+		if err = req.StreamExec(ctx, cmd, user, workDir, os.Stdout, os.Stderr); err == nil {
 			return nil
 		}
 		if i < maxAttempts-1 {

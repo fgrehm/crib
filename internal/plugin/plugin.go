@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"io"
 	"os"
 
 	"github.com/fgrehm/crib/internal/config"
@@ -17,9 +18,13 @@ type Plugin interface {
 // ExecFunc runs a command inside the container. Returns combined output and error.
 type ExecFunc func(ctx context.Context, cmd []string, user string, workDir string) ([]byte, error)
 
+// StreamExecFunc runs a command inside the container, streaming stdout and
+// stderr to the provided writers instead of capturing them.
+type StreamExecFunc func(ctx context.Context, cmd []string, user string, workDir string, stdout, stderr io.Writer) error
+
 // PostContainerCreateRequest provides context for post-creation hooks.
 // Plugins that need to run commands inside the container (e.g. dotfiles
-// installation) use the Exec callback.
+// installation) use the Exec callback (captured) or StreamExec (streamed).
 type PostContainerCreateRequest struct {
 	WorkspaceID     string
 	WorkspaceDir    string
@@ -27,6 +32,7 @@ type PostContainerCreateRequest struct {
 	RemoteUser      string
 	WorkspaceFolder string
 	Exec            ExecFunc
+	StreamExec      StreamExecFunc
 }
 
 // PostContainerCreateResponse carries results from post-creation hooks.

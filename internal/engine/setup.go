@@ -94,6 +94,9 @@ func (e *Engine) setupContainer(ctx context.Context, ws *workspace.Workspace, cf
 			Exec: func(ctx context.Context, cmd []string, user string, workDir string) ([]byte, error) {
 				return e.execInContainer(ctx, cc, cmd, user, workDir, preHookEnv)
 			},
+			StreamExec: func(ctx context.Context, cmd []string, user string, workDir string, stdout, stderr io.Writer) error {
+				return e.streamExecInContainer(ctx, cc, cmd, user, workDir, preHookEnv, stdout, stderr)
+			},
 		})
 	}
 
@@ -451,21 +454,31 @@ func (e *Engine) detectShellFallback(ctx context.Context, cc containerContext) s
 	return "/bin/sh"
 }
 
-// execInContainer runs a command inside the container and returns combined
-// stdout+stderr. Used as the ExecFunc adapter for PostContainerCreate plugins.
-func (e *Engine) execInContainer(ctx context.Context, cc containerContext, cmd []string, user string, workDir string, env map[string]string) ([]byte, error) {
-	// Wrap command with cd if workDir is specified.
+// prepareExecCmd wraps cmd with cd if workDir is specified and resolves the user.
+func (e *Engine) prepareExecCmd(cc containerContext, cmd []string, user, workDir string) ([]string, string) {
 	execCmd := cmd
 	if workDir != "" {
 		inner := fmt.Sprintf("cd %q 2>/dev/null; %s", workDir, plugin.ShellQuoteJoin(cmd))
 		execCmd = []string{"sh", "-c", inner}
 	}
-
 	if user == "" {
 		user = cc.remoteUser
 	}
+	return execCmd, user
+}
 
+// execInContainer runs a command inside the container and returns combined
+// stdout+stderr. Used as the ExecFunc adapter for PostContainerCreate plugins.
+func (e *Engine) execInContainer(ctx context.Context, cc containerContext, cmd []string, user string, workDir string, env map[string]string) ([]byte, error) {
+	execCmd, execUser := e.prepareExecCmd(cc, cmd, user, workDir)
 	var buf bytes.Buffer
-	err := e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID, execCmd, nil, &buf, &buf, envSlice(env), user)
+	err := e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID, execCmd, nil, &buf, &buf, envSlice(env), execUser)
 	return buf.Bytes(), err
+}
+
+// streamExecInContainer runs a command inside the container, streaming output
+// to the provided writers. Used for long-running plugin commands (e.g. dotfiles).
+func (e *Engine) streamExecInContainer(ctx context.Context, cc containerContext, cmd []string, user string, workDir string, env map[string]string, stdout, stderr io.Writer) error {
+	execCmd, execUser := e.prepareExecCmd(cc, cmd, user, workDir)
+	return e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID, execCmd, nil, stdout, stderr, envSlice(env), execUser)
 }
