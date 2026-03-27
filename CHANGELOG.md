@@ -7,66 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.8.0] - 2026-03-28
-
 ### Added
 
-- `crib stop` command: non-destructive stop that preserves the container and
-  hook markers. The next `crib up` resumes with only postStartCommand and
-  postAttachCommand, same as restarting a stopped container.
-- **Dotfiles plugin**: automatically clones and installs a dotfiles repository
-  inside the container on creation. Configured via global config
-  (`~/.config/crib/config.toml`). Supports custom target path, install command
-  override, and auto-detection of `install.sh`/`bootstrap.sh`/`setup.sh`.
+- `crib stop` command: non-destructive container stop that preserves hook
+  markers. The next `crib up` resumes with only start-time hooks.
+- **Dotfiles plugin**: clones and installs a dotfiles repository inside the
+  container on creation. Configured via global config. Supports custom target
+  path, install command override, and auto-detection of common install scripts.
   See [#17](https://github.com/fgrehm/crib/issues/17).
 - **Global config** (`~/.config/crib/config.toml`, respects `$XDG_CONFIG_HOME`):
-  TOML file for user-level settings applied across all workspaces. Currently
-  supports `[dotfiles]` configuration (repository, targetPath, installCommand).
+  user-level settings applied across all workspaces. Currently supports
+  `[dotfiles]` configuration.
 - `PostContainerCreate` plugin hook: runs between `postCreateCommand` and
-  `postStartCommand` during fresh container creation. Provides an `Exec`
-  callback for running commands inside the container. Plugins that only need
-  this hook can embed `plugin.BasePlugin` to get no-op defaults for other
-  methods.
-- Workspace file lock prevents concurrent state-mutating commands (up, down,
-  rebuild, restart, remove) from racing on the same workspace.
+  `postStartCommand` during fresh container creation. Provides `Exec` and
+  `StreamExec` callbacks for running commands inside the container.
+- Workspace file lock prevents concurrent state-mutating commands from racing.
+- Dead code detection (`go tool deadcode`) as a CI gate.
 
 ### Changed
 
-- `stop` is no longer an alias for `down`. `crib stop` pauses the container
-  (non-destructive), `crib down` removes it (destructive, clears hook markers).
-- The `crib.home` container label is now only applied when `CRIB_HOME` is
-  explicitly set. Regular users no longer see it on their containers. The label
-  still works for multi-store isolation in tests and CI.
-- Progress reporting uses typed events internally (`ProgressEvent` with phase
-  and message) instead of raw strings. No user-visible change.
-- Logging consistency: config path change demoted from Info to Debug; removed
-  explicit `slog.String()` wrappers in favor of implicit key-value args.
+- `stop` is no longer an alias for `down`. `crib stop` pauses the container,
+  `crib down` removes it.
+- `crib.home` container label only applied when `CRIB_HOME` is explicitly set.
 - Compose override generation uses compose-go types instead of string
-  concatenation. Volume syntax changes to long form (functionally equivalent).
-- `LoadProject` now threads caller-supplied environment variables (e.g.
-  `localWorkspaceFolder`, `devcontainerId`) through to compose-go's loader
-  for `${VAR}` substitution. Previously accepted but silently ignored.
-- Compose stop/down now reuse the persisted `compose-override.yml` from
-  `crib up` instead of generating temporary override files.
+  concatenation.
+- Compose stop/down reuse the persisted `compose-override.yml` from `crib up`.
+- `LoadProject` now threads caller-supplied environment variables through to
+  compose-go's loader for `${VAR}` substitution.
 
 ### Fixed
 
-- Docs website now deploys automatically after releases. The workflow triggers
-  on `stable` branch push instead of the `release` event (which GITHUB_TOKEN
-  cannot trigger).
-- Compose backend now captures stderr for diagnostics when a container is not
-  found after `compose up`, instead of the opaque "container not found" error.
-- Compose override no longer produces duplicate mount destinations when the
-  user's compose files already define a volume for the same target path.
-  Fixes "duplicate mount destination" errors with podman-compose caused by
-  the compose-go long-form volume format not being deduplicated during merge.
+- Docs website now deploys automatically on `stable` branch push.
+- Compose backend captures stderr for diagnostics when container is not found
+  after `compose up`.
+- Compose override no longer produces duplicate mount destinations when user
+  compose files already define a volume for the same target path.
 - `crib doctor --fix` no longer deletes containers belonging to a different
-  `CRIB_HOME`. Containers now carry a `crib.home` label recording which store
-  created them; doctor skips containers whose label doesn't match.
+  `CRIB_HOME`.
 - Integration and e2e tests no longer interfere with active workspaces.
-  `TestMain` warns about running crib containers, cleanup helpers reject
-  non-test workspace IDs, and the e2e doctor test no longer runs `--fix`
-  on an empty store.
 
 ## [0.7.1] - 2026-03-25
 
