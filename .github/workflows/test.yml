@@ -30,7 +30,6 @@ jobs:
           git diff --exit-code
       - name: Complexity gate (gocyclo -over 30)
         run: |
-          go tool gocyclo -h >/dev/null 2>&1 || { echo "::error::gocyclo not available"; exit 1; }
           out=$(go tool gocyclo -over 30 -ignore '_test\.go$' . || true)
           if [ -n "$out" ]; then
             echo "Functions exceeding complexity threshold of 30:"

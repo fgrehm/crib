@@ -63,7 +63,7 @@ test-e2e: ## Run end-to-end tests against the crib binary (requires Docker or Po
 setup-hooks: ## Configure git hooks
 	@git config core.hooksPath .githooks
 	@chmod +x .githooks/*
-	@echo "Git hooks configured"
+	@echo "✓ Git hooks configured"
 
 docs: ## Serve documentation from http://localhost:4321/crib
 	cd website && npm run dev
