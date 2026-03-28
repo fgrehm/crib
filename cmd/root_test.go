@@ -3,8 +3,8 @@ package cmd
 import "testing"
 
 func TestVersionString_Dev(t *testing.T) {
-	origV, origC, origB := version, commit, date
-	defer func() { version, commit, date = origV, origC, origB }()
+	origV, origC, origD := version, commit, date
+	defer func() { version, commit, date = origV, origC, origD }()
 
 	version = "0.2.0-dev"
 	commit = "abc1234"
@@ -17,9 +17,9 @@ func TestVersionString_Dev(t *testing.T) {
 	}
 }
 
-func TestVersionString_DevUnknownBuilt(t *testing.T) {
-	origV, origC, origB := version, commit, date
-	defer func() { version, commit, date = origV, origC, origB }()
+func TestVersionString_DevUnknownDate(t *testing.T) {
+	origV, origC, origD := version, commit, date
+	defer func() { version, commit, date = origV, origC, origD }()
 
 	version = "0.2.0-dev"
 	commit = "abc1234"
@@ -33,8 +33,8 @@ func TestVersionString_DevUnknownBuilt(t *testing.T) {
 }
 
 func TestVersionString_Release(t *testing.T) {
-	origV, origC, origB := version, commit, date
-	defer func() { version, commit, date = origV, origC, origB }()
+	origV, origC, origD := version, commit, date
+	defer func() { version, commit, date = origV, origC, origD }()
 
 	version = "0.2.0"
 	commit = "abc1234"
@@ -48,8 +48,8 @@ func TestVersionString_Release(t *testing.T) {
 }
 
 func TestVersionString_UnknownCommit(t *testing.T) {
-	origV, origC, origB := version, commit, date
-	defer func() { version, commit, date = origV, origC, origB }()
+	origV, origC, origD := version, commit, date
+	defer func() { version, commit, date = origV, origC, origD }()
 
 	version = "0.3.0-dev"
 	commit = "unknown"
