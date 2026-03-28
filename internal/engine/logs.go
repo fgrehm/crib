@@ -42,7 +42,7 @@ func (e *Engine) Logs(ctx context.Context, ws *workspace.Workspace, opts LogsOpt
 }
 
 // logsSingle streams logs from a single container.
-func (e *Engine) logsSingle(ctx context.Context, ws *workspace.Workspace, storedResult *workspace.Result, opts LogsOptions) error {
+func (e *Engine) logsSingle(ctx context.Context, ws *workspace.Workspace, storedResult *workspace.Result, opts LogsOptions) error { //nolint:unparam // storedResult kept for API symmetry with logsCompose
 	container, err := e.driver.FindContainer(ctx, ws.ID)
 	if err != nil {
 		return fmt.Errorf("finding container: %w", err)

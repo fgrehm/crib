@@ -171,7 +171,7 @@ func resolveBareVarRefs(env map[string]string, containerEnv map[string]string) {
 // This prevents permission mismatches on bind mounts, especially with rootless Podman.
 // Returns true when UIDs are confirmed to be in sync (already matched or successfully synced),
 // meaning chownWorkspace is not needed. Returns false when sync was skipped or failed.
-func (e *Engine) syncRemoteUserUID(ctx context.Context, cc containerContext, cfg *config.DevContainerConfig) (bool, error) {
+func (e *Engine) syncRemoteUserUID(ctx context.Context, cc containerContext, cfg *config.DevContainerConfig) (bool, error) { //nolint:unparam // error reserved for future failure modes
 	// Guard: skip if explicitly disabled.
 	if cfg.UpdateRemoteUserUID != nil && !*cfg.UpdateRemoteUserUID {
 		return false, nil
@@ -317,7 +317,7 @@ func (e *Engine) execGetGroupName(ctx context.Context, cc containerContext) (str
 }
 
 // execFindUserByUID returns the username that owns the given UID, or "" if none.
-func (e *Engine) execFindUserByUID(ctx context.Context, cc containerContext, uid int) (string, error) {
+func (e *Engine) execFindUserByUID(ctx context.Context, cc containerContext, uid int) (string, error) { //nolint:unparam // error swallowed intentionally: getent non-zero means not found
 	cmd := []string{"getent", "passwd", strconv.Itoa(uid)}
 	var stdout bytes.Buffer
 	if err := e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID, cmd, nil, &stdout, io.Discard, nil, ""); err != nil {
@@ -329,7 +329,7 @@ func (e *Engine) execFindUserByUID(ctx context.Context, cc containerContext, uid
 }
 
 // execFindGroupByGID returns the group name that owns the given GID, or "" if none.
-func (e *Engine) execFindGroupByGID(ctx context.Context, cc containerContext, gid int) (string, error) {
+func (e *Engine) execFindGroupByGID(ctx context.Context, cc containerContext, gid int) (string, error) { //nolint:unparam // error swallowed intentionally: getent non-zero means not found
 	cmd := []string{"getent", "group", strconv.Itoa(gid)}
 	var stdout bytes.Buffer
 	if err := e.driver.ExecContainer(ctx, cc.workspaceID, cc.containerID, cmd, nil, &stdout, io.Discard, nil, ""); err != nil {

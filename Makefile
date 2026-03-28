@@ -1,26 +1,29 @@
-.PHONY: build install clean test lint audit deadcode test-integration test-e2e setup-hooks help docs
+.PHONY: build install clean test lint fmt audit deadcode vendor test-integration test-e2e setup-hooks help docs
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 build: ## Build the crib binary
-	@mkdir -p bin
+	@mkdir -p dist
 	VERSION=$$(cat VERSION 2>/dev/null || echo "0.0.0")-dev; \
 	COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown"); \
 	BUILT=$$(date -u '+%Y-%m-%dT%H:%M:%SZ'); \
 	go build \
 		-ldflags="-X github.com/fgrehm/crib/cmd.Version=$$VERSION -X github.com/fgrehm/crib/cmd.Commit=$$COMMIT -X github.com/fgrehm/crib/cmd.Built=$$BUILT" \
-		-o bin/crib .
+		-o dist/crib .
 
 install: build ## Install crib to ~/.local/bin
 	install -d -m 755 ~/.local/bin
-	install -m 755 bin/crib ~/.local/bin/crib
+	install -m 755 dist/crib ~/.local/bin/crib
 
 test: ## Run unit tests
-	go test $(GO_TEST_FLAGS) ./internal/... -short -count=1
+	go test -race -shuffle=on $(GO_TEST_FLAGS) ./internal/... -short -count=1
 
 lint: ## Run linters
 	go tool golangci-lint run
+
+fmt: ## Format code with gofumpt and goimports
+	go tool golangci-lint fmt ./...
 
 audit: ## Run complexity and dead-code analysis (informational)
 	@echo "=== Cyclomatic complexity (>15) ==="
@@ -52,5 +55,9 @@ setup-hooks: ## Configure git hooks
 docs: ## Serve documentation from http://localhost:4321/crib
 	cd website && npm run dev
 
+vendor: ## Tidy and vendor dependencies
+	go mod tidy
+	go mod vendor
+
 clean: ## Remove build artifacts
-	rm -rf bin/
+	rm -rf dist/
