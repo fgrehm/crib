@@ -1,16 +1,28 @@
 .PHONY: build install clean test lint fmt audit deadcode coverage vendor test-integration test-e2e setup-hooks help docs
 
+# Build variables
+BASE_VERSION := $(shell cat VERSION 2>/dev/null || echo "0.0.0")
+GIT_TAG := $(shell git describe --exact-match --tags 2>/dev/null)
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+ifeq ($(GIT_TAG),)
+  VERSION := $(BASE_VERSION)-dev+$(shell date -u +"%Y%m%d%H%M%S")
+else
+  VERSION := $(GIT_TAG)
+endif
+
+LDFLAGS := -X github.com/fgrehm/crib/cmd.Version=$(VERSION) \
+           -X github.com/fgrehm/crib/cmd.Commit=$(COMMIT) \
+           -X github.com/fgrehm/crib/cmd.Built=$(DATE)
+
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 build: ## Build the crib binary
 	@mkdir -p dist
-	VERSION=$$(cat VERSION 2>/dev/null || echo "0.0.0")-dev; \
-	COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "unknown"); \
-	BUILT=$$(date -u '+%Y-%m-%dT%H:%M:%SZ'); \
-	go build \
-		-ldflags="-X github.com/fgrehm/crib/cmd.Version=$$VERSION -X github.com/fgrehm/crib/cmd.Commit=$$COMMIT -X github.com/fgrehm/crib/cmd.Built=$$BUILT" \
-		-o dist/crib .
+	@go build -ldflags "$(LDFLAGS)" -o dist/crib .
+	@echo "✓ Built to dist/crib"
 
 install: build ## Install crib to ~/.local/bin (symlink)
 	@mkdir -p "$(HOME)/.local/bin"
