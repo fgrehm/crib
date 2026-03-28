@@ -53,17 +53,17 @@ var (
 	cacheProviders []string // loaded from .cribrc cache key
 )
 
-// Version variables injected at build time.
+// version variables injected at build time via ldflags.
 var (
-	Version = "dev"
-	Commit  = "unknown"
-	Built   = "unknown"
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
 )
 
 var rootCmd = &cobra.Command{
 	Use:     "crib",
 	Short:   "Dev containers without the ceremony",
-	Version: Version,
+	Version: version,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		level := slog.LevelWarn
 		if debugFlag {
@@ -112,7 +112,7 @@ func init() {
 	rootCmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return &errUsage{err: err}
 	})
-	rootCmd.SetVersionTemplate(fmt.Sprintf("crib version %s\n", Version))
+	rootCmd.SetVersionTemplate(fmt.Sprintf("crib version %s\n", version))
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(statusCmd)
 	rootCmd.AddCommand(downCmd)
@@ -164,7 +164,7 @@ func Execute() int {
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		u := newUI()
 		u.Error(err.Error())
-		fmt.Fprintf(os.Stderr, "\ncrib %s (%s)\n", Version, Commit)
+		fmt.Fprintf(os.Stderr, "\ncrib %s (%s)\n", version, commit)
 		var ue *errUsage
 		if errors.As(err, &ue) {
 			return exitUsage
@@ -243,7 +243,7 @@ func currentWorkspace(store *workspace.Store, create bool) (*workspace.Workspace
 			ID:               rr.WorkspaceID,
 			Source:           rr.ProjectRoot,
 			DevContainerPath: rr.RelativeConfigPath,
-			CribVersion:      Version,
+			CribVersion:      version,
 			CreatedAt:        now,
 			LastUsedAt:       now,
 		}
@@ -259,8 +259,8 @@ func currentWorkspace(store *workspace.Store, create bool) (*workspace.Workspace
 			ws.DevContainerPath = rr.RelativeConfigPath
 			changed = true
 		}
-		if ws.CribVersion != Version {
-			ws.CribVersion = Version
+		if ws.CribVersion != version {
+			ws.CribVersion = version
 			changed = true
 		}
 		if changed {
@@ -277,11 +277,11 @@ func currentWorkspace(store *workspace.Store, create bool) (*workspace.Workspace
 // versionString returns a formatted version string for display.
 // For dev builds, includes commit and build timestamp.
 func versionString() string {
-	v := "crib " + Version
-	if strings.Contains(Version, "-dev") && Commit != "unknown" {
-		v += " (" + Commit
-		if Built != "unknown" {
-			v += ", " + Built
+	v := "crib " + version
+	if strings.Contains(version, "-dev") && commit != "unknown" {
+		v += " (" + commit
+		if date != "unknown" {
+			v += ", " + date
 		}
 		v += ")"
 	}

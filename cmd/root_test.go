@@ -3,12 +3,12 @@ package cmd
 import "testing"
 
 func TestVersionString_Dev(t *testing.T) {
-	origV, origC, origB := Version, Commit, Built
-	defer func() { Version, Commit, Built = origV, origC, origB }()
+	origV, origC, origB := version, commit, date
+	defer func() { version, commit, date = origV, origC, origB }()
 
-	Version = "0.2.0-dev"
-	Commit = "abc1234"
-	Built = "2026-02-27T10:00:00Z"
+	version = "0.2.0-dev"
+	commit = "abc1234"
+	date = "2026-02-27T10:00:00Z"
 
 	got := versionString()
 	want := "crib 0.2.0-dev (abc1234, 2026-02-27T10:00:00Z)"
@@ -18,12 +18,12 @@ func TestVersionString_Dev(t *testing.T) {
 }
 
 func TestVersionString_DevUnknownBuilt(t *testing.T) {
-	origV, origC, origB := Version, Commit, Built
-	defer func() { Version, Commit, Built = origV, origC, origB }()
+	origV, origC, origB := version, commit, date
+	defer func() { version, commit, date = origV, origC, origB }()
 
-	Version = "0.2.0-dev"
-	Commit = "abc1234"
-	Built = "unknown"
+	version = "0.2.0-dev"
+	commit = "abc1234"
+	date = "unknown"
 
 	got := versionString()
 	want := "crib 0.2.0-dev (abc1234)"
@@ -33,12 +33,12 @@ func TestVersionString_DevUnknownBuilt(t *testing.T) {
 }
 
 func TestVersionString_Release(t *testing.T) {
-	origV, origC, origB := Version, Commit, Built
-	defer func() { Version, Commit, Built = origV, origC, origB }()
+	origV, origC, origB := version, commit, date
+	defer func() { version, commit, date = origV, origC, origB }()
 
-	Version = "0.2.0"
-	Commit = "abc1234"
-	Built = "2026-02-27T10:00:00Z"
+	version = "0.2.0"
+	commit = "abc1234"
+	date = "2026-02-27T10:00:00Z"
 
 	got := versionString()
 	want := "crib 0.2.0"
@@ -48,12 +48,12 @@ func TestVersionString_Release(t *testing.T) {
 }
 
 func TestVersionString_UnknownCommit(t *testing.T) {
-	origV, origC, origB := Version, Commit, Built
-	defer func() { Version, Commit, Built = origV, origC, origB }()
+	origV, origC, origB := version, commit, date
+	defer func() { version, commit, date = origV, origC, origB }()
 
-	Version = "0.3.0-dev"
-	Commit = "unknown"
-	Built = "unknown"
+	version = "0.3.0-dev"
+	commit = "unknown"
+	date = "unknown"
 
 	got := versionString()
 	want := "crib 0.3.0-dev"

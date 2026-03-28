@@ -4,25 +4,38 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
     groups:
-      go-deps:
-        patterns:
-          - "*"
+      go-minor-patch:
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
+    reviewers:
+      - fgrehm
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
     groups:
-      github-actions:
+      actions:
         patterns:
           - "*"
+    open-pull-requests-limit: 3
+    reviewers:
+      - fgrehm
 
   - package-ecosystem: npm
     directory: /website
     schedule:
       interval: weekly
+      day: monday
     groups:
       npm-deps:
         patterns:
           - "*"
+    open-pull-requests-limit: 3
+    reviewers:
+      - fgrehm

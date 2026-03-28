@@ -9,12 +9,12 @@ DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 ifeq ($(GIT_TAG),)
   VERSION := $(BASE_VERSION)-dev+$(shell date -u +"%Y%m%d%H%M%S")
 else
-  VERSION := $(GIT_TAG)
+  VERSION := $(patsubst v%,%,$(GIT_TAG))
 endif
 
-LDFLAGS := -X github.com/fgrehm/crib/cmd.Version=$(VERSION) \
-           -X github.com/fgrehm/crib/cmd.Commit=$(COMMIT) \
-           -X github.com/fgrehm/crib/cmd.Built=$(DATE)
+LDFLAGS := -X github.com/fgrehm/crib/cmd.version=$(VERSION) \
+           -X github.com/fgrehm/crib/cmd.commit=$(COMMIT) \
+           -X github.com/fgrehm/crib/cmd.date=$(DATE)
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
