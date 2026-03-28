@@ -1,4 +1,4 @@
-.PHONY: build install clean test lint fmt audit deadcode vendor test-integration test-e2e setup-hooks help docs
+.PHONY: build install clean test lint fmt audit deadcode coverage vendor test-integration test-e2e setup-hooks help docs
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -13,8 +13,8 @@ build: ## Build the crib binary
 		-o dist/crib .
 
 install: build ## Install crib to ~/.local/bin (symlink)
-	@mkdir -p $(HOME)/.local/bin
-	@ln -sf $(PWD)/dist/crib $(HOME)/.local/bin/crib
+	@mkdir -p "$(HOME)/.local/bin"
+	@ln -sf "$(CURDIR)/dist/crib" "$(HOME)/.local/bin/crib"
 	@echo "✓ Installed to ~/.local/bin/crib"
 
 test: ## Run unit tests
@@ -26,12 +26,12 @@ lint: ## Run linters
 fmt: ## Format code with gofumpt and goimports
 	go tool golangci-lint fmt ./...
 
-audit: ## Run complexity and dead-code analysis (informational)
+audit: ## Run complexity and vulnerability checks (informational)
 	@echo "=== Cyclomatic complexity (>15) ==="
 	@go tool gocyclo -over 15 . || true
 	@echo ""
-	@echo "=== Dead code ==="
-	@go tool deadcode ./... 2>&1 || true
+	@echo "=== Vulnerability check ==="
+	@go tool govulncheck ./... || true
 
 deadcode: ## Check for dead code (hard gate, matches CI)
 	@out=$$(go tool deadcode ./...); \
@@ -55,6 +55,10 @@ setup-hooks: ## Configure git hooks
 
 docs: ## Serve documentation from http://localhost:4321/crib
 	cd website && npm run dev
+
+coverage: ## Generate test coverage report
+	go test -race -shuffle=on -coverprofile=coverage.txt ./internal/... -short -count=1
+	go tool cover -html=coverage.txt -o coverage.html
 
 vendor: ## Tidy and vendor dependencies
 	go mod tidy
