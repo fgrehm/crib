@@ -34,8 +34,8 @@ func TestName(t *testing.T) {
 func TestPreContainerRun_NoSSHDir_NoAgent(t *testing.T) {
 	home := t.TempDir() // no .ssh/
 	p := &Plugin{
-		homeDir:    home,
-		getenvFunc: func(string) string { return "" },
+		homeDir:      home,
+		getenvFunc:   func(string) string { return "" },
 		gitConfigCmd: func(string) string { return "" },
 	}
 
@@ -62,7 +62,7 @@ func TestPreContainerRun_AgentForwarding(t *testing.T) {
 
 	home := t.TempDir()
 	p := &Plugin{
-		homeDir:    home,
+		homeDir: home,
 		getenvFunc: func(key string) string {
 			if key == "SSH_AUTH_SOCK" {
 				return sockPath
@@ -133,8 +133,8 @@ func TestPreContainerRun_SSHConfig(t *testing.T) {
 
 	wsDir := t.TempDir()
 	p := &Plugin{
-		homeDir:    home,
-		getenvFunc: func(string) string { return "" },
+		homeDir:      home,
+		getenvFunc:   func(string) string { return "" },
 		gitConfigCmd: func(string) string { return "" },
 	}
 
@@ -206,8 +206,8 @@ func TestPreContainerRun_SSHPublicKeys(t *testing.T) {
 
 	wsDir := t.TempDir()
 	p := &Plugin{
-		homeDir:    home,
-		getenvFunc: func(string) string { return "" },
+		homeDir:      home,
+		getenvFunc:   func(string) string { return "" },
 		gitConfigCmd: func(string) string { return "" },
 	}
 
@@ -355,8 +355,8 @@ func TestPreContainerRun_GitSigningNonSSH(t *testing.T) {
 func TestPreContainerRun_GitSigningNoFormat(t *testing.T) {
 	home := t.TempDir()
 	p := &Plugin{
-		homeDir:    home,
-		getenvFunc: func(string) string { return "" },
+		homeDir:      home,
+		getenvFunc:   func(string) string { return "" },
 		gitConfigCmd: func(string) string { return "" },
 	}
 
@@ -444,8 +444,8 @@ func TestPreContainerRun_RootUser(t *testing.T) {
 	}
 
 	p := &Plugin{
-		homeDir:    home,
-		getenvFunc: func(string) string { return "" },
+		homeDir:      home,
+		getenvFunc:   func(string) string { return "" },
 		gitConfigCmd: func(string) string { return "" },
 	}
 
@@ -475,8 +475,8 @@ func TestPreContainerRun_EmptyUser(t *testing.T) {
 	}
 
 	p := &Plugin{
-		homeDir:    home,
-		getenvFunc: func(string) string { return "" },
+		homeDir:      home,
+		getenvFunc:   func(string) string { return "" },
 		gitConfigCmd: func(string) string { return "" },
 	}
 

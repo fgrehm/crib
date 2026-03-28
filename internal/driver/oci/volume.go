@@ -54,7 +54,7 @@ func (d *OCIDriver) ListVolumes(ctx context.Context, nameFilter string) ([]drive
 
 // parseVolumeJSON handles both Docker (one JSON object per line) and
 // Podman (JSON array) output formats from `volume ls --format json`.
-func parseVolumeJSON(raw string) ([]volumeEntry, error) {
+func parseVolumeJSON(raw string) ([]volumeEntry, error) { //nolint:unparam // error reserved for future parse failure cases
 	// Try JSON array first (Podman format).
 	if strings.HasPrefix(raw, "[") {
 		var entries []volumeEntry

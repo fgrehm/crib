@@ -1,6 +1,7 @@
 .ai/
 .claude/settings.local.json
-bin/
+dist/
+vendor/
 *.tmp
 *.log
 .DS_Store

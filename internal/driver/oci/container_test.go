@@ -336,14 +336,14 @@ func TestScrubArgs(t *testing.T) {
 
 func TestParseContainerPort(t *testing.T) {
 	tests := []struct {
-		input    string
-		wantPort int
+		input     string
+		wantPort  int
 		wantProto string
 	}{
 		{"8080/tcp", 8080, "tcp"},
 		{"53/udp", 53, "udp"},
-		{"3000", 3000, "tcp"},       // no protocol defaults to tcp
-		{"invalid/tcp", 0, "tcp"},   // non-numeric port
+		{"3000", 3000, "tcp"},     // no protocol defaults to tcp
+		{"invalid/tcp", 0, "tcp"}, // non-numeric port
 	}
 	for _, tt := range tests {
 		port, proto := parseContainerPort(tt.input)

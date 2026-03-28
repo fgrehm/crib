@@ -13,9 +13,9 @@ var versionCmd = &cobra.Command{
 	Args:  noArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		u := newUI()
-		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "crib "+Version)
-		u.Keyval("commit", Commit)
-		u.Keyval("built", Built)
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "crib "+version)
+		u.Keyval("commit", commit)
+		u.Keyval("date", date)
 		u.Keyval("go", runtime.Version())
 	},
 }

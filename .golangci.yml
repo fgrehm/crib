@@ -14,6 +14,8 @@ linters:
     - intrange
     - modernize
     - staticcheck
+    - unconvert
+    - unparam
     - unused
     - usetesting
   settings:
@@ -27,6 +29,7 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
+          - unparam
     presets:
       - comments
       - common-false-positives

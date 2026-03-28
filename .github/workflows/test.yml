@@ -24,9 +24,13 @@ jobs:
           GO_TEST_FLAGS: -json
       - name: Lint
         run: make lint
+      - name: Check formatting
+        run: |
+          go tool golangci-lint fmt ./...
+          git diff --exit-code
       - name: Complexity gate (gocyclo -over 30)
         run: |
-          out=$(go tool gocyclo -over 30 -ignore '_test\.go$' .)
+          out=$(go tool gocyclo -over 30 -ignore '_test\.go$' . || true)
           if [ -n "$out" ]; then
             echo "Functions exceeding complexity threshold of 30:"
             echo "$out"
@@ -34,6 +38,8 @@ jobs:
           fi
       - name: Dead code gate
         run: make deadcode
+      - name: govulncheck
+        run: go tool govulncheck ./...
 
   e2e-podman:
     name: E2E tests (Podman)
