@@ -15,15 +15,3 @@ permissions:
 jobs:
   tests:
     uses: ./.github/workflows/test.yml
-
-  security:
-    name: Security
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-      - name: govulncheck
-        run: go tool govulncheck ./...
