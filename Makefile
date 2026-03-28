@@ -12,9 +12,10 @@ build: ## Build the crib binary
 		-ldflags="-X github.com/fgrehm/crib/cmd.Version=$$VERSION -X github.com/fgrehm/crib/cmd.Commit=$$COMMIT -X github.com/fgrehm/crib/cmd.Built=$$BUILT" \
 		-o dist/crib .
 
-install: build ## Install crib to ~/.local/bin
-	install -d -m 755 ~/.local/bin
-	install -m 755 dist/crib ~/.local/bin/crib
+install: build ## Install crib to ~/.local/bin (symlink)
+	@mkdir -p $(HOME)/.local/bin
+	@ln -sf $(PWD)/dist/crib $(HOME)/.local/bin/crib
+	@echo "✓ Installed to ~/.local/bin/crib"
 
 test: ## Run unit tests
 	go test -race -shuffle=on $(GO_TEST_FLAGS) ./internal/... -short -count=1
