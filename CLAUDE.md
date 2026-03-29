@@ -59,6 +59,7 @@ make lint             # golangci-lint v2 (go tool)
 make fmt              # format with gofumpt/goimports (go tool)
 make deadcode         # check for unreachable functions
 make audit            # cyclomatic complexity check (gocyclo, informational)
+make govulncheck      # run vulnerability check
 make coverage         # generate HTML coverage report
 make vendor           # tidy and vendor dependencies
 make install          # build and install to ~/.local/bin

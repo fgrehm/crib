@@ -20,7 +20,7 @@ builds:
       - -X 'github.com/fgrehm/crib/cmd.date={{ .Date }}'
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:

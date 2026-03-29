@@ -1,4 +1,4 @@
-.PHONY: build install clean test lint fmt audit deadcode coverage vendor test-integration test-e2e setup-hooks help docs
+.PHONY: build install clean test lint fmt audit deadcode govulncheck coverage vendor test-integration test-e2e setup-hooks help docs
 
 # Build variables
 BASE_VERSION := $(shell cat VERSION 2>/dev/null || echo "0.0.0")
@@ -54,6 +54,9 @@ deadcode: ## Check for dead code (hard gate, matches CI)
 	fi; \
 	echo "No dead code found."
 
+govulncheck: ## Run vulnerability check
+	@go tool govulncheck ./...
+
 test-integration: ## Run integration tests (requires Docker or Podman)
 	go test $(GO_TEST_FLAGS) ./internal/... -run Integration -v -count=1
 
@@ -78,3 +81,4 @@ vendor: ## Tidy and vendor dependencies
 
 clean: ## Remove build artifacts
 	rm -rf dist/
+	rm -f coverage.txt coverage.html

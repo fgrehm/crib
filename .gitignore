@@ -6,6 +6,8 @@ vendor/
 *.log
 .DS_Store
 .env
+coverage.txt
+coverage.html
 
 # website
 website/node_modules/

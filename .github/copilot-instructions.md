@@ -94,6 +94,7 @@ throughout the codebase:
   `go tool golangci-lint run ./...`. Config in `.golangci.yml`.
 - Formatting: `make fmt` runs gofumpt + goimports via `go tool golangci-lint fmt`.
 - Dead code: `make deadcode` runs `go tool deadcode ./...` (hard gate in CI).
+- Vulnerability check: `make govulncheck` runs `go tool govulncheck ./...` (hard gate in CI).
 - Complexity: `make audit` runs gocyclo (informational at 15, hard gate at 30 in CI).
 - Tests: `make test` runs with `-race -shuffle=on -short`.
 - Pre-commit hook: `.githooks/pre-commit` auto-formats and lints staged files.
