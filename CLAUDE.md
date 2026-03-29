@@ -48,15 +48,26 @@ dockerfile/, workspace/}`. No cycles.
   invalidation, or breaking state changes, use `ws.CribVersion` to gate
   behavior by the version that last touched the workspace.
 
-## Build and Test
+## Commands
 
 Requires Go 1.26+.
 
-```
-make build            # build bin/crib
-make test             # unit tests (go test ./internal/... -short)
-make lint             # golangci-lint v2 (managed as go tool dependency)
+```bash
+make build            # compile to dist/crib (injects version via ldflags)
+make test             # run unit tests (-race -shuffle=on -short)
+make lint             # golangci-lint v2 (go tool)
+make fmt              # format with gofumpt/goimports (go tool)
+make deadcode         # check for unreachable functions
+make audit            # cyclomatic complexity check (gocyclo, informational)
+make govulncheck      # run vulnerability check
+make coverage         # generate HTML coverage report
+make vendor           # tidy and vendor dependencies
+make install          # build and install to ~/.local/bin
+make setup-hooks      # configure .githooks/ pre-commit hook
+make clean            # remove build artifacts
 make test-integration # integration tests (requires Docker or Podman)
+make test-e2e         # end-to-end tests against the crib binary
+make docs             # serve documentation at http://localhost:4321/crib
 ```
 
 Run a single test: `go test ./internal/config/ -short -run TestParseFull`
@@ -99,11 +110,21 @@ drivers are good for logic but miss real Docker/Podman behavior.
 - `docs/plugin-development.md` - plugin interface, response types, merge rules
 - `docs/decisions/` - architecture decision records
 
+## CHANGELOG
+
+This project uses [Keep a Changelog](https://keepachangelog.com/) format. When adding
+features, fixing bugs, or making breaking changes, add an entry under the `[Unreleased]`
+section of `CHANGELOG.md` before the session ends. Categories: Added, Changed, Deprecated,
+Removed, Fixed, Security.
+
+Before wrapping up a session, check whether CHANGELOG.md needs an update for the work done.
+
 ## Releasing
 
-1. `make test && make lint`
-2. Move `CHANGELOG.md` `[Unreleased]` entries into `[X.Y.Z] - YYYY-MM-DD`.
-3. Update `VERSION` file.
-4. Commit: `chore: release vX.Y.Z`.
-5. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`
-   CI updates the `stable` branch automatically after the tag is pushed.
+1. Move `CHANGELOG.md` `[Unreleased]` entries into `[X.Y.Z] - YYYY-MM-DD`.
+2. Update `VERSION` file.
+3. Commit: `chore: release vX.Y.Z`.
+4. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`
+
+CI extracts release notes from CHANGELOG.md and runs GoReleaser. The `stable` branch is
+updated automatically after the tag is pushed.

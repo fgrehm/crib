@@ -51,4 +51,3 @@ func TestFirstLine(t *testing.T) {
 		})
 	}
 }
-

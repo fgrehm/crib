@@ -15,12 +15,12 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/fgrehm/crib/cmd.Version={{ .Version }}
-      - -X github.com/fgrehm/crib/cmd.Commit={{ .ShortCommit }}
-      - -X github.com/fgrehm/crib/cmd.Built={{ .Date }}
+      - -X 'github.com/fgrehm/crib/cmd.version={{ .Version }}'
+      - -X 'github.com/fgrehm/crib/cmd.commit={{ .ShortCommit }}'
+      - -X 'github.com/fgrehm/crib/cmd.date={{ .Date }}'
 
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:

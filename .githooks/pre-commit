@@ -1,39 +1,31 @@
 #!/bin/bash
-# Pre-commit hook to enforce go fmt and lint
-
 set -e
 
-# Get list of staged Go files
 staged_go_files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
 
 if [ -z "$staged_go_files" ]; then
-    exit 0
+  exit 0
 fi
 
-# Run gofmt on staged files
-echo "Running gofmt on staged Go files..."
-gofmt -s -w $staged_go_files
+echo "Formatting staged Go files..."
+go tool golangci-lint fmt $staged_go_files
+git add -- $staged_go_files
+echo "Done"
 
-# Re-stage the formatted files
-git add $staged_go_files
+echo "Running linter..."
+if git rev-parse --verify HEAD >/dev/null 2>&1; then
+  go tool golangci-lint run --new-from-rev=HEAD --fix
+else
+  go tool golangci-lint run --fix $staged_go_files
+fi
+git add -- $staged_go_files
+echo "Done"
 
-echo "✓ Code formatted with gofmt"
-
-# Run linter
-echo "Running golangci-lint..."
-go tool golangci-lint run --new-from-rev=HEAD~1 --fix
-
-# Re-stage any auto-fixed files
-git add $staged_go_files
-
-echo "✓ Lint passed"
-
-# Check cyclomatic complexity
 echo "Running gocyclo..."
-out=$(go tool gocyclo -over 30 -ignore '_test\.go$' .)
+out=$(go tool gocyclo -over 30 -ignore '_test\.go$' . || true)
 if [ -n "$out" ]; then
-    echo "Functions exceeding complexity threshold of 30:"
-    echo "$out"
-    exit 1
+  echo "Functions exceeding complexity threshold of 30:"
+  echo "$out"
+  exit 1
 fi
-echo "✓ Complexity check passed"
+echo "Done"

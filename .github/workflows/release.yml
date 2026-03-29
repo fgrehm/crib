@@ -31,15 +31,15 @@ jobs:
         run: |
           VERSION=${GITHUB_REF_NAME#v}
           # Extract everything between ## [VERSION] and the next ## [
-          sed -n "/^## \[${VERSION}\]/,/^## \[/{/^## \[/d;p}" CHANGELOG.md \
-            > /tmp/release-notes.md
+          awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" \
+            CHANGELOG.md > /tmp/release-notes.md
           # Fail early if no release notes found for this version.
           if [ ! -s /tmp/release-notes.md ] || ! grep -q '[^[:space:]]' /tmp/release-notes.md; then
             echo "::error::No release notes found for version ${VERSION} in CHANGELOG.md"
             exit 1
           fi
 
-      - uses: goreleaser/goreleaser-action@v6
+      - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: release --clean --release-notes /tmp/release-notes.md
