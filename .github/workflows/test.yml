@@ -19,7 +19,7 @@ jobs:
       - name: Install gotestfmt
         run: go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
       - name: Unit tests
-        run: set -euo pipefail && make test 2>&1 | tee /tmp/gotest.log | gotestfmt
+        run: set -euo pipefail && make test | tee /tmp/gotest.log | gotestfmt
         env:
           GO_TEST_FLAGS: -json
       - name: Lint
@@ -59,12 +59,12 @@ jobs:
           podman system service -t 0 &
           sleep 2
       - name: Integration tests
-        run: set -euo pipefail && make test-integration 2>&1 | tee /tmp/gotest.log | gotestfmt
+        run: set -euo pipefail && make test-integration | tee /tmp/gotest.log | gotestfmt
         env:
           CRIB_RUNTIME: podman
           GO_TEST_FLAGS: -json
       - name: E2E tests
-        run: set -euo pipefail && make test-e2e 2>&1 | tee /tmp/gotest.log | gotestfmt
+        run: set -euo pipefail && make test-e2e | tee /tmp/gotest.log | gotestfmt
         env:
           CRIB_RUNTIME: podman
           GO_TEST_FLAGS: -json
@@ -85,12 +85,12 @@ jobs:
       - name: Verify Docker is available
         run: docker info
       - name: Integration tests
-        run: set -euo pipefail && make test-integration 2>&1 | tee /tmp/gotest.log | gotestfmt
+        run: set -euo pipefail && make test-integration | tee /tmp/gotest.log | gotestfmt
         env:
           CRIB_RUNTIME: docker
           GO_TEST_FLAGS: -json
       - name: E2E tests
-        run: set -euo pipefail && make test-e2e 2>&1 | tee /tmp/gotest.log | gotestfmt
+        run: set -euo pipefail && make test-e2e | tee /tmp/gotest.log | gotestfmt
         env:
           CRIB_RUNTIME: docker
           GO_TEST_FLAGS: -json

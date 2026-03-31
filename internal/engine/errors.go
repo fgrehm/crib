@@ -20,7 +20,7 @@ type ErrContainerStopped struct {
 }
 
 func (e *ErrContainerStopped) Error() string {
-	return fmt.Sprintf("container %s is stopped (run 'crib up' to start it)", e.WorkspaceID)
+	return "container is stopped (run 'crib up' to start it)"
 }
 
 // ErrComposeNotAvailable is returned when an operation requires docker compose
