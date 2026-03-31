@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
-	"strings"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/config"
@@ -113,8 +113,9 @@ func TestLogs_ComposeMissing_ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when compose is nil for compose workspace")
 	}
-	if !strings.Contains(err.Error(), "compose is not available") {
-		t.Errorf("unexpected error: %v", err)
+	var target *ErrComposeNotAvailable
+	if !errors.As(err, &target) {
+		t.Errorf("expected ErrComposeNotAvailable, got: %v", err)
 	}
 }
 

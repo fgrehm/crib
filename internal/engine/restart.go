@@ -58,7 +58,7 @@ func (e *Engine) Restart(ctx context.Context, ws *workspace.Workspace) (*Restart
 	// Compose guards (mirrors Up).
 	if len(cfg.DockerComposeFile) > 0 {
 		if e.compose == nil {
-			return nil, fmt.Errorf("compose is not available (install docker compose or podman compose)")
+			return nil, &ErrComposeNotAvailable{}
 		}
 		if cfg.Service == "" {
 			return nil, fmt.Errorf("dockerComposeFile is set but service is not specified")
@@ -123,7 +123,7 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		return nil, fmt.Errorf("finding container: %w", err)
 	}
 	if container == nil {
-		return nil, fmt.Errorf("no container found for workspace %s", ws.ID)
+		return nil, &ErrNoContainer{WorkspaceID: ws.ID}
 	}
 
 	// Dispatch plugins.

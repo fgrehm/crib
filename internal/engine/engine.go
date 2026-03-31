@@ -208,7 +208,7 @@ func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions
 	// Compose guards - fail before any side effects.
 	if len(cfg.DockerComposeFile) > 0 {
 		if e.compose == nil {
-			return nil, fmt.Errorf("compose is not available (install docker compose or podman compose)")
+			return nil, &ErrComposeNotAvailable{}
 		}
 		if cfg.Service == "" {
 			return nil, fmt.Errorf("dockerComposeFile is set but service is not specified")
@@ -435,7 +435,7 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 	result, _ := e.store.LoadResult(ws.ID)
 	cfg := storedComposeConfig(result)
 	if cfg != nil && e.compose == nil {
-		return fmt.Errorf("compose is not available (install docker compose or podman compose)")
+		return &ErrComposeNotAvailable{}
 	}
 
 	// Clear hook markers so the next "up" runs all lifecycle hooks.
@@ -455,7 +455,7 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 		return fmt.Errorf("finding container: %w", err)
 	}
 	if container == nil {
-		return fmt.Errorf("no container found for workspace %s", ws.ID)
+		return &ErrNoContainer{WorkspaceID: ws.ID}
 	}
 
 	return e.driver.DeleteContainer(ctx, ws.ID, container.ID)
@@ -470,7 +470,7 @@ func (e *Engine) Stop(ctx context.Context, ws *workspace.Workspace) error {
 	result, _ := e.store.LoadResult(ws.ID)
 	cfg := storedComposeConfig(result)
 	if cfg != nil && e.compose == nil {
-		return fmt.Errorf("compose is not available (install docker compose or podman compose)")
+		return &ErrComposeNotAvailable{}
 	}
 
 	// For compose workspaces, use compose stop.
@@ -485,7 +485,7 @@ func (e *Engine) Stop(ctx context.Context, ws *workspace.Workspace) error {
 		return fmt.Errorf("finding container: %w", err)
 	}
 	if container == nil {
-		return fmt.Errorf("no container found for workspace %s", ws.ID)
+		return &ErrNoContainer{WorkspaceID: ws.ID}
 	}
 
 	if !container.State.IsRunning() {
@@ -542,7 +542,7 @@ func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
 	result, _ := e.store.LoadResult(ws.ID)
 	cfg := storedComposeConfig(result)
 	if cfg != nil && e.compose == nil {
-		return fmt.Errorf("compose is not available (install docker compose or podman compose)")
+		return &ErrComposeNotAvailable{}
 	}
 
 	// Remove snapshot image before tearing down.

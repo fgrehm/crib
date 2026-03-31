@@ -3,6 +3,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -77,14 +78,14 @@ func TestDown_ComposeMissing_ReturnsError(t *testing.T) {
 	composeWorkspaceResult(t, store, ws.ID)
 
 	e := &Engine{driver: &mockDriver{}, store: store, logger: slog.Default(), stdout: io.Discard, stderr: io.Discard}
-	// compose is nil (not set)
 
 	err := e.Down(context.Background(), ws)
 	if err == nil {
 		t.Fatal("expected error when compose is nil for compose workspace")
 	}
-	if !strings.Contains(err.Error(), "compose is not available") {
-		t.Errorf("unexpected error: %v", err)
+	var target *ErrComposeNotAvailable
+	if !errors.As(err, &target) {
+		t.Errorf("expected ErrComposeNotAvailable, got: %v", err)
 	}
 }
 
@@ -102,8 +103,9 @@ func TestStop_ComposeMissing_ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when compose is nil for compose workspace")
 	}
-	if !strings.Contains(err.Error(), "compose is not available") {
-		t.Errorf("unexpected error: %v", err)
+	var target *ErrComposeNotAvailable
+	if !errors.As(err, &target) {
+		t.Errorf("expected ErrComposeNotAvailable, got: %v", err)
 	}
 }
 
@@ -121,8 +123,9 @@ func TestRemove_ComposeMissing_ReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when compose is nil for compose workspace")
 	}
-	if !strings.Contains(err.Error(), "compose is not available") {
-		t.Errorf("unexpected error: %v", err)
+	var target *ErrComposeNotAvailable
+	if !errors.As(err, &target) {
+		t.Errorf("expected ErrComposeNotAvailable, got: %v", err)
 	}
 }
 
@@ -241,8 +244,9 @@ func TestStop_NoContainer(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no container exists")
 	}
-	if !strings.Contains(err.Error(), "no container found") {
-		t.Errorf("expected 'no container found' in error, got: %v", err)
+	var target *ErrNoContainer
+	if !errors.As(err, &target) {
+		t.Errorf("expected ErrNoContainer, got: %v", err)
 	}
 }
 

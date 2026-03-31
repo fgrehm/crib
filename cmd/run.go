@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/fgrehm/crib/internal/engine"
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/spf13/cobra"
 )
@@ -42,10 +43,10 @@ Use -- to separate crib flags from the container command:
 			return fmt.Errorf("finding container: %w", err)
 		}
 		if status.Container == nil {
-			return errNoContainer
+			return &engine.ErrNoContainer{WorkspaceID: ws.ID}
 		}
 		if !status.Container.State.IsRunning() {
-			return errContainerStopped
+			return &engine.ErrContainerStopped{WorkspaceID: ws.ID, ContainerID: status.Container.ID}
 		}
 		container := status.Container
 

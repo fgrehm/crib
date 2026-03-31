@@ -36,7 +36,7 @@ func (e *Engine) Logs(ctx context.Context, ws *workspace.Workspace, opts LogsOpt
 	}
 	if len(cfg.DockerComposeFile) > 0 {
 		if e.compose == nil {
-			return fmt.Errorf("compose is not available (install docker compose or podman compose)")
+			return &ErrComposeNotAvailable{}
 		}
 		return e.logsCompose(ctx, ws, storedResult, &cfg, opts)
 	}
@@ -51,7 +51,7 @@ func (e *Engine) logsSingle(ctx context.Context, ws *workspace.Workspace, stored
 		return fmt.Errorf("finding container: %w", err)
 	}
 	if container == nil {
-		return fmt.Errorf("no container found for workspace %s", ws.ID)
+		return &ErrNoContainer{WorkspaceID: ws.ID}
 	}
 
 	driverOpts := &driver.LogsOptions{
