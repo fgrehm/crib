@@ -1,6 +1,9 @@
 package feature
 
 import (
+	"fmt"
+	"math/rand"
+	"slices"
 	"testing"
 )
 
@@ -211,6 +214,91 @@ func TestGraphSortEmpty(t *testing.T) {
 	}
 	if result != nil {
 		t.Errorf("expected nil for empty graph, got %v", result)
+	}
+}
+
+func TestGraphSort_PropertyInvariant(t *testing.T) {
+	// Fixed seed for reproducibility across runs.
+	rng := rand.New(rand.NewSource(42))
+
+	for trial := range 200 {
+		n := rng.Intn(10) + 3 // 3..12 nodes
+		keys := make([]string, n)
+		for i := range n {
+			keys[i] = fmt.Sprintf("node%02d", i)
+		}
+
+		g := NewGraph[string]()
+		for _, k := range keys {
+			g.AddNode(k, k+"-val")
+		}
+
+		// Add random edges, skipping any that would create a cycle.
+		for i := range n {
+			for j := range n {
+				if i == j {
+					continue
+				}
+				if rng.Intn(3) != 0 { // ~33% chance of each edge
+					continue
+				}
+				// Test if edge creates a cycle by attempting a sort first.
+				if err := g.AddEdge(keys[i], keys[j]); err != nil {
+					continue // self-edge or missing node (shouldn't happen)
+				}
+				if _, err := g.Sort(); err != nil {
+					// Cycle introduced: remove by rebuilding without this edge.
+					g2 := NewGraph[string]()
+					for _, k := range keys {
+						g2.AddNode(k, k+"-val")
+					}
+					for from, tos := range g.edges {
+						for to := range tos {
+							if from == keys[i] && to == keys[j] {
+								continue
+							}
+							_ = g2.AddEdge(from, to) //nolint:errcheck
+						}
+					}
+					g = g2
+				}
+			}
+		}
+
+		result, err := g.Sort()
+		if err != nil {
+			t.Fatalf("trial %d: unexpected cycle error: %v", trial, err)
+		}
+
+		// Invariant 1: all nodes present.
+		if len(result) != n {
+			t.Fatalf("trial %d: got %d nodes, want %d", trial, len(result), n)
+		}
+
+		// Invariant 2: topological order — for every edge (from→to), from appears before to.
+		indexOf := make(map[string]int, n)
+		for i, v := range result {
+			indexOf[v] = i
+		}
+		for from, tos := range g.edges {
+			for to := range tos {
+				fromVal := from + "-val"
+				toVal := to + "-val"
+				if indexOf[fromVal] >= indexOf[toVal] {
+					t.Errorf("trial %d: edge %s->%s violated: %s at %d, %s at %d",
+						trial, from, to, fromVal, indexOf[fromVal], toVal, indexOf[toVal])
+				}
+			}
+		}
+
+		// Invariant 3: deterministic — same graph sorts identically.
+		result2, err := g.Sort()
+		if err != nil {
+			t.Fatalf("trial %d: second sort error: %v", trial, err)
+		}
+		if !slices.Equal(result, result2) {
+			t.Errorf("trial %d: sort is not deterministic\n  first:  %v\n  second: %v", trial, result, result2)
+		}
 	}
 }
 
