@@ -37,6 +37,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `crib down`, `crib stop`, and `crib remove` now return a clear error
+  immediately when a compose workspace is detected but compose is not
+  installed, instead of silently falling through to single-container
+  cleanup.
+- Invalid port numbers in container inspect output are now logged at
+  `WARN` level instead of `DEBUG`, making them visible in `crib status`
+  output without `--debug`.
 - Docs website now deploys automatically on `stable` branch push.
 - Compose backend captures stderr for diagnostics when container is not found
   after `compose up`.
