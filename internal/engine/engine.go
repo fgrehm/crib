@@ -632,6 +632,23 @@ func (e *Engine) cleanupWorkspaceImages(ctx context.Context, wsID string) {
 	}
 }
 
+// RequireRunningContainer finds the container for the workspace and returns it
+// if it is running. Returns ErrNoContainer if no container exists, or
+// ErrContainerStopped if the container exists but is not running.
+func (e *Engine) RequireRunningContainer(ctx context.Context, ws *workspace.Workspace) (*driver.ContainerDetails, error) {
+	container, err := e.driver.FindContainer(ctx, ws.ID)
+	if err != nil {
+		return nil, fmt.Errorf("finding container: %w", err)
+	}
+	if container == nil {
+		return nil, &ErrNoContainer{WorkspaceID: ws.ID}
+	}
+	if !container.State.IsRunning() {
+		return nil, &ErrContainerStopped{WorkspaceID: ws.ID, ContainerID: container.ID}
+	}
+	return container, nil
+}
+
 // storedComposeConfig returns the stored DevContainerConfig if it is a compose
 // workspace, or nil otherwise. Returns nil when result is nil, MergedConfig is
 // missing, JSON is malformed, or DockerComposeFile is empty.

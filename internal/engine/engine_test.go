@@ -319,6 +319,71 @@ func TestRemove_DeletesWorkspaceState(t *testing.T) {
 	}
 }
 
+func TestRequireRunningContainer_Running(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-1", Source: t.TempDir()}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{ID: "abc123", State: driver.ContainerState{Status: "running"}},
+	}
+	eng := &Engine{driver: drv, store: store, logger: slog.Default()}
+
+	got, err := eng.RequireRunningContainer(context.Background(), ws)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if got.ID != "abc123" {
+		t.Errorf("container ID = %q, want %q", got.ID, "abc123")
+	}
+}
+
+func TestRequireRunningContainer_NoContainer(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-2", Source: t.TempDir()}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := &Engine{driver: &mockDriver{}, store: store, logger: slog.Default()} // FindContainer returns nil
+
+	_, err := eng.RequireRunningContainer(context.Background(), ws)
+	if err == nil {
+		t.Fatal("expected error for missing container")
+	}
+	var target *ErrNoContainer
+	if !errors.As(err, &target) {
+		t.Errorf("expected ErrNoContainer, got: %v", err)
+	}
+}
+
+func TestRequireRunningContainer_Stopped(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-3", Source: t.TempDir()}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &fixedFindContainerDriver{
+		container: &driver.ContainerDetails{ID: "abc123", State: driver.ContainerState{Status: "exited"}},
+	}
+	eng := &Engine{driver: drv, store: store, logger: slog.Default()}
+
+	_, err := eng.RequireRunningContainer(context.Background(), ws)
+	if err == nil {
+		t.Fatal("expected error for stopped container")
+	}
+	var target *ErrContainerStopped
+	if !errors.As(err, &target) {
+		t.Errorf("expected ErrContainerStopped, got: %v", err)
+	}
+	if target.ContainerID != "abc123" {
+		t.Errorf("ContainerID = %q, want %q", target.ContainerID, "abc123")
+	}
+}
+
 func TestEnsureContainerRunning_Running(t *testing.T) {
 	eng := &Engine{driver: &mockDriver{}, logger: slog.Default()}
 
