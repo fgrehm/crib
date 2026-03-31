@@ -29,7 +29,10 @@ func (e *Engine) Logs(ctx context.Context, ws *workspace.Workspace, opts LogsOpt
 		return fmt.Errorf("no previous result found for workspace %s (run 'crib up' first)", ws.ID)
 	}
 
-	// Check if this is a compose workspace.
+	// Check if this is a compose workspace. Unlike storedComposeConfig (which
+	// swallows parse errors and returns nil), Logs() surfaces corrupt configs
+	// as an error rather than silently falling through to the single-container
+	// path.
 	var cfg config.DevContainerConfig
 	if err := json.Unmarshal(storedResult.MergedConfig, &cfg); err != nil {
 		return fmt.Errorf("unmarshaling stored config: %w", err)
