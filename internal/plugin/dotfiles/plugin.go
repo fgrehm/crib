@@ -50,7 +50,12 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// (e.g. github.com) auto-accepts its key without a known_hosts entry.
 	cloneCmd := []string{"git", "clone", p.cfg.Repository, targetPath}
 	if isSSHRepo(p.cfg.Repository) {
-		cloneCmd = []string{"sh", "-c", "GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' git clone " + sq(p.cfg.Repository) + " " + sq(targetPath)}
+		cloneCmd = []string{
+			"sh", "-c",
+			"GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' exec \"$@\"",
+			"--",
+			"git", "clone", p.cfg.Repository, targetPath,
+		}
 	}
 	if err := streamExecWithRetry(ctx, req, cloneCmd, req.RemoteUser, "", 3); err != nil {
 		slog.Warn("dotfiles: clone failed", "repo", p.cfg.Repository, "error", err)
@@ -70,7 +75,7 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	// Auto-detect install script.
 	for _, script := range installScripts {
 		scriptPath := targetPath + "/" + script
-		checkCmd := []string{"sh", "-c", "test -f " + sq(scriptPath)}
+		checkCmd := []string{"test", "-f", scriptPath}
 		if _, err := req.Exec(ctx, checkCmd, req.RemoteUser, ""); err != nil {
 			continue
 		}
@@ -119,11 +124,6 @@ func isSSHRepo(repo string) bool {
 		return false
 	}
 	return strings.Contains(repo, "@")
-}
-
-// sq wraps s in single quotes via the shared ShellQuote helper.
-func sq(s string) string {
-	return "'" + plugin.ShellQuote(s) + "'"
 }
 
 // resolveTargetPath expands ~ to the remote user's home directory.
