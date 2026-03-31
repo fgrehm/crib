@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -203,6 +204,33 @@ func TestParse_LifecycleHooks(t *testing.T) {
 	// Object form: {"install": "npm install", "build": ["make", "build"]}
 	if len(config.PostCreateCommand) != 2 {
 		t.Errorf("PostCreateCommand length = %d, want 2", len(config.PostCreateCommand))
+	}
+}
+
+func TestParse_ErrorCases(t *testing.T) {
+	tests := []struct {
+		file    string
+		wantErr bool
+		errHint string // substring expected in error when wantErr is true
+	}{
+		{"invalid-json.json", true, "parsing"},
+		{"empty-object.json", false, ""},
+		{"unknown-fields.json", false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.file, func(t *testing.T) {
+			_, err := Parse(testdataPath(tt.file))
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if tt.errHint != "" && !strings.Contains(err.Error(), tt.errHint) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.errHint)
+				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }
 
