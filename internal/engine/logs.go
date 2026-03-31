@@ -29,12 +29,18 @@ func (e *Engine) Logs(ctx context.Context, ws *workspace.Workspace, opts LogsOpt
 		return fmt.Errorf("no previous result found for workspace %s (run 'crib up' first)", ws.ID)
 	}
 
-	// Check if this is a compose workspace.
+	// Check if this is a compose workspace. Unlike storedComposeConfig (which
+	// swallows parse errors and returns nil), Logs() surfaces corrupt configs
+	// as an error rather than silently falling through to the single-container
+	// path.
 	var cfg config.DevContainerConfig
 	if err := json.Unmarshal(storedResult.MergedConfig, &cfg); err != nil {
 		return fmt.Errorf("unmarshaling stored config: %w", err)
 	}
 	if len(cfg.DockerComposeFile) > 0 {
+		if e.compose == nil {
+			return &ErrComposeNotAvailable{}
+		}
 		return e.logsCompose(ctx, ws, storedResult, &cfg, opts)
 	}
 
@@ -48,7 +54,7 @@ func (e *Engine) logsSingle(ctx context.Context, ws *workspace.Workspace, stored
 		return fmt.Errorf("finding container: %w", err)
 	}
 	if container == nil {
-		return fmt.Errorf("no container found for workspace %s", ws.ID)
+		return &ErrNoContainer{WorkspaceID: ws.ID}
 	}
 
 	driverOpts := &driver.LogsOptions{
@@ -60,10 +66,6 @@ func (e *Engine) logsSingle(ctx context.Context, ws *workspace.Workspace, stored
 
 // logsCompose streams logs from all compose services.
 func (e *Engine) logsCompose(ctx context.Context, ws *workspace.Workspace, storedResult *workspace.Result, cfg *config.DevContainerConfig, opts LogsOptions) error {
-	if e.compose == nil {
-		return fmt.Errorf("compose is not available")
-	}
-
 	cd := configDir(ws)
 	composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 	projectName := compose.ProjectName(ws.ID)

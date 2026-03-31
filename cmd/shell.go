@@ -38,17 +38,10 @@ Working directory is set to the workspace folder if available.`,
 			return err
 		}
 
-		status, err := eng.Status(cmd.Context(), ws)
+		container, err := eng.RequireRunningContainer(cmd.Context(), ws)
 		if err != nil {
-			return fmt.Errorf("finding container: %w", err)
+			return err
 		}
-		if status.Container == nil {
-			return errNoContainer
-		}
-		if !status.Container.State.IsRunning() {
-			return errContainerStopped
-		}
-		container := status.Container
 
 		// Detect which shell is available in the container
 		var buf bytes.Buffer

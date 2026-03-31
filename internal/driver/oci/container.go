@@ -285,7 +285,7 @@ func (ic *inspectContainer) toContainerDetails() driver.ContainerDetails {
 		for _, b := range bindings {
 			hostPort, err := strconv.Atoi(b.HostPort)
 			if err != nil {
-				slog.Debug("invalid host port in container inspect", "value", b.HostPort, "error", err)
+				slog.Warn("invalid host port in container inspect", "value", b.HostPort, "error", err)
 			}
 			d.Ports = append(d.Ports, driver.PortBinding{
 				ContainerPort: port,
@@ -308,7 +308,7 @@ func parseContainerPort(s string) (int, string) {
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		slog.Debug("invalid container port in inspect output", "value", portStr, "error", err)
+		slog.Warn("invalid container port in inspect output", "value", portStr, "error", err)
 	}
 	return port, proto
 }
