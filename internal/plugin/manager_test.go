@@ -201,6 +201,34 @@ func TestRunPreContainerRun_CopiesAppended(t *testing.T) {
 	}
 }
 
+func TestRunPreContainerRun_EnvLastPluginWins(t *testing.T) {
+	// a then b: b's value wins.
+	mgr := testManager()
+	mgr.Register(&stubPlugin{name: "plugin-a", resp: &PreContainerRunResponse{Env: map[string]string{"FOO": "a"}}})
+	mgr.Register(&stubPlugin{name: "plugin-b", resp: &PreContainerRunResponse{Env: map[string]string{"FOO": "b"}}})
+
+	resp, err := mgr.RunPreContainerRun(context.Background(), testRequest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Env["FOO"] != "b" {
+		t.Errorf("expected FOO=b (last-plugin-wins), got %q", resp.Env["FOO"])
+	}
+
+	// b then a: a's value wins.
+	mgr2 := testManager()
+	mgr2.Register(&stubPlugin{name: "plugin-b", resp: &PreContainerRunResponse{Env: map[string]string{"FOO": "b"}}})
+	mgr2.Register(&stubPlugin{name: "plugin-a", resp: &PreContainerRunResponse{Env: map[string]string{"FOO": "a"}}})
+
+	resp2, err := mgr2.RunPreContainerRun(context.Background(), testRequest())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp2.Env["FOO"] != "a" {
+		t.Errorf("expected FOO=a (last-plugin-wins, reversed order), got %q", resp2.Env["FOO"])
+	}
+}
+
 func TestRunPostContainerCreate_Dispatches(t *testing.T) {
 	mgr := testManager()
 	var called []string
