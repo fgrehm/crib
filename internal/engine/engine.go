@@ -205,15 +205,7 @@ func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions
 		return nil, err
 	}
 
-	// Run initializeCommand on the host before image build/pull.
-	if err := e.runInitializeCommand(ctx, ws, cfg); err != nil {
-		return nil, fmt.Errorf("initializeCommand: %w", err)
-	}
-	if cfg.WaitFor == "initializeCommand" {
-		e.reportProgress(PhaseInit, "Container ready.")
-	}
-
-	// Compose guards.
+	// Compose guards - fail before any side effects.
 	if len(cfg.DockerComposeFile) > 0 {
 		if e.compose == nil {
 			return nil, fmt.Errorf("compose is not available (install docker compose or podman compose)")
@@ -221,6 +213,14 @@ func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions
 		if cfg.Service == "" {
 			return nil, fmt.Errorf("dockerComposeFile is set but service is not specified")
 		}
+	}
+
+	// Run initializeCommand on the host before image build/pull.
+	if err := e.runInitializeCommand(ctx, ws, cfg); err != nil {
+		return nil, fmt.Errorf("initializeCommand: %w", err)
+	}
+	if cfg.WaitFor == "initializeCommand" {
+		e.reportProgress(PhaseInit, "Container ready.")
 	}
 
 	b := e.newBackend(ws, cfg, workspaceFolder)
@@ -432,20 +432,21 @@ func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerCon
 func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 	e.logger.Debug("down", "workspace", ws.ID)
 
+	result, _ := e.store.LoadResult(ws.ID)
+	cfg := storedComposeConfig(result)
+	if cfg != nil && e.compose == nil {
+		return fmt.Errorf("compose is not available (install docker compose or podman compose)")
+	}
+
 	// Clear hook markers so the next "up" runs all lifecycle hooks.
 	if err := e.store.ClearHookMarkers(ws.ID); err != nil {
 		e.logger.Warn("failed to clear hook markers", "error", err)
 	}
 
 	// For compose workspaces, use compose down to stop and remove all services.
-	if result, err := e.store.LoadResult(ws.ID); err == nil && result != nil {
-		var cfg config.DevContainerConfig
-		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
-			if e.compose != nil {
-				inv := newComposeInvocation(ws, &cfg, result.WorkspaceFolder)
-				return e.composeDown(ctx, inv, ws.ID, false)
-			}
-		}
+	if cfg != nil {
+		inv := newComposeInvocation(ws, cfg, result.WorkspaceFolder)
+		return e.composeDown(ctx, inv, ws.ID, false)
 	}
 
 	// Non-compose path: stop and remove the individual container.
@@ -466,15 +467,16 @@ func (e *Engine) Down(ctx context.Context, ws *workspace.Workspace) error {
 func (e *Engine) Stop(ctx context.Context, ws *workspace.Workspace) error {
 	e.logger.Debug("stop", "workspace", ws.ID)
 
+	result, _ := e.store.LoadResult(ws.ID)
+	cfg := storedComposeConfig(result)
+	if cfg != nil && e.compose == nil {
+		return fmt.Errorf("compose is not available (install docker compose or podman compose)")
+	}
+
 	// For compose workspaces, use compose stop.
-	if result, err := e.store.LoadResult(ws.ID); err == nil && result != nil {
-		var cfg config.DevContainerConfig
-		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
-			if e.compose != nil {
-				inv := newComposeInvocation(ws, &cfg, result.WorkspaceFolder)
-				return e.composeStop(ctx, inv, ws.ID)
-			}
-		}
+	if cfg != nil {
+		inv := newComposeInvocation(ws, cfg, result.WorkspaceFolder)
+		return e.composeStop(ctx, inv, ws.ID)
 	}
 
 	// Non-compose path: stop the individual container.
@@ -537,6 +539,12 @@ func (e *Engine) PreviewRemove(ctx context.Context, ws *workspace.Workspace) *Re
 func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
 	e.logger.Debug("remove", "workspace", ws.ID)
 
+	result, _ := e.store.LoadResult(ws.ID)
+	cfg := storedComposeConfig(result)
+	if cfg != nil && e.compose == nil {
+		return fmt.Errorf("compose is not available (install docker compose or podman compose)")
+	}
+
 	// Remove snapshot image before tearing down.
 	e.clearSnapshot(ctx, ws)
 
@@ -544,17 +552,12 @@ func (e *Engine) Remove(ctx context.Context, ws *workspace.Workspace) error {
 	// For compose workspaces, use compose down --volumes to also remove
 	// named volumes declared in the compose file (e.g. database data).
 	composeTornDown := false
-	if result, err := e.store.LoadResult(ws.ID); err == nil && result != nil {
-		var cfg config.DevContainerConfig
-		if json.Unmarshal(result.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
-			if e.compose != nil {
-				inv := newComposeInvocation(ws, &cfg, result.WorkspaceFolder)
-				if err := e.composeDown(ctx, inv, ws.ID, true); err != nil {
-					e.logger.Warn("failed to remove compose services", "error", err)
-				}
-				composeTornDown = true
-			}
+	if cfg != nil {
+		inv := newComposeInvocation(ws, cfg, result.WorkspaceFolder)
+		if err := e.composeDown(ctx, inv, ws.ID, true); err != nil {
+			e.logger.Warn("failed to remove compose services", "error", err)
 		}
+		composeTornDown = true
 	}
 
 	if !composeTornDown {
@@ -588,16 +591,13 @@ func (e *Engine) Status(ctx context.Context, ws *workspace.Workspace) (*StatusRe
 	result := &StatusResult{Container: container}
 
 	// For compose workspaces, also fetch service statuses.
-	if e.compose != nil {
-		if stored, err := e.store.LoadResult(ws.ID); err == nil && stored != nil {
-			var cfg config.DevContainerConfig
-			if json.Unmarshal(stored.MergedConfig, &cfg) == nil && len(cfg.DockerComposeFile) > 0 {
-				inv := newComposeInvocation(ws, &cfg, stored.WorkspaceFolder)
-				if statuses, err := e.compose.ListServiceStatuses(ctx, inv.projectName, inv.files, inv.env); err == nil {
-					result.Services = statuses
-				} else {
-					e.logger.Debug("failed to list compose services", "error", err)
-				}
+	if stored, err := e.store.LoadResult(ws.ID); err == nil {
+		if cfg := storedComposeConfig(stored); cfg != nil && e.compose != nil {
+			inv := newComposeInvocation(ws, cfg, stored.WorkspaceFolder)
+			if statuses, err := e.compose.ListServiceStatuses(ctx, inv.projectName, inv.files, inv.env); err == nil {
+				result.Services = statuses
+			} else {
+				e.logger.Debug("failed to list compose services", "error", err)
 			}
 		}
 	}
@@ -630,6 +630,23 @@ func (e *Engine) cleanupWorkspaceImages(ctx context.Context, wsID string) {
 			e.logger.Debug("failed to remove workspace image", "image", ref, "error", err)
 		}
 	}
+}
+
+// storedComposeConfig returns the stored DevContainerConfig if it is a compose
+// workspace, or nil otherwise. Returns nil when result is nil, MergedConfig is
+// missing, JSON is malformed, or DockerComposeFile is empty.
+func storedComposeConfig(result *workspace.Result) *config.DevContainerConfig {
+	if result == nil {
+		return nil
+	}
+	var cfg config.DevContainerConfig
+	if err := json.Unmarshal(result.MergedConfig, &cfg); err != nil {
+		return nil
+	}
+	if len(cfg.DockerComposeFile) == 0 {
+		return nil
+	}
+	return &cfg
 }
 
 // --- shared helpers ---

@@ -57,6 +57,75 @@ func TestComposeStderr_Verbose(t *testing.T) {
 	}
 }
 
+// composeWorkspaceResult returns a stored result with a compose devcontainer config.
+func composeWorkspaceResult(t *testing.T, store *workspace.Store, wsID string) {
+	t.Helper()
+	result := &workspace.Result{
+		MergedConfig: []byte(`{"dockerComposeFile":["docker-compose.yml"],"service":"app"}`),
+	}
+	if err := store.SaveResult(wsID, result); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDown_ComposeMissing_ReturnsError(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "test-down-compose-nil", Source: t.TempDir(), DevContainerPath: ".devcontainer/devcontainer.json"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+	composeWorkspaceResult(t, store, ws.ID)
+
+	e := &Engine{driver: &mockDriver{}, store: store, logger: slog.Default(), stdout: io.Discard, stderr: io.Discard}
+	// compose is nil (not set)
+
+	err := e.Down(context.Background(), ws)
+	if err == nil {
+		t.Fatal("expected error when compose is nil for compose workspace")
+	}
+	if !strings.Contains(err.Error(), "compose is not available") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestStop_ComposeMissing_ReturnsError(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "test-stop-compose-nil", Source: t.TempDir(), DevContainerPath: ".devcontainer/devcontainer.json"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+	composeWorkspaceResult(t, store, ws.ID)
+
+	e := &Engine{driver: &mockDriver{}, store: store, logger: slog.Default(), stdout: io.Discard, stderr: io.Discard}
+
+	err := e.Stop(context.Background(), ws)
+	if err == nil {
+		t.Fatal("expected error when compose is nil for compose workspace")
+	}
+	if !strings.Contains(err.Error(), "compose is not available") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRemove_ComposeMissing_ReturnsError(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "test-remove-compose-nil", Source: t.TempDir(), DevContainerPath: ".devcontainer/devcontainer.json"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+	composeWorkspaceResult(t, store, ws.ID)
+
+	e := &Engine{driver: &mockDriver{}, store: store, logger: slog.Default(), stdout: io.Discard, stderr: io.Discard}
+
+	err := e.Remove(context.Background(), ws)
+	if err == nil {
+		t.Fatal("expected error when compose is nil for compose workspace")
+	}
+	if !strings.Contains(err.Error(), "compose is not available") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestDown_ClearsHookMarkers(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 
@@ -412,6 +481,28 @@ func TestRemove_SkipsBaseImages(t *testing.T) {
 		if img == "ubuntu:22.04" {
 			t.Errorf("should not have removed base image %s", img)
 		}
+	}
+}
+
+func TestStoredComposeConfig(t *testing.T) {
+	tests := []struct {
+		name   string
+		result *workspace.Result
+		want   bool // true == non-nil return
+	}{
+		{"nil result", nil, false},
+		{"non-compose config", &workspace.Result{MergedConfig: []byte(`{"image":"ubuntu"}`)}, false},
+		{"compose config", &workspace.Result{MergedConfig: []byte(`{"dockerComposeFile":["docker-compose.yml"]}`)}, true},
+		{"invalid JSON", &workspace.Result{MergedConfig: []byte(`{bad}`)}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := storedComposeConfig(tt.result)
+			if (got != nil) != tt.want {
+				t.Errorf("storedComposeConfig() = %v, want non-nil=%v", got, tt.want)
+			}
+		})
 	}
 }
 

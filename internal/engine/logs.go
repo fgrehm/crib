@@ -35,6 +35,9 @@ func (e *Engine) Logs(ctx context.Context, ws *workspace.Workspace, opts LogsOpt
 		return fmt.Errorf("unmarshaling stored config: %w", err)
 	}
 	if len(cfg.DockerComposeFile) > 0 {
+		if e.compose == nil {
+			return fmt.Errorf("compose is not available (install docker compose or podman compose)")
+		}
 		return e.logsCompose(ctx, ws, storedResult, &cfg, opts)
 	}
 
@@ -60,10 +63,6 @@ func (e *Engine) logsSingle(ctx context.Context, ws *workspace.Workspace, stored
 
 // logsCompose streams logs from all compose services.
 func (e *Engine) logsCompose(ctx context.Context, ws *workspace.Workspace, storedResult *workspace.Result, cfg *config.DevContainerConfig, opts LogsOptions) error {
-	if e.compose == nil {
-		return fmt.Errorf("compose is not available")
-	}
-
 	cd := configDir(ws)
 	composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 	projectName := compose.ProjectName(ws.ID)

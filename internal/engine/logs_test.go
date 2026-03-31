@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/config"
@@ -84,6 +85,36 @@ func TestLogs_SingleContainer(t *testing.T) {
 	}
 	if stdout.String() != "test log output\n" {
 		t.Errorf("stdout = %q, want %q", stdout.String(), "test log output\n")
+	}
+}
+
+func TestLogs_ComposeMissing_ReturnsError(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-logs-compose-nil", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveResult(ws.ID, &workspace.Result{
+		MergedConfig: []byte(`{"dockerComposeFile":["docker-compose.yml"],"service":"app"}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	eng := &Engine{
+		driver: &mockDriver{},
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+		// compose is nil
+	}
+
+	err := eng.Logs(context.Background(), ws, LogsOptions{})
+	if err == nil {
+		t.Fatal("expected error when compose is nil for compose workspace")
+	}
+	if !strings.Contains(err.Error(), "compose is not available") {
+		t.Errorf("unexpected error: %v", err)
 	}
 }
 
