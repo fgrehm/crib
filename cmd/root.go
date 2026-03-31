@@ -200,71 +200,17 @@ func newEngine() (*engine.Engine, *oci.OCIDriver, *workspace.Store, error) {
 // or from an explicit project directory if --dir is set.
 // If create is true and the workspace is not yet in the store, it creates one.
 func currentWorkspace(store *workspace.Store, create bool) (*workspace.Workspace, error) {
-	var (
-		rr  *workspace.ResolveResult
-		err error
-	)
-
-	switch {
-	case configDirFlag != "":
-		rr, err = workspace.ResolveConfigDir(configDirFlag)
-	case dirFlag != "":
-		rr, err = workspace.Resolve(dirFlag)
-	default:
-		var cwd string
-		cwd, err = os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("getting working directory: %w", err)
-		}
-		rr, err = workspace.Resolve(cwd)
-	}
+	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting working directory: %w", err)
 	}
-
-	ws, err := store.Load(rr.WorkspaceID)
-	if err != nil && !errors.Is(err, workspace.ErrWorkspaceNotFound) {
-		return nil, err
-	}
-
-	if ws == nil {
-		if !create {
-			return nil, fmt.Errorf("no workspace for this directory (run 'crib up' first)")
-		}
-		now := time.Now()
-		ws = &workspace.Workspace{
-			ID:               rr.WorkspaceID,
-			Source:           rr.ProjectRoot,
-			DevContainerPath: rr.RelativeConfigPath,
-			CribVersion:      version,
-			CreatedAt:        now,
-			LastUsedAt:       now,
-		}
-		if err := store.Save(ws); err != nil {
-			return nil, fmt.Errorf("saving workspace: %w", err)
-		}
-	} else {
-		// Refresh fields that may have drifted from stored state.
-		var changed bool
-		if ws.DevContainerPath != rr.RelativeConfigPath {
-			logger.Debug("devcontainer config path changed",
-				"old", ws.DevContainerPath, "new", rr.RelativeConfigPath)
-			ws.DevContainerPath = rr.RelativeConfigPath
-			changed = true
-		}
-		if ws.CribVersion != version {
-			ws.CribVersion = version
-			changed = true
-		}
-		if changed {
-			ws.LastUsedAt = time.Now()
-			if err := store.Save(ws); err != nil {
-				logger.Warn("failed to save refreshed workspace", "error", err)
-			}
-		}
-	}
-
-	return ws, nil
+	return workspace.Lookup(store, workspace.LookupOptions{
+		ConfigDir: configDirFlag,
+		Dir:       dirFlag,
+		Cwd:       cwd,
+		Version:   version,
+		Create:    create,
+	}, logger)
 }
 
 // versionString returns a formatted version string for display.

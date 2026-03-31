@@ -1,11 +1,8 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/feature"
@@ -39,7 +36,11 @@ var cacheListCmd = &cobra.Command{
 		if cacheListAllFlag {
 			filter = packagecache.GlobalVolumePrefix
 		} else {
-			wsID, err := inferWorkspaceID()
+			cwd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("getting working directory: %w", err)
+			}
+			wsID, err := workspace.InferID(configDirFlag, dirFlag, cwd)
 			if err != nil {
 				return err
 			}
@@ -60,7 +61,7 @@ var cacheListCmd = &cobra.Command{
 			headers := []string{"VOLUME", "WORKSPACE", "PROVIDER", "SIZE"}
 			var rows [][]string
 			for _, v := range volumes {
-				ws, provider := parseVolumeName(v.Name)
+				ws, provider := packagecache.ParseVolumeName(v.Name)
 				size := v.Size
 				if size == "" {
 					size = "-"
@@ -72,7 +73,7 @@ var cacheListCmd = &cobra.Command{
 			headers := []string{"VOLUME", "PROVIDER", "SIZE"}
 			var rows [][]string
 			for _, v := range volumes {
-				_, provider := parseVolumeName(v.Name)
+				_, provider := packagecache.ParseVolumeName(v.Name)
 				size := v.Size
 				if size == "" {
 					size = "-"
@@ -101,7 +102,11 @@ var cacheCleanCmd = &cobra.Command{
 		if cacheCleanAllFlag {
 			filter = packagecache.GlobalVolumePrefix
 		} else {
-			wsID, err := inferWorkspaceID()
+			cwd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("getting working directory: %w", err)
+			}
+			wsID, err := workspace.InferID(configDirFlag, dirFlag, cwd)
 			if err != nil {
 				return err
 			}
@@ -126,7 +131,7 @@ var cacheCleanCmd = &cobra.Command{
 				wanted[a] = true
 			}
 			for _, v := range volumes {
-				_, provider := parseVolumeName(v.Name)
+				_, provider := packagecache.ParseVolumeName(v.Name)
 				if wanted[provider] {
 					toRemove = append(toRemove, v.Name)
 				}
@@ -167,74 +172,6 @@ var cacheCleanCmd = &cobra.Command{
 
 		return nil
 	},
-}
-
-// parseVolumeName extracts workspace ID and provider from a cache volume name.
-// Volume names follow the pattern "crib-cache-{wsID}-{provider}", but compose
-// workspaces may have a "{project}_" prefix (e.g. "crib-web_crib-cache-web-apt").
-// All provider names are single words (no hyphens), so the provider is the
-// segment after the last hyphen in the suffix after "crib-cache-".
-func parseVolumeName(name string) (workspaceID, provider string) {
-	// Strip compose project prefix if present (everything before "crib-cache-").
-	if i := strings.Index(name, packagecache.GlobalVolumePrefix); i > 0 {
-		name = name[i:]
-	}
-	suffix := strings.TrimPrefix(name, packagecache.GlobalVolumePrefix)
-	if i := strings.LastIndex(suffix, "-"); i >= 0 {
-		return suffix[:i], suffix[i+1:]
-	}
-	return suffix, ""
-}
-
-// inferWorkspaceID derives a workspace ID from the current directory (or --dir / --config flags)
-// without requiring workspace state to exist. It first tries the normal devcontainer resolution
-// (which walks up to find .devcontainer/), and falls back to slugifying the directory name if
-// no devcontainer config is found. This allows cache commands to work even if the project was
-// deleted or was never set up with crib.
-func inferWorkspaceID() (string, error) {
-	switch {
-	case configDirFlag != "":
-		rr, err := workspace.ResolveConfigDir(configDirFlag)
-		if err == nil {
-			return rr.WorkspaceID, nil
-		}
-		// Only fall back when the config doesn't exist (project deleted
-		// or never set up). Surface real errors (permissions, I/O).
-		if !errors.Is(err, workspace.ErrNoDevContainer) {
-			return "", err
-		}
-		absDir, err := filepath.Abs(configDirFlag)
-		if err != nil {
-			return "", fmt.Errorf("resolving config dir: %w", err)
-		}
-		return workspace.GenerateID(filepath.Dir(absDir)), nil
-	case dirFlag != "":
-		rr, err := workspace.Resolve(dirFlag)
-		if err == nil {
-			return rr.WorkspaceID, nil
-		}
-		if !errors.Is(err, workspace.ErrNoDevContainer) {
-			return "", err
-		}
-		absDir, err := filepath.Abs(dirFlag)
-		if err != nil {
-			return "", fmt.Errorf("resolving dir: %w", err)
-		}
-		return workspace.GenerateID(absDir), nil
-	default:
-		cwd, err := os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("getting working directory: %w", err)
-		}
-		rr, err := workspace.Resolve(cwd)
-		if err == nil {
-			return rr.WorkspaceID, nil
-		}
-		if !errors.Is(err, workspace.ErrNoDevContainer) {
-			return "", err
-		}
-		return workspace.GenerateID(cwd), nil
-	}
 }
 
 var cacheCleanFeaturesCmd = &cobra.Command{

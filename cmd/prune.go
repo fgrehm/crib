@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"github.com/fgrehm/crib/internal/engine"
+	"github.com/fgrehm/crib/internal/ui"
+	"github.com/fgrehm/crib/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -31,7 +33,11 @@ Use --all to prune images across all workspaces (including orphans).`,
 
 		opts := engine.PruneOptions{DryRun: true}
 		if !pruneAllFlag {
-			wsID, err := inferWorkspaceID()
+			cwd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("getting working directory: %w", err)
+			}
+			wsID, err := workspace.InferID(configDirFlag, dirFlag, cwd)
 			if err != nil {
 				return err
 			}
@@ -55,10 +61,10 @@ Use --all to prune images across all workspaces (including orphans).`,
 			if img.Orphan {
 				label = "orphan"
 			}
-			fmt.Fprintf(os.Stderr, "  %s (%s, %s)\n", img.Reference, label, formatBytes(img.Size))
+			fmt.Fprintf(os.Stderr, "  %s (%s, %s)\n", img.Reference, label, ui.FormatBytes(img.Size))
 			totalSize += img.Size
 		}
-		fmt.Fprintf(os.Stderr, "\n%d image(s), %s total\n", len(preview.Removed), formatBytes(totalSize))
+		fmt.Fprintf(os.Stderr, "\n%d image(s), %s total\n", len(preview.Removed), ui.FormatBytes(totalSize))
 
 		if !pruneForceFlag {
 			confirmed, err := confirmPrompt("pruning requires confirmation")
@@ -92,23 +98,4 @@ Use --all to prune images across all workspaces (including orphans).`,
 func init() {
 	pruneCmd.Flags().BoolVar(&pruneAllFlag, "all", false, "prune images across all workspaces")
 	pruneCmd.Flags().BoolVarP(&pruneForceFlag, "force", "f", false, "skip confirmation prompt")
-}
-
-// formatBytes returns a human-readable byte size (e.g., "1.2 GB").
-func formatBytes(b int64) string {
-	const (
-		kb = 1024
-		mb = kb * 1024
-		gb = mb * 1024
-	)
-	switch {
-	case b >= gb:
-		return fmt.Sprintf("%.1f GB", float64(b)/float64(gb))
-	case b >= mb:
-		return fmt.Sprintf("%.1f MB", float64(b)/float64(mb))
-	case b >= kb:
-		return fmt.Sprintf("%.1f KB", float64(b)/float64(kb))
-	default:
-		return fmt.Sprintf("%d B", b)
-	}
 }
