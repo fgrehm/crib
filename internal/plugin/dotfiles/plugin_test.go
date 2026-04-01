@@ -349,6 +349,9 @@ func TestPostContainerCreate_SSHCloneCmd_SingleQuoteInRepo(t *testing.T) {
 	if !ok {
 		t.Fatal("no clone call found")
 	}
+	if len(cloneCall.cmd) < 8 {
+		t.Fatalf("expected at least 8 elements in clone cmd, got %d: %v", len(cloneCall.cmd), cloneCall.cmd)
+	}
 	// The repo must appear verbatim as a positional arg (no shell quoting needed).
 	if cloneCall.cmd[7] != "git@github.com:user/it's-fine.git" {
 		t.Errorf("repo with single quote should be passed verbatim, got %q", cloneCall.cmd[7])
