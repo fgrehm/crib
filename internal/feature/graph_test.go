@@ -236,6 +236,9 @@ func TestGraphSort_PropertyInvariant(t *testing.T) {
 		// Build a random acyclic graph by construction: shuffle node order,
 		// then only add edges from earlier -> later in that order. This
 		// guarantees no cycles without needing Sort() as an oracle.
+		// Track edges locally to avoid coupling to g.edges internals.
+		type edge struct{ from, to string }
+		var edges []edge
 		order := slices.Clone(keys)
 		rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
 		for i := range order {
@@ -243,7 +246,9 @@ func TestGraphSort_PropertyInvariant(t *testing.T) {
 				if rng.Intn(3) != 0 { // ~33% chance of each edge
 					continue
 				}
-				_ = g.AddEdge(order[i], order[j]) //nolint:errcheck
+				if err := g.AddEdge(order[i], order[j]); err == nil {
+					edges = append(edges, edge{order[i], order[j]})
+				}
 			}
 		}
 
@@ -274,14 +279,12 @@ func TestGraphSort_PropertyInvariant(t *testing.T) {
 		for i, v := range result {
 			indexOf[v] = i
 		}
-		for from, tos := range g.edges {
-			for to := range tos {
-				fromVal := from + "-val"
-				toVal := to + "-val"
-				if indexOf[fromVal] >= indexOf[toVal] {
-					t.Errorf("trial %d: edge %s->%s violated: %s at %d, %s at %d",
-						trial, from, to, fromVal, indexOf[fromVal], toVal, indexOf[toVal])
-				}
+		for _, e := range edges {
+			fromVal := e.from + "-val"
+			toVal := e.to + "-val"
+			if indexOf[fromVal] >= indexOf[toVal] {
+				t.Errorf("trial %d: edge %s->%s violated: %s at %d, %s at %d",
+					trial, e.from, e.to, fromVal, indexOf[fromVal], toVal, indexOf[toVal])
 			}
 		}
 

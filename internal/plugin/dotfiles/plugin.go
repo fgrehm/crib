@@ -118,12 +118,17 @@ func isSSHRepo(repo string) bool {
 	if strings.HasPrefix(repo, "ssh://") {
 		return true
 	}
-	// SCP syntax: user@host:path (no scheme, colon after host).
-	// HTTPS with username has :// before the @, so we exclude that.
+	// SCP syntax: user@host:path — requires both an "@" and a ":"
+	// after the host portion. URLs with a scheme (e.g. https://) are
+	// excluded because the "://" appears before the "@".
 	if strings.Contains(repo, "://") {
 		return false
 	}
-	return strings.Contains(repo, "@")
+	at := strings.Index(repo, "@")
+	if at <= 0 {
+		return false
+	}
+	return strings.Contains(repo[at+1:], ":")
 }
 
 // resolveTargetPath expands ~ to the remote user's home directory.

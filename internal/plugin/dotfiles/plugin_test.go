@@ -307,17 +307,19 @@ func TestPostContainerCreate_SSHCloneCmd_ExecAtSign(t *testing.T) {
 	if !ok {
 		t.Fatal("no clone call found")
 	}
+	// Layout: sh -c <script> -- git clone -- <repo> <target> (8 elements minimum)
+	if len(cloneCall.cmd) < 8 {
+		t.Fatalf("expected at least 8 elements in clone cmd, got %d: %v", len(cloneCall.cmd), cloneCall.cmd)
+	}
 	// Must use exec "$@" pattern, not string interpolation.
 	if cloneCall.cmd[0] != "sh" || cloneCall.cmd[1] != "-c" {
-		t.Errorf("expected sh -c, got %v", cloneCall.cmd[:2])
+		t.Errorf("expected sh -c at [0:2], got %v", cloneCall.cmd[:2])
 	}
 	if !strings.Contains(cloneCall.cmd[2], `exec "$@"`) {
 		t.Errorf("expected exec \"$@\" in shell script, got: %q", cloneCall.cmd[2])
 	}
-	// Repo and targetPath must appear as separate positional args after --.
-	// Layout: sh -c <script> -- git clone -- <repo> <target>
 	if cloneCall.cmd[3] != "--" {
-		t.Errorf("expected -- separator at [3], got %q", cloneCall.cmd[3])
+		t.Errorf("expected -- at [3], got %q", cloneCall.cmd[3])
 	}
 	if cloneCall.cmd[4] != "git" || cloneCall.cmd[5] != "clone" {
 		t.Errorf("expected git clone at [4:6], got %v", cloneCall.cmd[4:6])
