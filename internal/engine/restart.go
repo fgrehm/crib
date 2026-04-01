@@ -181,7 +181,7 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 	snapshotImage, hasSnapshot := e.validSnapshot(ctx, ws, cfg)
 
 	// Determine the image to use.
-	imgResult := resolveRestartImage(hasSnapshot, snapshotImage, storedResult, cfg)
+	imgResult := resolveRestartImage(hasSnapshot, snapshotImage, *storedResult, cfg)
 	var metadata []*config.ImageMetadata
 
 	if imgResult.needsBuild {
@@ -256,7 +256,7 @@ type restartImageResult struct {
 // resolveRestartImage determines which image to use for a container recreate.
 // It checks, in order: snapshot, stored image, config image. If none are
 // available and the workspace is not compose-based, needsBuild is set true.
-func resolveRestartImage(hasSnapshot bool, snapshotImage string, storedResult *workspace.Result, cfg *config.DevContainerConfig) restartImageResult {
+func resolveRestartImage(hasSnapshot bool, snapshotImage string, storedResult workspace.Result, cfg *config.DevContainerConfig) restartImageResult {
 	switch {
 	case hasSnapshot:
 		return restartImageResult{

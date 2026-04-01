@@ -1231,7 +1231,7 @@ func TestResolveRestartImage(t *testing.T) {
 				cfg.DockerComposeFile = []string{"docker-compose.yml"}
 			}
 
-			got := resolveRestartImage(tt.hasSnapshot, tt.snapshotImage, stored, cfg)
+			got := resolveRestartImage(tt.hasSnapshot, tt.snapshotImage, *stored, cfg)
 
 			if got.imageName != tt.wantImage {
 				t.Errorf("imageName = %q, want %q", got.imageName, tt.wantImage)
