@@ -233,35 +233,17 @@ func TestGraphSort_PropertyInvariant(t *testing.T) {
 			g.AddNode(k, k+"-val")
 		}
 
-		// Add random edges, skipping any that would create a cycle.
-		for i := range n {
-			for j := range n {
-				if i == j {
-					continue
-				}
+		// Build a random acyclic graph by construction: shuffle node order,
+		// then only add edges from earlier -> later in that order. This
+		// guarantees no cycles without needing Sort() as an oracle.
+		order := slices.Clone(keys)
+		rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
+		for i := range order {
+			for j := i + 1; j < len(order); j++ {
 				if rng.Intn(3) != 0 { // ~33% chance of each edge
 					continue
 				}
-				// Test if edge creates a cycle by attempting a sort first.
-				if err := g.AddEdge(keys[i], keys[j]); err != nil {
-					continue // self-edge or missing node (shouldn't happen)
-				}
-				if _, err := g.Sort(); err != nil {
-					// Cycle introduced: remove by rebuilding without this edge.
-					g2 := NewGraph[string]()
-					for _, k := range keys {
-						g2.AddNode(k, k+"-val")
-					}
-					for from, tos := range g.edges {
-						for to := range tos {
-							if from == keys[i] && to == keys[j] {
-								continue
-							}
-							_ = g2.AddEdge(from, to) //nolint:errcheck
-						}
-					}
-					g = g2
-				}
+				_ = g.AddEdge(order[i], order[j]) //nolint:errcheck
 			}
 		}
 
@@ -270,9 +252,21 @@ func TestGraphSort_PropertyInvariant(t *testing.T) {
 			t.Fatalf("trial %d: unexpected cycle error: %v", trial, err)
 		}
 
-		// Invariant 1: all nodes present.
+		// Invariant 1: all nodes present exactly once (no duplicates, no missing).
 		if len(result) != n {
 			t.Fatalf("trial %d: got %d nodes, want %d", trial, len(result), n)
+		}
+		seen := make(map[string]struct{}, n)
+		for _, v := range result {
+			if _, dup := seen[v]; dup {
+				t.Fatalf("trial %d: duplicate node value in result: %q", trial, v)
+			}
+			seen[v] = struct{}{}
+		}
+		for _, k := range keys {
+			if _, ok := seen[k+"-val"]; !ok {
+				t.Fatalf("trial %d: missing node value in result: %q", trial, k+"-val")
+			}
 		}
 
 		// Invariant 2: topological order — for every edge (from→to), from appears before to.
