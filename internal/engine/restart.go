@@ -181,46 +181,30 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 	snapshotImage, hasSnapshot := e.validSnapshot(ctx, ws, cfg)
 
 	// Determine the image to use.
-	var imageName string
-	var hasEntrypoints bool
+	imgResult := resolveRestartImage(hasSnapshot, snapshotImage, *storedResult, cfg)
 	var metadata []*config.ImageMetadata
 
-	// storedResult is guaranteed non-nil (Restart validates before calling).
-	switch {
-	case hasSnapshot:
-		imageName = snapshotImage
-		hasEntrypoints = storedResult.HasFeatureEntrypoints
-	case storedResult.ImageName != "":
-		imageName = storedResult.ImageName
-		hasEntrypoints = storedResult.HasFeatureEntrypoints
-	case cfg.Image != "":
-		imageName = cfg.Image
-	}
-
-	// If no image available, rebuild.
-	if imageName == "" && len(cfg.DockerComposeFile) == 0 {
+	if imgResult.needsBuild {
 		e.reportProgress(PhaseBuild, "No cached image found, rebuilding...")
-	}
-	if imageName == "" {
 		buildRes, err := b.buildImage(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("rebuilding image: %w", err)
 		}
-		imageName = buildRes.imageName
-		hasEntrypoints = buildRes.hasEntrypoints
+		imgResult.imageName = buildRes.imageName
+		imgResult.hasEntrypoints = buildRes.hasEntrypoints
 		metadata = buildRes.imageMetadata
 	}
 
 	// Dispatch plugins.
 	pluginUser := b.pluginUser(ctx)
-	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, imageName, workspaceFolder, pluginUser)
+	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, imgResult.imageName, workspaceFolder, pluginUser)
 	if err != nil {
 		return nil, err
 	}
 
 	containerID, err := b.createContainer(ctx, createOpts{
-		imageName:      imageName,
-		hasEntrypoints: hasEntrypoints,
+		imageName:      imgResult.imageName,
+		hasEntrypoints: imgResult.hasEntrypoints,
 		metadata:       metadata,
 		pluginResp:     pluginResp,
 		skipBuild:      hasSnapshot || b.canResumeFromStored() || (storedResult != nil && storedResult.ImageName != ""),
@@ -238,13 +222,13 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 	// Preserve original image name (not snapshot) for result.
 	resultImageName := storedResult.ImageName
 	if resultImageName == "" {
-		resultImageName = imageName
+		resultImageName = imgResult.imageName
 	}
 
 	upResult, err := e.finalize(ctx, ws, cfg, finalizeOpts{
 		cc:             cc,
 		imageName:      resultImageName,
-		hasEntrypoints: hasEntrypoints,
+		hasEntrypoints: imgResult.hasEntrypoints,
 		pluginResp:     pluginResp,
 		storedResult:   storedResult,
 		fromSnapshot:   hasSnapshot,
@@ -260,6 +244,37 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 
 	rr := toRestartResult(upResult)
 	return rr, nil
+}
+
+// restartImageResult holds the outcome of resolveRestartImage.
+type restartImageResult struct {
+	imageName      string
+	hasEntrypoints bool
+	needsBuild     bool
+}
+
+// resolveRestartImage determines which image to use for a container recreate.
+// It checks, in order: snapshot, stored image, config image. If none are
+// available and the workspace is not compose-based, needsBuild is set true.
+func resolveRestartImage(hasSnapshot bool, snapshotImage string, storedResult workspace.Result, cfg *config.DevContainerConfig) restartImageResult {
+	switch {
+	case hasSnapshot:
+		return restartImageResult{
+			imageName:      snapshotImage,
+			hasEntrypoints: storedResult.HasFeatureEntrypoints,
+		}
+	case storedResult.ImageName != "":
+		return restartImageResult{
+			imageName:      storedResult.ImageName,
+			hasEntrypoints: storedResult.HasFeatureEntrypoints,
+		}
+	case cfg.Image != "":
+		return restartImageResult{imageName: cfg.Image}
+	case len(cfg.DockerComposeFile) > 0:
+		return restartImageResult{}
+	default:
+		return restartImageResult{needsBuild: true}
+	}
 }
 
 // resolveConfigEnvFromStored resolves ${containerEnv:*} references in
