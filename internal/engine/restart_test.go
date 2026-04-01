@@ -1177,6 +1177,75 @@ func TestRestartRecreateSingle_ResolvedConfigEnv(t *testing.T) {
 	}
 }
 
+func TestResolveRestartImage(t *testing.T) {
+	tests := []struct {
+		name           string
+		hasSnapshot    bool
+		snapshotImage  string
+		storedImage    string
+		storedEntries  bool
+		configImage    string
+		isCompose      bool
+		wantImage      string
+		wantEntries    bool
+		wantNeedsBuild bool
+	}{
+		{
+			name:          "snapshot wins over stored",
+			hasSnapshot:   true,
+			snapshotImage: "crib-ws:snapshot",
+			storedImage:   "crib-ws:abc123",
+			storedEntries: true,
+			wantImage:     "crib-ws:snapshot",
+			wantEntries:   true,
+		},
+		{
+			name:        "stored image when no snapshot",
+			storedImage: "crib-ws:abc123",
+			wantImage:   "crib-ws:abc123",
+		},
+		{
+			name:        "config image as last resort",
+			configImage: "ubuntu:22.04",
+			wantImage:   "ubuntu:22.04",
+		},
+		{
+			name:           "no image triggers rebuild",
+			wantNeedsBuild: true,
+		},
+		{
+			name:      "compose with no image does not trigger rebuild",
+			isCompose: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stored := &workspace.Result{
+				ImageName:             tt.storedImage,
+				HasFeatureEntrypoints: tt.storedEntries,
+			}
+			cfg := &config.DevContainerConfig{}
+			cfg.Image = tt.configImage
+			if tt.isCompose {
+				cfg.DockerComposeFile = []string{"docker-compose.yml"}
+			}
+
+			got := resolveRestartImage(tt.hasSnapshot, tt.snapshotImage, stored, cfg)
+
+			if got.imageName != tt.wantImage {
+				t.Errorf("imageName = %q, want %q", got.imageName, tt.wantImage)
+			}
+			if got.hasEntrypoints != tt.wantEntries {
+				t.Errorf("hasEntrypoints = %v, want %v", got.hasEntrypoints, tt.wantEntries)
+			}
+			if got.needsBuild != tt.wantNeedsBuild {
+				t.Errorf("needsBuild = %v, want %v", got.needsBuild, tt.wantNeedsBuild)
+			}
+		})
+	}
+}
+
 func TestResolveConfigEnvFromStored(t *testing.T) {
 	cfg := &config.DevContainerConfig{
 		DevContainerConfigBase: config.DevContainerConfigBase{

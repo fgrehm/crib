@@ -262,6 +262,37 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 	return rr, nil
 }
 
+// restartImageResult holds the outcome of resolveRestartImage.
+type restartImageResult struct {
+	imageName      string
+	hasEntrypoints bool
+	needsBuild     bool
+}
+
+// resolveRestartImage determines which image to use for a container recreate.
+// It checks, in order: snapshot, stored image, config image. If none are
+// available and the workspace is not compose-based, needsBuild is set true.
+func resolveRestartImage(hasSnapshot bool, snapshotImage string, storedResult *workspace.Result, cfg *config.DevContainerConfig) restartImageResult {
+	switch {
+	case hasSnapshot:
+		return restartImageResult{
+			imageName:      snapshotImage,
+			hasEntrypoints: storedResult.HasFeatureEntrypoints,
+		}
+	case storedResult.ImageName != "":
+		return restartImageResult{
+			imageName:      storedResult.ImageName,
+			hasEntrypoints: storedResult.HasFeatureEntrypoints,
+		}
+	case cfg.Image != "":
+		return restartImageResult{imageName: cfg.Image}
+	case len(cfg.DockerComposeFile) > 0:
+		return restartImageResult{}
+	default:
+		return restartImageResult{needsBuild: true}
+	}
+}
+
 // resolveConfigEnvFromStored resolves ${containerEnv:*} references in
 // cfg.RemoteEnv using the stored env as the container env source. Used by
 // restart paths that can't probe the container for its native environment.
