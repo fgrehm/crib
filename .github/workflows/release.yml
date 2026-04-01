@@ -32,7 +32,7 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           # Extract everything between ## [VERSION] and the next ## [
           awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" \
-            CHANGELOG.md | sed '/./,$!d' > /tmp/release-notes.md
+            CHANGELOG.md | sed '/[^[:space:]]/,$!d' > /tmp/release-notes.md
           # Fail early if no release notes found for this version.
           if [ ! -s /tmp/release-notes.md ] || ! grep -q '[^[:space:]]' /tmp/release-notes.md; then
             echo "::error::No release notes found for version ${VERSION} in CHANGELOG.md"
