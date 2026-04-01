@@ -38,12 +38,13 @@ func noArgs(cmd *cobra.Command, args []string) error {
 }
 
 var (
-	debugFlag      bool
-	verboseFlag    bool
-	configDirFlag  string
-	dirFlag        string
-	logger         *slog.Logger
-	cacheProviders []string // loaded from .cribrc cache key
+	debugFlag       bool
+	verboseFlag     bool
+	configDirFlag   string
+	dirFlag         string
+	logger          *slog.Logger
+	cacheProviders  []string   // loaded from .cribrc cache key
+	projectDotfiles dotfilesRC // loaded from .cribrc dotfiles keys
 )
 
 // version variables injected at build time via ldflags.
@@ -88,6 +89,7 @@ var rootCmd = &cobra.Command{
 				cacheProviders = rc.Cache
 				logger.Debug("loaded cache providers from .cribrc", "providers", rc.Cache)
 			}
+			projectDotfiles = rc.Dotfiles
 		}
 
 		return nil
@@ -242,6 +244,38 @@ func composePortsToDriver(ports []compose.PortBinding) []driver.PortBinding {
 	return result
 }
 
+// resolveDotfilesPlugin merges global config with per-project overrides and
+// returns the effective config and whether the plugin should be registered.
+func resolveDotfilesPlugin(gcfg globalconfig.DotfilesConfig, rc dotfilesRC) (globalconfig.DotfilesConfig, bool) {
+	if rc.Disabled {
+		return globalconfig.DotfilesConfig{}, false
+	}
+
+	// Merge: start with global, apply per-project overrides.
+	merged := gcfg
+	if rc.Repository != "" {
+		merged.Repository = rc.Repository
+	}
+	if rc.TargetPath != "" {
+		merged.TargetPath = rc.TargetPath
+	}
+	if rc.InstallCommand != "" {
+		merged.InstallCommand = rc.InstallCommand
+	}
+
+	if merged.Repository == "" {
+		return globalconfig.DotfilesConfig{}, false
+	}
+
+	// Apply ~/dotfiles default: applyDefaults only ran on the global config
+	// struct; the repo may have come from per-project.
+	if merged.TargetPath == "" {
+		merged.TargetPath = "~/dotfiles"
+	}
+
+	return merged, true
+}
+
 // setupPlugins creates a plugin manager with bundled plugins and attaches it
 // to the engine. Called from commands that create containers (up, rebuild, restart).
 func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
@@ -252,8 +286,8 @@ func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
 	mgr.Register(pluginssh.New())
 	if gcfg, err := globalconfig.Load(); err != nil {
 		logger.Warn("failed to load global config", "error", err)
-	} else if gcfg.Dotfiles.Repository != "" {
-		mgr.Register(dotfiles.New(gcfg.Dotfiles))
+	} else if cfg, ok := resolveDotfilesPlugin(gcfg.Dotfiles, projectDotfiles); ok {
+		mgr.Register(dotfiles.New(cfg))
 	}
 	if len(cacheProviders) > 0 {
 		if unknown := packagecache.ValidateProviders(cacheProviders); len(unknown) > 0 {

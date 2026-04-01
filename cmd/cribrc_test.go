@@ -55,3 +55,106 @@ func TestLoadCribRC_BothKeys(t *testing.T) {
 		t.Errorf("Cache = %v, want [npm]", rc.Cache)
 	}
 }
+
+func TestLoadCribRC_DotfilesDisable(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte("dotfiles = false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	rc, err := loadCribRC()
+	if err != nil {
+		t.Fatalf("loadCribRC: %v", err)
+	}
+	if !rc.Dotfiles.Disabled {
+		t.Error("expected Dotfiles.Disabled = true")
+	}
+}
+
+func TestLoadCribRC_DotfilesUnknownValue_Ignored(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte("dotfiles = maybe\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	rc, err := loadCribRC()
+	if err != nil {
+		t.Fatalf("loadCribRC: %v", err)
+	}
+	if rc.Dotfiles.Disabled {
+		t.Error("expected Dotfiles.Disabled = false for unknown value")
+	}
+}
+
+func TestLoadCribRC_DotfilesRepository(t *testing.T) {
+	dir := t.TempDir()
+	content := "dotfiles.repository = git@github.com:user/dots\n"
+	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	rc, err := loadCribRC()
+	if err != nil {
+		t.Fatalf("loadCribRC: %v", err)
+	}
+	if rc.Dotfiles.Repository != "git@github.com:user/dots" {
+		t.Errorf("Repository = %q, want git@github.com:user/dots", rc.Dotfiles.Repository)
+	}
+}
+
+func TestLoadCribRC_DotfilesTargetPath(t *testing.T) {
+	dir := t.TempDir()
+	content := "dotfiles.targetPath = ~/my-dots\n"
+	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	rc, err := loadCribRC()
+	if err != nil {
+		t.Fatalf("loadCribRC: %v", err)
+	}
+	if rc.Dotfiles.TargetPath != "~/my-dots" {
+		t.Errorf("TargetPath = %q, want ~/my-dots", rc.Dotfiles.TargetPath)
+	}
+}
+
+func TestLoadCribRC_DotfilesInstallCommand(t *testing.T) {
+	dir := t.TempDir()
+	content := "dotfiles.installCommand = make install\n"
+	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	rc, err := loadCribRC()
+	if err != nil {
+		t.Fatalf("loadCribRC: %v", err)
+	}
+	if rc.Dotfiles.InstallCommand != "make install" {
+		t.Errorf("InstallCommand = %q, want make install", rc.Dotfiles.InstallCommand)
+	}
+}
+
+func TestLoadCribRC_DotfilesDisableWithRepository(t *testing.T) {
+	dir := t.TempDir()
+	content := "dotfiles = false\ndotfiles.repository = git@github.com:user/dots\n"
+	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+
+	rc, err := loadCribRC()
+	if err != nil {
+		t.Fatalf("loadCribRC: %v", err)
+	}
+	if !rc.Dotfiles.Disabled {
+		t.Error("expected Dotfiles.Disabled = true")
+	}
+	if rc.Dotfiles.Repository != "git@github.com:user/dots" {
+		t.Errorf("Repository = %q, want git@github.com:user/dots", rc.Dotfiles.Repository)
+	}
+}
