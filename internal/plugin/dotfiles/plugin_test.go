@@ -273,6 +273,25 @@ func TestIsSSHRepo(t *testing.T) {
 	}
 }
 
+// findCloneCall returns the first call whose cmd contains "git" and "clone".
+func findCloneCall(calls []fakeExecCall) (fakeExecCall, bool) {
+	for _, c := range calls {
+		hasGit, hasClone := false, false
+		for _, arg := range c.cmd {
+			if arg == "git" {
+				hasGit = true
+			}
+			if arg == "clone" {
+				hasClone = true
+			}
+		}
+		if hasGit && hasClone {
+			return c, true
+		}
+	}
+	return fakeExecCall{}, false
+}
+
 func TestPostContainerCreate_SSHCloneCmd_ExecAtSign(t *testing.T) {
 	p := New(globalconfig.DotfilesConfig{
 		Repository: "git@github.com:user/dotfiles",
@@ -284,11 +303,11 @@ func TestPostContainerCreate_SSHCloneCmd_ExecAtSign(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cloneCall := exec.calls[1]
-	// Must use exec "$@" pattern, not string interpolation.
-	if len(cloneCall.cmd) < 4 {
-		t.Fatalf("expected at least 4 elements in clone cmd, got %d: %v", len(cloneCall.cmd), cloneCall.cmd)
+	cloneCall, ok := findCloneCall(exec.calls)
+	if !ok {
+		t.Fatal("no clone call found")
 	}
+	// Must use exec "$@" pattern, not string interpolation.
 	if cloneCall.cmd[0] != "sh" || cloneCall.cmd[1] != "-c" {
 		t.Errorf("expected sh -c, got %v", cloneCall.cmd[:2])
 	}
@@ -296,18 +315,19 @@ func TestPostContainerCreate_SSHCloneCmd_ExecAtSign(t *testing.T) {
 		t.Errorf("expected exec \"$@\" in shell script, got: %q", cloneCall.cmd[2])
 	}
 	// Repo and targetPath must appear as separate positional args after --.
+	// Layout: sh -c <script> -- git clone -- <repo> <target>
 	if cloneCall.cmd[3] != "--" {
-		t.Errorf("expected -- separator, got %q", cloneCall.cmd[3])
-	}
-	// git clone <repo> <target> should follow after --
-	if len(cloneCall.cmd) < 7 {
-		t.Fatalf("expected at least 7 elements, got %d: %v", len(cloneCall.cmd), cloneCall.cmd)
+		t.Errorf("expected -- separator at [3], got %q", cloneCall.cmd[3])
 	}
 	if cloneCall.cmd[4] != "git" || cloneCall.cmd[5] != "clone" {
-		t.Errorf("expected git clone after --, got %v", cloneCall.cmd[4:6])
+		t.Errorf("expected git clone at [4:6], got %v", cloneCall.cmd[4:6])
 	}
-	if cloneCall.cmd[6] != "git@github.com:user/dotfiles" {
-		t.Errorf("expected repo as positional arg, got %q", cloneCall.cmd[6])
+	// [6] is the -- end-of-options separator for git clone itself
+	if cloneCall.cmd[6] != "--" {
+		t.Errorf("expected -- at [6] (git clone end-of-options), got %q", cloneCall.cmd[6])
+	}
+	if cloneCall.cmd[7] != "git@github.com:user/dotfiles" {
+		t.Errorf("expected repo as positional arg at [7], got %q", cloneCall.cmd[7])
 	}
 }
 
@@ -323,10 +343,13 @@ func TestPostContainerCreate_SSHCloneCmd_SingleQuoteInRepo(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cloneCall := exec.calls[1]
+	cloneCall, ok := findCloneCall(exec.calls)
+	if !ok {
+		t.Fatal("no clone call found")
+	}
 	// The repo must appear verbatim as a positional arg (no shell quoting needed).
-	if cloneCall.cmd[6] != "git@github.com:user/it's-fine.git" {
-		t.Errorf("repo with single quote should be passed verbatim, got %q", cloneCall.cmd[6])
+	if cloneCall.cmd[7] != "git@github.com:user/it's-fine.git" {
+		t.Errorf("repo with single quote should be passed verbatim, got %q", cloneCall.cmd[7])
 	}
 }
 

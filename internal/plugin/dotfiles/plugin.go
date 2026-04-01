@@ -48,13 +48,13 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 
 	// Clone the repository. Use accept-new so the first connection to a host
 	// (e.g. github.com) auto-accepts its key without a known_hosts entry.
-	cloneCmd := []string{"git", "clone", p.cfg.Repository, targetPath}
+	cloneCmd := []string{"git", "clone", "--", p.cfg.Repository, targetPath}
 	if isSSHRepo(p.cfg.Repository) {
 		cloneCmd = []string{
 			"sh", "-c",
 			"GIT_SSH_COMMAND='ssh -o StrictHostKeyChecking=accept-new' exec \"$@\"",
 			"--",
-			"git", "clone", p.cfg.Repository, targetPath,
+			"git", "clone", "--", p.cfg.Repository, targetPath,
 		}
 	}
 	if err := streamExecWithRetry(ctx, req, cloneCmd, req.RemoteUser, "", 3); err != nil {
