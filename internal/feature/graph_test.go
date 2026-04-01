@@ -1,6 +1,9 @@
 package feature
 
 import (
+	"fmt"
+	"math/rand"
+	"slices"
 	"testing"
 )
 
@@ -211,6 +214,88 @@ func TestGraphSortEmpty(t *testing.T) {
 	}
 	if result != nil {
 		t.Errorf("expected nil for empty graph, got %v", result)
+	}
+}
+
+func TestGraphSort_PropertyInvariant(t *testing.T) {
+	// Fixed seed for reproducibility across runs.
+	rng := rand.New(rand.NewSource(42))
+
+	for trial := range 200 {
+		n := rng.Intn(10) + 3 // 3..12 nodes
+		keys := make([]string, n)
+		for i := range n {
+			keys[i] = fmt.Sprintf("node%02d", i)
+		}
+
+		g := NewGraph[string]()
+		for _, k := range keys {
+			g.AddNode(k, k+"-val")
+		}
+
+		// Build a random acyclic graph by construction: shuffle node order,
+		// then only add edges from earlier -> later in that order. This
+		// guarantees no cycles without needing Sort() as an oracle.
+		// Track edges locally to avoid coupling to g.edges internals.
+		type edge struct{ from, to string }
+		var edges []edge
+		order := slices.Clone(keys)
+		rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
+		for i := range order {
+			for j := i + 1; j < len(order); j++ {
+				if rng.Intn(3) != 0 { // ~33% chance of each edge
+					continue
+				}
+				if err := g.AddEdge(order[i], order[j]); err == nil {
+					edges = append(edges, edge{order[i], order[j]})
+				}
+			}
+		}
+
+		result, err := g.Sort()
+		if err != nil {
+			t.Fatalf("trial %d: unexpected cycle error: %v", trial, err)
+		}
+
+		// Invariant 1: all nodes present exactly once (no duplicates, no missing).
+		if len(result) != n {
+			t.Fatalf("trial %d: got %d nodes, want %d", trial, len(result), n)
+		}
+		seen := make(map[string]struct{}, n)
+		for _, v := range result {
+			if _, dup := seen[v]; dup {
+				t.Fatalf("trial %d: duplicate node value in result: %q", trial, v)
+			}
+			seen[v] = struct{}{}
+		}
+		for _, k := range keys {
+			if _, ok := seen[k+"-val"]; !ok {
+				t.Fatalf("trial %d: missing node value in result: %q", trial, k+"-val")
+			}
+		}
+
+		// Invariant 2: topological order — for every edge (from→to), from appears before to.
+		indexOf := make(map[string]int, n)
+		for i, v := range result {
+			indexOf[v] = i
+		}
+		for _, e := range edges {
+			fromVal := e.from + "-val"
+			toVal := e.to + "-val"
+			if indexOf[fromVal] >= indexOf[toVal] {
+				t.Errorf("trial %d: edge %s->%s violated: %s at %d, %s at %d",
+					trial, e.from, e.to, fromVal, indexOf[fromVal], toVal, indexOf[toVal])
+			}
+		}
+
+		// Invariant 3: deterministic — same graph sorts identically.
+		result2, err := g.Sort()
+		if err != nil {
+			t.Fatalf("trial %d: second sort error: %v", trial, err)
+		}
+		if !slices.Equal(result, result2) {
+			t.Errorf("trial %d: sort is not deterministic\n  first:  %v\n  second: %v", trial, result, result2)
+		}
 	}
 }
 
