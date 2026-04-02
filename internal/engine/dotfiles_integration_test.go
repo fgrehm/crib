@@ -126,9 +126,12 @@ func TestIntegrationDotfilesPlugin(t *testing.T) {
 	}
 
 	// Verify the repo was cloned to the default target path.
-	var stdout bytes.Buffer
-	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-d", "/root/dotfiles"}, nil, &stdout, nil, nil, ""); err != nil {
-		t.Error("dotfiles not cloned: /root/dotfiles not found")
+	var stdout, stderr bytes.Buffer
+	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-d", "/root/dotfiles"}, nil, &stdout, &stderr, nil, ""); err != nil {
+		// Dump diagnostics to understand Podman CI failures.
+		var diag bytes.Buffer
+		_ = d.ExecContainer(ctx, wsID, result.ContainerID, []string{"ls", "-la", "/root/"}, nil, &diag, &diag, nil, "")
+		t.Errorf("dotfiles not cloned: /root/dotfiles not found\ncontainer=%s\nstderr=%s\n/root/ listing:\n%s", result.ContainerID, stderr.String(), diag.String())
 	}
 
 	// Verify install.sh was auto-detected and executed.
