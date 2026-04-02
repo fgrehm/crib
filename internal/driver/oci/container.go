@@ -63,7 +63,20 @@ func (d *OCIDriver) RunContainer(ctx context.Context, workspaceID string, option
 
 // buildRunArgs constructs the `docker run` argument list.
 func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) []string {
+	// Allow runArgs to override the container name. If --name is present in
+	// ExtraArgs, always strip it to avoid duplicate flags; use the value as
+	// the container name when non-empty.
+	extraArgs := opts.ExtraArgs
 	name := ContainerName(workspaceID)
+	if userName, rest := extractName(extraArgs); rest != nil {
+		extraArgs = rest
+		if userName != "" {
+			name = userName
+			d.logger.Warn("runArgs overrides container name, CLI output may still show the default", "name", userName)
+		} else {
+			d.logger.Warn("runArgs specifies --name without a value, using default container name", "name", name)
+		}
+	}
 
 	args := []string{"run", "-d", "--name", name}
 
@@ -120,12 +133,12 @@ func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) []
 	// Auto-inject --userns=keep-id for rootless Podman to fix bind mount
 	// permissions. This maps the host UID to the same UID inside the
 	// container, so workspace files have correct ownership for non-root users.
-	if d.runtime == RuntimePodman && getuid() != 0 && !hasUsernsArg(opts.ExtraArgs) {
+	if d.runtime == RuntimePodman && getuid() != 0 && !hasUsernsArg(extraArgs) {
 		args = append(args, "--userns=keep-id")
 	}
 
 	// Passthrough CLI args from runArgs.
-	args = append(args, opts.ExtraArgs...)
+	args = append(args, extraArgs...)
 
 	// Image (required).
 	args = append(args, opts.Image)
@@ -333,6 +346,49 @@ func hasUsernsArg(args []string) bool {
 		}
 	}
 	return false
+}
+
+// extractName removes --name/--name=value from args and returns the extracted
+// name plus the remaining args. Returns ("", nil) if no --name flag is present.
+// When --name is found, rest is always non-nil (even if empty or value is blank),
+// so callers can use rest != nil to detect presence independent of the value.
+func extractName(args []string) (name string, rest []string) {
+	// First pass: check presence before allocating.
+	found := false
+	for _, a := range args {
+		if a == "--name" || strings.HasPrefix(a, "--name=") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", nil
+	}
+
+	// Second pass: extract value and strip all --name tokens.
+	rest = make([]string, 0, len(args))
+	i := 0
+	for i < len(args) {
+		a := args[i]
+		// --name=value
+		if strings.HasPrefix(a, "--name=") {
+			name = a[len("--name="):]
+			i++
+			continue
+		}
+		// --name value (only consume next token if it looks like a value, not a flag)
+		if a == "--name" {
+			i++
+			if i < len(args) && !strings.HasPrefix(args[i], "-") {
+				name = args[i]
+				i++
+			}
+			continue
+		}
+		rest = append(rest, a)
+		i++
+	}
+	return
 }
 
 // appendFlags appends "--flag value" pairs to args for each value in values.

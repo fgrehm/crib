@@ -258,6 +258,137 @@ func TestBuildRunArgs_ExtraArgsPassthrough(t *testing.T) {
 	}
 }
 
+func TestBuildRunArgs_UserNameOverridesDefault(t *testing.T) {
+	d := newTestDockerDriver()
+
+	opts := &driver.RunOptions{
+		Image:     "alpine",
+		ExtraArgs: []string{"--network=host", "--name", "my-container", "--gpus", "all"},
+	}
+
+	args := d.buildRunArgs("ws1", opts)
+	got := strings.Join(args, " ")
+
+	// User-specified name wins over crib's default.
+	assertContains(t, got, "--name my-container")
+	if strings.Contains(got, "crib-ws1") {
+		t.Errorf("crib default name should not appear, got: %s", got)
+	}
+	// Other extra args are preserved.
+	assertContains(t, got, "--network=host")
+	assertContains(t, got, "--gpus all")
+	// Workspace label is still present (lookup depends on it).
+	assertContains(t, got, "--label crib.workspace=ws1")
+}
+
+func TestBuildRunArgs_UserNameEqualsForm(t *testing.T) {
+	d := newTestDockerDriver()
+
+	opts := &driver.RunOptions{
+		Image:     "alpine",
+		ExtraArgs: []string{"--name=my-container"},
+	}
+
+	args := d.buildRunArgs("ws1", opts)
+	got := strings.Join(args, " ")
+
+	assertContains(t, got, "--name my-container")
+	if strings.Count(got, "--name") != 1 {
+		t.Errorf("expected exactly one --name flag, got: %s", got)
+	}
+}
+
+func TestExtractName(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		wantName string
+		wantRest []string
+	}{
+		{
+			name:     "no name flag",
+			args:     []string{"--network=host", "--gpus", "all"},
+			wantName: "",
+			wantRest: nil,
+		},
+		{
+			name:     "name as two tokens",
+			args:     []string{"--name", "my-container", "--network=host"},
+			wantName: "my-container",
+			wantRest: []string{"--network=host"},
+		},
+		{
+			name:     "name with equals",
+			args:     []string{"--name=my-container", "--network=host"},
+			wantName: "my-container",
+			wantRest: []string{"--network=host"},
+		},
+		{
+			name:     "name at end",
+			args:     []string{"--network=host", "--name", "my-container"},
+			wantName: "my-container",
+			wantRest: []string{"--network=host"},
+		},
+		{
+			name:     "empty args",
+			args:     nil,
+			wantName: "",
+			wantRest: nil,
+		},
+		{
+			name:     "empty value equals form",
+			args:     []string{"--name=", "--network=host"},
+			wantName: "",
+			wantRest: []string{"--network=host"},
+		},
+		{
+			name:     "dangling name at end",
+			args:     []string{"--network=host", "--name"},
+			wantName: "",
+			wantRest: []string{"--network=host"},
+		},
+		{
+			name:     "dangling name only",
+			args:     []string{"--name"},
+			wantName: "",
+			wantRest: []string{},
+		},
+		{
+			name:     "multiple name flags last wins",
+			args:     []string{"--name", "first", "--name=second", "--network=host"},
+			wantName: "second",
+			wantRest: []string{"--network=host"},
+		},
+		{
+			name:     "name followed by another flag is not consumed",
+			args:     []string{"--name", "--network=host"},
+			wantName: "",
+			wantRest: []string{"--network=host"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, rest := extractName(tt.args)
+			if name != tt.wantName {
+				t.Errorf("name = %q, want %q", name, tt.wantName)
+			}
+			if (rest == nil) != (tt.wantRest == nil) {
+				t.Errorf("rest nil-ness: got %v (nil=%v), want nil=%v", rest, rest == nil, tt.wantRest == nil)
+				return
+			}
+			if len(rest) != len(tt.wantRest) {
+				t.Errorf("rest = %v, want %v", rest, tt.wantRest)
+				return
+			}
+			for i := range rest {
+				if rest[i] != tt.wantRest[i] {
+					t.Errorf("rest[%d] = %q, want %q", i, rest[i], tt.wantRest[i])
+				}
+			}
+		})
+	}
+}
+
 func TestParseLines(t *testing.T) {
 	tests := []struct {
 		input string
