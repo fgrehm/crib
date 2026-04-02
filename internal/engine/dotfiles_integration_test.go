@@ -58,13 +58,13 @@ func setupLocalDotfilesRepo(t *testing.T, installMarker string) string {
 }
 
 // dotfilesDevcontainerConfig returns a devcontainer.json that builds a git-enabled
-// image and mounts repoDir at dotfilesSourceMount (read-only).
+// image and mounts repoDir at dotfilesSourceMount.
 func dotfilesDevcontainerConfig(repoDir string) string {
 	return fmt.Sprintf(`{
 		"build": {"dockerfile": "Dockerfile"},
 		"remoteUser": "root",
 		"overrideCommand": true,
-		"mounts": ["source=%s,target=%s,type=bind,readonly=true"]
+		"mounts": ["source=%s,target=%s,type=bind"]
 	}`, repoDir, dotfilesSourceMount)
 }
 
