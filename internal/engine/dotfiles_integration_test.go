@@ -59,20 +59,14 @@ func setupLocalDotfilesRepo(t *testing.T, installMarker string) string {
 
 // dotfilesDevcontainerConfig returns a devcontainer.json that builds a git-enabled
 // image and mounts repoDir at dotfilesSourceMount (read-only).
-// GIT_CONFIG_* env vars bypass the dubious-ownership check without writing to
-// ~/.gitconfig: the bind-mounted repo is owned by the host user, which git rejects
-// when the container runs as a different user. Using env vars avoids the file write
-// and works regardless of home directory permissions.
+// onCreateCommand sets safe.directory='*' to bypass the dubious-ownership check:
+// the bind-mounted repo is owned by the host user, which git rejects.
 func dotfilesDevcontainerConfig(repoDir string) string {
 	return fmt.Sprintf(`{
 		"build": {"dockerfile": "Dockerfile"},
 		"remoteUser": "root",
 		"overrideCommand": true,
-		"containerEnv": {
-			"GIT_CONFIG_COUNT": "1",
-			"GIT_CONFIG_KEY_0": "safe.directory",
-			"GIT_CONFIG_VALUE_0": "*"
-		},
+		"onCreateCommand": "git config --global --add safe.directory '*'",
 		"mounts": ["source=%s,target=%s,type=bind,readonly=true"]
 	}`, repoDir, dotfilesSourceMount)
 }
