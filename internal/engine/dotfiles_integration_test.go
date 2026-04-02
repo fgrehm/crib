@@ -90,7 +90,6 @@ func TestIntegrationDotfilesPlugin(t *testing.T) {
 	mgr := plugin.NewManager(slog.Default())
 	mgr.Register(dotfiles.New(globalconfig.DotfilesConfig{
 		Repository: dotfilesSourceMount,
-		// TargetPath defaults to ~/dotfiles -> /root/dotfiles (root user)
 	}))
 	e.SetPlugins(mgr)
 	e.SetRuntime(d.Runtime().String())

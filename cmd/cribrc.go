@@ -50,9 +50,10 @@ func loadCribRC() (*cribRC, error) {
 		if !ok {
 			continue
 		}
+		val = strings.TrimSpace(val)
 		switch strings.TrimSpace(key) {
 		case "config":
-			rc.Config = strings.TrimSpace(val)
+			rc.Config = val
 		case "cache":
 			for p := range strings.SplitSeq(val, ",") {
 				p = strings.TrimSpace(p)
@@ -61,15 +62,15 @@ func loadCribRC() (*cribRC, error) {
 				}
 			}
 		case "dotfiles":
-			if strings.TrimSpace(val) == "false" {
+			if val == "false" {
 				rc.Dotfiles.Disabled = true
 			}
 		case "dotfiles.repository":
-			rc.Dotfiles.Repository = strings.TrimSpace(val)
+			rc.Dotfiles.Repository = val
 		case "dotfiles.targetPath":
-			rc.Dotfiles.TargetPath = strings.TrimSpace(val)
+			rc.Dotfiles.TargetPath = val
 		case "dotfiles.installCommand":
-			rc.Dotfiles.InstallCommand = strings.TrimSpace(val)
+			rc.Dotfiles.InstallCommand = val
 		}
 	}
 	return rc, scanner.Err()
