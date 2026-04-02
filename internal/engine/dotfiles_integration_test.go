@@ -126,17 +126,15 @@ func TestIntegrationDotfilesPlugin(t *testing.T) {
 	}
 
 	// Verify the repo was cloned to the default target path.
-	var stdout, stderr bytes.Buffer
-	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-d", "/root/dotfiles"}, nil, &stdout, &stderr, nil, ""); err != nil {
-		// Dump diagnostics to understand Podman CI failures.
-		var diag bytes.Buffer
-		_ = d.ExecContainer(ctx, wsID, result.ContainerID, []string{"ls", "-la", "/root/"}, nil, &diag, &diag, nil, "")
-		t.Errorf("dotfiles not cloned: /root/dotfiles not found\ncontainer=%s\nstderr=%s\n/root/ listing:\n%s", result.ContainerID, stderr.String(), diag.String())
+	// Use "root" user to match remoteUser (Podman rootless defaults to a non-root user).
+	var stdout bytes.Buffer
+	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-d", "/root/dotfiles"}, nil, &stdout, nil, nil, "root"); err != nil {
+		t.Error("dotfiles not cloned: /root/dotfiles not found")
 	}
 
 	// Verify install.sh was auto-detected and executed.
 	stdout.Reset()
-	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-f", "/tmp/dotfiles-installed"}, nil, &stdout, nil, nil, ""); err != nil {
+	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-f", "/tmp/dotfiles-installed"}, nil, &stdout, nil, nil, "root"); err != nil {
 		t.Error("install.sh did not run: /tmp/dotfiles-installed not found")
 	}
 }
@@ -195,13 +193,13 @@ func TestIntegrationDotfilesPluginInstallCommand(t *testing.T) {
 
 	// Verify installCommand ran.
 	var stdout bytes.Buffer
-	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-f", "/tmp/custom-install-ran"}, nil, &stdout, nil, nil, ""); err != nil {
+	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-f", "/tmp/custom-install-ran"}, nil, &stdout, nil, nil, "root"); err != nil {
 		t.Error("installCommand did not run: /tmp/custom-install-ran not found")
 	}
 
 	// Verify install.sh was NOT auto-detected (installCommand takes precedence).
 	stdout.Reset()
-	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-f", "/tmp/autodetect-ran"}, nil, &stdout, nil, nil, ""); err == nil {
+	if err := d.ExecContainer(ctx, wsID, result.ContainerID, []string{"test", "-f", "/tmp/autodetect-ran"}, nil, &stdout, nil, nil, "root"); err == nil {
 		t.Error("install.sh should not have run when installCommand is set")
 	}
 }
