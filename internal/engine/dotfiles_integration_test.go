@@ -59,14 +59,11 @@ func setupLocalDotfilesRepo(t *testing.T, installMarker string) string {
 
 // dotfilesDevcontainerConfig returns a devcontainer.json that builds a git-enabled
 // image and mounts repoDir at dotfilesSourceMount (read-only).
-// onCreateCommand sets safe.directory='*' to bypass the dubious-ownership check:
-// the bind-mounted repo is owned by the host user, which git rejects.
 func dotfilesDevcontainerConfig(repoDir string) string {
 	return fmt.Sprintf(`{
 		"build": {"dockerfile": "Dockerfile"},
 		"remoteUser": "root",
 		"overrideCommand": true,
-		"onCreateCommand": "git config --global --add safe.directory '*'",
 		"mounts": ["source=%s,target=%s,type=bind,readonly=true"]
 	}`, repoDir, dotfilesSourceMount)
 }
@@ -74,7 +71,9 @@ func dotfilesDevcontainerConfig(repoDir string) string {
 // dotfilesDockerfile builds a minimal image with git from alpine:3.20.
 // Avoids alpine/git which declares /git as a VOLUME (changes there are lost
 // on commit/recreate) and carries ENTRYPOINT/WorkingDir baggage.
-const dotfilesDockerfile = "FROM alpine:3.20\nRUN apk add --no-cache git\n"
+// Configures safe.directory='*' in the image so git trusts the bind-mounted
+// dotfiles source regardless of ownership (host vs container UID mismatch).
+const dotfilesDockerfile = "FROM alpine:3.20\nRUN apk add --no-cache git && git config --global --add safe.directory '*'\n"
 
 func TestIntegrationDotfilesPlugin(t *testing.T) {
 	if testing.Short() {
