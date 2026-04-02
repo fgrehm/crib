@@ -54,6 +54,12 @@ jobs:
           cache: true
       - name: Install gotestfmt
         run: go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
+      # Suppress "Executing external compose provider" warnings that make
+      # CI output look like failures (containers/podman#23441).
+      - name: Configure podman
+        run: |
+          mkdir -p ~/.config/containers
+          printf '[engine]\ncompose_warning_logs=false\n' >> ~/.config/containers/containers.conf
       - name: Start podman daemon
         run: |
           podman system service -t 0 &

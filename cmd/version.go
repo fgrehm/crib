@@ -11,11 +11,12 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Show version information",
 	Args:  noArgs,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		u := newUI()
 		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "crib "+version)
 		u.Keyval("commit", commit)
 		u.Keyval("date", date)
 		u.Keyval("go", runtime.Version())
+		return nil
 	},
 }

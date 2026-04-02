@@ -7,10 +7,19 @@ import (
 	"strings"
 )
 
+// dotfilesRC holds per-project dotfiles settings from .cribrc.
+type dotfilesRC struct {
+	Disabled       bool
+	Repository     string
+	TargetPath     string
+	InstallCommand string
+}
+
 // cribRC holds values loaded from a .cribrc file.
 type cribRC struct {
-	Config string   // devcontainer config directory (same as --config / -C)
-	Cache  []string // package cache providers (e.g. "npm", "pip", "go")
+	Config   string   // devcontainer config directory (same as --config / -C)
+	Cache    []string // package cache providers (e.g. "npm", "pip", "go")
+	Dotfiles dotfilesRC
 }
 
 // loadCribRC reads a .cribrc file from cwd. Returns nil, nil if not found.
@@ -41,9 +50,10 @@ func loadCribRC() (*cribRC, error) {
 		if !ok {
 			continue
 		}
+		val = strings.TrimSpace(val)
 		switch strings.TrimSpace(key) {
 		case "config":
-			rc.Config = strings.TrimSpace(val)
+			rc.Config = val
 		case "cache":
 			for p := range strings.SplitSeq(val, ",") {
 				p = strings.TrimSpace(p)
@@ -51,6 +61,16 @@ func loadCribRC() (*cribRC, error) {
 					rc.Cache = append(rc.Cache, p)
 				}
 			}
+		case "dotfiles":
+			if val == "false" {
+				rc.Dotfiles.Disabled = true
+			}
+		case "dotfiles.repository":
+			rc.Dotfiles.Repository = val
+		case "dotfiles.targetPath":
+			rc.Dotfiles.TargetPath = val
+		case "dotfiles.installCommand":
+			rc.Dotfiles.InstallCommand = val
 		}
 	}
 	return rc, scanner.Err()
