@@ -77,10 +77,10 @@ func dotfilesDevcontainerConfig(repoDir string) string {
 	}`, repoDir, dotfilesSourceMount)
 }
 
-// dotfilesDockerfile builds a minimal image with git. Uses alpine/git as the base
-// to avoid an apk network round-trip during the test build, and clears the entrypoint
-// so the image behaves like plain alpine.
-const dotfilesDockerfile = "FROM alpine/git:latest\nENTRYPOINT []\n"
+// dotfilesDockerfile builds a minimal image with git from alpine:3.20.
+// Avoids alpine/git which declares /git as a VOLUME (changes there are lost
+// on commit/recreate) and carries ENTRYPOINT/WorkingDir baggage.
+const dotfilesDockerfile = "FROM alpine:3.20\nRUN apk add --no-cache git\n"
 
 func TestIntegrationDotfilesPlugin(t *testing.T) {
 	if testing.Short() {

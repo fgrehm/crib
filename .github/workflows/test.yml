@@ -54,8 +54,12 @@ jobs:
           cache: true
       - name: Install gotestfmt
         run: go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
-      - name: Install podman-compose
-        run: pip3 install podman-compose
+      # Suppress "Executing external compose provider" warnings that make
+      # CI output look like failures (containers/podman#23441).
+      - name: Configure podman
+        run: |
+          mkdir -p ~/.config/containers
+          printf '[engine]\ncompose_warning_logs=false\n' >> ~/.config/containers/containers.conf
       - name: Start podman daemon
         run: |
           podman system service -t 0 &
@@ -63,7 +67,6 @@ jobs:
       - name: Integration tests
         run: set -euo pipefail && make test-integration | tee /tmp/gotest.log | gotestfmt
         env:
-          PODMAN_COMPOSE_PROVIDER: podman-compose
           CRIB_RUNTIME: podman
           GO_TEST_FLAGS: -json
       - name: E2E tests
