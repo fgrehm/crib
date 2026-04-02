@@ -57,18 +57,24 @@ func setupLocalDotfilesRepo(t *testing.T, installMarker string) string {
 	return repoDir
 }
 
-// dotfilesDevcontainerConfig returns a devcontainer.json that builds alpine
-// with git and mounts repoDir at dotfilesSourceMount (read-only).
+// dotfilesDevcontainerConfig returns a devcontainer.json that builds a git-enabled
+// image and mounts repoDir at dotfilesSourceMount (read-only).
+// onCreateCommand sets safe.directory before the dotfiles plugin runs: the bind-mounted
+// repo is owned by the host user but the container runs as root, which triggers git's
+// dubious-ownership check without this config.
 func dotfilesDevcontainerConfig(repoDir string) string {
 	return fmt.Sprintf(`{
 		"build": {"dockerfile": "Dockerfile"},
 		"overrideCommand": true,
+		"onCreateCommand": "git config --global safe.directory '*'",
 		"mounts": ["source=%s,target=%s,type=bind,readonly=true"]
 	}`, repoDir, dotfilesSourceMount)
 }
 
-// dotfilesDockerfile is a minimal Dockerfile that adds git to alpine.
-const dotfilesDockerfile = "FROM alpine:3.20\nRUN apk add --no-cache git\n"
+// dotfilesDockerfile builds a minimal image with git. Uses alpine/git as the base
+// to avoid an apk network round-trip during the test build, and clears the entrypoint
+// so the image behaves like plain alpine.
+const dotfilesDockerfile = "FROM alpine/git:2.47.0\nENTRYPOINT []\n"
 
 func TestIntegrationDotfilesPlugin(t *testing.T) {
 	if testing.Short() {

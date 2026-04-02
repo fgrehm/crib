@@ -284,9 +284,13 @@ func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
 	mgr.Register(codingagents.New())
 	mgr.Register(shellhistory.New())
 	mgr.Register(pluginssh.New())
+	var globalDotfiles globalconfig.DotfilesConfig
 	if gcfg, err := globalconfig.Load(); err != nil {
 		logger.Warn("failed to load global config", "error", err)
-	} else if cfg, ok := resolveDotfilesPlugin(gcfg.Dotfiles, projectDotfiles); ok {
+	} else {
+		globalDotfiles = gcfg.Dotfiles
+	}
+	if cfg, ok := resolveDotfilesPlugin(globalDotfiles, projectDotfiles); ok {
 		mgr.Register(dotfiles.New(cfg))
 	}
 	if len(cacheProviders) > 0 {
