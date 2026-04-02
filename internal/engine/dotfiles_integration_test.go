@@ -66,6 +66,7 @@ func setupLocalDotfilesRepo(t *testing.T, installMarker string) string {
 func dotfilesDevcontainerConfig(repoDir string) string {
 	return fmt.Sprintf(`{
 		"build": {"dockerfile": "Dockerfile"},
+		"remoteUser": "root",
 		"overrideCommand": true,
 		"containerEnv": {
 			"GIT_CONFIG_COUNT": "1",
