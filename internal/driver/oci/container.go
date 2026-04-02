@@ -64,13 +64,16 @@ func (d *OCIDriver) RunContainer(ctx context.Context, workspaceID string, option
 // buildRunArgs constructs the `docker run` argument list.
 func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) []string {
 	// Allow runArgs to override the container name. If --name is present in
-	// ExtraArgs, use it instead of crib's default naming scheme.
+	// ExtraArgs, always strip it to avoid duplicate flags; use the value as
+	// the container name when non-empty.
 	extraArgs := opts.ExtraArgs
 	name := ContainerName(workspaceID)
-	if userName, rest := extractName(extraArgs); userName != "" {
-		name = userName
+	if userName, rest := extractName(extraArgs); rest != nil {
 		extraArgs = rest
-		d.logger.Warn("runArgs overrides container name, CLI output may still show the default", "name", userName)
+		if userName != "" {
+			name = userName
+			d.logger.Warn("runArgs overrides container name, CLI output may still show the default", "name", userName)
+		}
 	}
 
 	args := []string{"run", "-d", "--name", name}
@@ -344,8 +347,24 @@ func hasUsernsArg(args []string) bool {
 }
 
 // extractName removes --name/--name=value from args and returns the extracted
-// name plus the remaining args. Returns ("", nil) if no --name is present.
+// name plus the remaining args. Returns ("", nil) if no --name flag is present.
+// When --name is found, rest is always non-nil (even if empty or value is blank),
+// so callers can use rest != nil to detect presence independent of the value.
 func extractName(args []string) (name string, rest []string) {
+	// First pass: check presence before allocating.
+	found := false
+	for _, a := range args {
+		if a == "--name" || strings.HasPrefix(a, "--name=") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return "", nil
+	}
+
+	// Second pass: extract value and strip all --name tokens.
+	rest = make([]string, 0, len(args))
 	i := 0
 	for i < len(args) {
 		a := args[i]
@@ -366,9 +385,6 @@ func extractName(args []string) (name string, rest []string) {
 		}
 		rest = append(rest, a)
 		i++
-	}
-	if name == "" {
-		return "", nil
 	}
 	return
 }

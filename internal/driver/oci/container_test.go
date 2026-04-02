@@ -335,12 +335,40 @@ func TestExtractName(t *testing.T) {
 			wantName: "",
 			wantRest: nil,
 		},
+		{
+			name:     "empty value equals form",
+			args:     []string{"--name=", "--network=host"},
+			wantName: "",
+			wantRest: []string{"--network=host"},
+		},
+		{
+			name:     "dangling name at end",
+			args:     []string{"--network=host", "--name"},
+			wantName: "",
+			wantRest: []string{"--network=host"},
+		},
+		{
+			name:     "dangling name only",
+			args:     []string{"--name"},
+			wantName: "",
+			wantRest: []string{},
+		},
+		{
+			name:     "multiple name flags last wins",
+			args:     []string{"--name", "first", "--name=second", "--network=host"},
+			wantName: "second",
+			wantRest: []string{"--network=host"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			name, rest := extractName(tt.args)
 			if name != tt.wantName {
 				t.Errorf("name = %q, want %q", name, tt.wantName)
+			}
+			if (rest == nil) != (tt.wantRest == nil) {
+				t.Errorf("rest nil-ness: got %v (nil=%v), want nil=%v", rest, rest == nil, tt.wantRest == nil)
+				return
 			}
 			if len(rest) != len(tt.wantRest) {
 				t.Errorf("rest = %v, want %v", rest, tt.wantRest)
