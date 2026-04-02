@@ -152,6 +152,22 @@ targetPath = "~/dotfiles"        # optional, default ~/dotfiles
 installCommand = "make install"  # optional, auto-detects if omitted
 ```
 
+When `repository` is set, the plugin runs for every workspace. Use a `.cribrc` to override this per project (see below).
+
+**Per-project override via `.cribrc`:**
+
+```ini
+# Use different dotfiles for this project:
+dotfiles.repository = https://github.com/user/work-dotfiles
+dotfiles.targetPath = ~/work-dotfiles    # optional
+dotfiles.installCommand = make install   # optional
+
+# Or disable dotfiles entirely for this project:
+dotfiles = false
+```
+
+Per-project settings override the global config. Setting `dotfiles.repository` in `.cribrc` also works when no global config is set, enabling dotfiles for a single project without a global config file.
+
 **What it does:**
 
 1. Clones the repository into `targetPath` inside the container (default `~/dotfiles`)
@@ -164,7 +180,7 @@ Tilde (`~`) in `targetPath` expands to the remote user's home directory inside t
 
 The plugin runs during `crib up` (first creation only). Because the effects are baked into the snapshot, dotfiles survive `crib stop` + `crib up` and restarts. A `crib rebuild` re-runs the clone and install.
 
-**No-op when `repository` is not set.** If you don't configure dotfiles, the plugin does nothing.
+**No-op when `repository` is not set in either the global config or `.cribrc`.** If you don't configure dotfiles, the plugin does nothing.
 
 :::note[Git required]
 The container must have `git` installed for the clone to work. Most devcontainer base images include it. If yours doesn't, add it via a Feature or `postCreateCommand`.
