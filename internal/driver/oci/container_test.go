@@ -359,6 +359,12 @@ func TestExtractName(t *testing.T) {
 			wantName: "second",
 			wantRest: []string{"--network=host"},
 		},
+		{
+			name:     "name followed by another flag is not consumed",
+			args:     []string{"--name", "--network=host"},
+			wantName: "",
+			wantRest: []string{"--network=host"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

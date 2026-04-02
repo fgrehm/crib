@@ -374,10 +374,10 @@ func extractName(args []string) (name string, rest []string) {
 			i++
 			continue
 		}
-		// --name value
+		// --name value (only consume next token if it looks like a value, not a flag)
 		if a == "--name" {
 			i++
-			if i < len(args) {
+			if i < len(args) && !strings.HasPrefix(args[i], "-") {
 				name = args[i]
 				i++
 			}
