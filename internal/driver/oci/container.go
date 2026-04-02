@@ -73,6 +73,8 @@ func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) []
 		if userName != "" {
 			name = userName
 			d.logger.Warn("runArgs overrides container name, CLI output may still show the default", "name", userName)
+		} else {
+			d.logger.Warn("runArgs specifies --name without a value, using default container name", "name", name)
 		}
 	}
 
