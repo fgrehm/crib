@@ -63,6 +63,7 @@ jobs:
       - name: Integration tests
         run: set -euo pipefail && make test-integration | tee /tmp/gotest.log | gotestfmt
         env:
+          PODMAN_COMPOSE_PROVIDER: podman-compose
           CRIB_RUNTIME: podman
           GO_TEST_FLAGS: -json
       - name: E2E tests
