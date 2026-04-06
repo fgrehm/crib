@@ -54,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `crib doctor --fix` no longer deletes containers belonging to a different
   `CRIB_HOME`.
 - Integration and e2e tests no longer interfere with active workspaces.
+- `runArgs: ["--name", "..."]` in `devcontainer.json` no longer causes a
+  duplicate `--name` flag error. The user-specified name now overrides crib's
+  default container name. See [#35](https://github.com/fgrehm/crib/issues/35).
 
 ## [0.7.1] - 2026-03-25
 

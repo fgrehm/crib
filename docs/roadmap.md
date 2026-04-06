@@ -11,6 +11,10 @@ Items move between sections as priorities shift.
 
 Detect project type (Ruby, Node, Go, etc.) from conventions and generate a working devcontainer config without the user writing one. See the [RFC](https://github.com/fgrehm/crib/blob/main/docs/rfcs/init.md) for the full design.
 
+### Display actual container name when overridden via `runArgs`
+
+As of v0.8.0, `runArgs: ["--name", "my-container"]` correctly overrides crib's default container name ([#35](https://github.com/fgrehm/crib/issues/35)). However, CLI output (`crib up`, `crib status`, `crib restart`, `crib rebuild`) still displays the default `crib-{id}` name. Fixing this requires threading the actual container name through `UpResult`/`RestartResult` and updating the display sites in `cmd/`. The plugin request's `ContainerName` field should also reflect the override.
+
 ## Considering
 
 ### Features
