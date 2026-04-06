@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dotfiles plugin**: clones and installs a dotfiles repository inside the
   container on creation. Configured via global config. Supports custom target
   path, install command override, and auto-detection of common install scripts.
+  Per-project overrides and opt-out via `.cribrc` (`dotfiles.repository`,
+  `dotfiles.targetPath`, `dotfiles.installCommand`, `dotfiles = false`).
   See [#17](https://github.com/fgrehm/crib/issues/17).
 - **Global config** (`~/.config/crib/config.toml`, respects `$XDG_CONFIG_HOME`):
   user-level settings applied across all workspaces. Currently supports

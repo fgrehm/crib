@@ -89,6 +89,8 @@ Use -- to separate crib flags from the container command:
 		escaped := plugin.ShellQuoteJoin(args)
 		execArgs = append(execArgs, container.ID, shellPath, "-lc", escaped)
 
+		// syscall.Exec replaces the current process with the container runtime.
+		// On success it never returns; the only return path is an error.
 		return syscall.Exec(runtimeBin, execArgs, os.Environ())
 	},
 }
