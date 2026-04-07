@@ -122,9 +122,13 @@ Before wrapping up a session, check whether CHANGELOG.md needs an update for the
 ## Releasing
 
 1. Move `CHANGELOG.md` `[Unreleased]` entries into `[X.Y.Z] - YYYY-MM-DD`.
-2. Update `VERSION` file.
-3. Commit: `chore: release vX.Y.Z`.
-4. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`
+2. Copy the new version section into
+   `website/src/content/docs/reference/changelog.md`. Use GitHub release links
+   in headers: `## [X.Y.Z](https://github.com/fgrehm/crib/releases/tag/vX.Y.Z) - YYYY-MM-DD`.
+   No `[Unreleased]` on the website.
+3. Update `VERSION` file.
+4. Commit: `chore: release vX.Y.Z`.
+5. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`
 
 CI extracts release notes from CHANGELOG.md and runs GoReleaser. The `stable` branch is
 updated automatically after the tag is pushed.

@@ -182,7 +182,7 @@ The name "crib" is close to [cribl.io](https://cribl.io/), which muddies search 
 
 #### Reduce cyclomatic complexity hotspots
 
-CI threshold lowered to 30 (from 40). `generateComposeOverride` dropped significantly after the compose-go refactor. Remaining hotspots are in the engine orchestration functions (`upCompose`, `syncRemoteUserUID`, `Doctor`, `detectConfigChange`). `upCompose` is the priority target for future decomposition.
+CI threshold lowered to 30 (from 40) in v0.8.0. `generateComposeOverride` dropped significantly after the compose-go refactor (also v0.8.0). Remaining hotspots are in the engine orchestration functions (`upCompose`, `syncRemoteUserUID`, `Doctor`, `detectConfigChange`). `upCompose` is the priority target for future decomposition.
 
 ## Not Planned
 

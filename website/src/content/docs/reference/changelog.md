@@ -8,6 +8,142 @@ All notable changes to this project will be documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0](https://github.com/fgrehm/crib/releases/tag/v0.8.0) - 2026-04-07
+
+### Added
+
+- `crib stop` command: non-destructive container stop that preserves hook
+  markers. The next `crib up` resumes with only start-time hooks.
+- **Dotfiles plugin**: clones and installs a dotfiles repository inside the
+  container on creation. Configured via global config (`~/.config/crib/config.toml`).
+  Supports custom target path, install command override, and auto-detection of
+  common install scripts. Per-project overrides and opt-out via `.cribrc`
+  (`dotfiles.repository`, `dotfiles.targetPath`, `dotfiles.installCommand`,
+  `dotfiles = false`). See [#17](https://github.com/fgrehm/crib/issues/17).
+- **Global config** (`~/.config/crib/config.toml`, respects `$XDG_CONFIG_HOME`):
+  user-level settings applied across all workspaces. Currently supports
+  `[dotfiles]` configuration.
+- `PostContainerCreate` plugin hook: runs between `postCreateCommand` and
+  `postStartCommand` during fresh container creation. Provides `Exec` and
+  `StreamExec` callbacks for running commands inside the container.
+- Workspace file lock prevents concurrent state-mutating commands from racing.
+- Dead code detection (`go tool deadcode`) as a CI gate.
+
+### Changed
+
+- `stop` is no longer an alias for `down`. `crib stop` pauses the container
+  (preserving state), `crib down` removes it.
+- `crib.home` container label only applied when `CRIB_HOME` is explicitly set.
+- Compose override generation uses compose-go types instead of string
+  concatenation.
+- Compose stop/down reuse the persisted `compose-override.yml` from `crib up`.
+- `LoadProject` now threads caller-supplied environment variables through to
+  compose-go's loader for `${VAR}` substitution.
+
+### Fixed
+
+- `crib down`, `crib stop`, and `crib remove` now return a clear error
+  immediately when a compose workspace is detected but compose is not
+  installed, instead of silently falling through to single-container cleanup.
+- Invalid port numbers in container inspect output are now logged at
+  `WARN` level instead of `DEBUG`, making them visible in `crib status`
+  output without `--debug`.
+- Docs website now deploys automatically on `stable` branch push.
+- Compose backend captures stderr for diagnostics when container is not found
+  after `compose up`.
+- Compose override no longer produces duplicate mount destinations when user
+  compose files already define a volume for the same target path.
+- `crib doctor --fix` no longer deletes containers belonging to a different
+  `CRIB_HOME`.
+- Integration and e2e tests no longer interfere with active workspaces.
+- `runArgs: ["--name", "..."]` in `devcontainer.json` no longer causes a
+  duplicate `--name` flag error. The user-specified name now overrides crib's
+  default container name. See [#35](https://github.com/fgrehm/crib/issues/35).
+
+## [0.7.1](https://github.com/fgrehm/crib/releases/tag/v0.7.1) - 2026-03-25
+
+### Fixed
+
+- Feature `containerEnv` values (e.g. `PATH=/nvm/bin:${PATH}` from the node
+  feature) were applied twice: correctly as `ENV` instructions in the Dockerfile
+  (where Docker expands `${PATH}` at build time), then incorrectly as `-e` flags
+  at runtime (where `${PATH}` stays literal via `docker run`, or gets interpolated
+  from the host in compose). Either way the runtime PATH diverges from the
+  image's correctly-expanded PATH, breaking command resolution on macOS.
+- Dispatch feature-declared lifecycle hooks. Features can declare `onCreateCommand`,
+  `updateContentCommand`, `postCreateCommand`, `postStartCommand`, and
+  `postAttachCommand` in `devcontainer-feature.json`. These now execute before
+  user-defined hooks at each stage, in feature installation order (per the spec).
+  Feature hooks are stored in `result.json` so they persist across restarts without
+  re-resolving features from OCI registries. Also parses the previously-missing
+  `updateContentCommand` field from feature configs.
+- `crib restart` now detects changes inside Docker Compose files (volumes,
+  ports, environment, etc.) and recreates the container. Previously, only
+  changes to `devcontainer.json` fields were detected, so editing a compose
+  file's volumes had no effect until a full `crib rebuild`.
+
+## [0.7.0](https://github.com/fgrehm/crib/releases/tag/v0.7.0) - 2026-03-10
+
+### Added
+
+- `crib prune` command removes stale and orphan workspace images. Shows a dry-run
+  preview with sizes before prompting for confirmation. `--all` includes orphan
+  images from workspaces that no longer exist. `--force` / `-f` skips the prompt.
+- `crib remove` now shows a preview of what will be deleted (container ID, images,
+  state directory) and prompts for confirmation. Use `--force` / `-f` to skip.
+- All crib-managed images are now labeled with `crib.workspace={wsID}`, enabling
+  label-based discovery without name-pattern heuristics. Applied via `--label` on
+  `docker build` and `--change "LABEL ..."` on `docker commit` (snapshots).
+- Build images are automatically removed when a new build replaces them (hash
+  change). The old image is deleted after the new one is successfully built.
+- `crib remove` now deletes all labeled images for the workspace in addition to
+  the container and workspace state.
+
+### Changed
+
+- **Breaking**: Workspace IDs now include a 7-character hash of the absolute
+  project path: `{slug}-{hash}` (e.g. `my-app-a1b2c3d`). Workspaces created
+  before this change will not be recognized. Run `crib remove` (if still
+  accessible) or delete `~/.crib/workspaces/` manually, then run `crib up` in
+  each project to create a new workspace with the updated ID.
+
+## [0.6.3](https://github.com/fgrehm/crib/releases/tag/v0.6.3) - 2026-03-09
+
+### Security
+
+- OCI feature archives containing symbolic links are now rejected outright.
+  Previously, crib rejected symlinks whose static target appeared to escape the
+  extraction directory, but a chain of individually-safe symlinks could still
+  compose into a directory escape: an earlier symlink pointing to the extraction
+  root could be overwritten via the chain, redirecting subsequent file writes
+  outside the extraction directory. Feature archives contain scripts and JSON
+  and have no legitimate need for symlinks.
+
+## [0.6.2](https://github.com/fgrehm/crib/releases/tag/v0.6.2) - 2026-03-09
+
+### Fixed
+
+- `crib stop` followed by `crib up` now resumes from a snapshot when available,
+  skipping the full image build and running only resume-flow lifecycle hooks
+  (postStartCommand, postAttachCommand). Previously, stopping and starting a
+  workspace re-ran the entire creation flow. Both single-container and compose
+  paths are covered. `crib rebuild` still forces a full rebuild as before.
+- SSH agent socket is now mounted at `/run/ssh-agent.sock` instead of
+  `/tmp/ssh-agent.sock`. Docker-in-Docker features remount `/tmp` as a fresh
+  tmpfs, which hid the bind-mounted socket and broke SSH agent forwarding in
+  DinD containers.
+
+## [0.6.1](https://github.com/fgrehm/crib/releases/tag/v0.6.1) - 2026-03-08
+
+### Fixed
+
+- Compose container lookup fallback now filters by service name. Previously,
+  when the primary service failed to start, crib could pick up the wrong
+  container (e.g. postgres instead of rails-app) and show misleading logs in
+  the error message. The fallback now uses `compose ps --format json` with
+  service label matching, which also works on podman-compose (unlike
+  `compose ps -q <service>` which podman-compose doesn't support).
+
 ## [0.6.0](https://github.com/fgrehm/crib/releases/tag/v0.6.0) - 2026-03-08
 
 ### Added
