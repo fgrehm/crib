@@ -252,9 +252,11 @@ func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions
 // upExisting handles the case where a container already exists.
 func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, b containerBackend, container *driver.ContainerDetails) (*UpResult, error) {
 	// Load stored result for image name and feature entrypoints.
+	var storedResult *workspace.Result
 	var storedImageName string
 	var storedHasEntrypoints bool
 	if stored, err := e.store.LoadResult(ws.ID); err == nil && stored != nil {
+		storedResult = stored
 		storedImageName = stored.ImageName
 		storedHasEntrypoints = stored.HasFeatureEntrypoints
 	}
@@ -289,6 +291,8 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 		imageName:      storedImageName,
 		hasEntrypoints: storedHasEntrypoints,
 		pluginResp:     pluginResp,
+		storedResult:   storedResult,
+		fromSnapshot:   storedResult != nil,
 	})
 }
 
