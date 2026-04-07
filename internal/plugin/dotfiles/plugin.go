@@ -46,6 +46,13 @@ func (p *Plugin) PostContainerCreate(ctx context.Context, req *plugin.PostContai
 	remoteHome := plugin.InferRemoteHome(req.RemoteUser)
 	targetPath := p.resolveTargetPath(remoteHome)
 
+	// Skip clone if the target directory already exists (e.g. resume after
+	// crib stop, where dotfiles were cloned during the initial crib up).
+	if _, err := req.Exec(ctx, []string{"test", "-d", targetPath}, req.RemoteUser, ""); err == nil {
+		slog.Debug("dotfiles: target directory already exists, skipping clone", "path", targetPath)
+		return nil, nil
+	}
+
 	// Clone the repository. Use accept-new so the first connection to a host
 	// (e.g. github.com) auto-accepts its key without a known_hosts entry.
 	cloneCmd := []string{"git", "clone", "--", p.cfg.Repository, targetPath}

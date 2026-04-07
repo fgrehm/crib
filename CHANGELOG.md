@@ -7,16 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-07
+
 ### Added
 
 - `crib stop` command: non-destructive container stop that preserves hook
   markers. The next `crib up` resumes with only start-time hooks.
 - **Dotfiles plugin**: clones and installs a dotfiles repository inside the
-  container on creation. Configured via global config. Supports custom target
-  path, install command override, and auto-detection of common install scripts.
-  Per-project overrides and opt-out via `.cribrc` (`dotfiles.repository`,
-  `dotfiles.targetPath`, `dotfiles.installCommand`, `dotfiles = false`).
-  See [#17](https://github.com/fgrehm/crib/issues/17).
+  container on creation. Configured via global config (`~/.config/crib/config.toml`).
+  Supports custom target path, install command override, and auto-detection of
+  common install scripts. Per-project overrides and opt-out via `.cribrc`
+  (`dotfiles.repository`, `dotfiles.targetPath`, `dotfiles.installCommand`,
+  `dotfiles = false`). See [#17](https://github.com/fgrehm/crib/issues/17).
 - **Global config** (`~/.config/crib/config.toml`, respects `$XDG_CONFIG_HOME`):
   user-level settings applied across all workspaces. Currently supports
   `[dotfiles]` configuration.
@@ -28,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `stop` is no longer an alias for `down`. `crib stop` pauses the container,
-  `crib down` removes it.
+- `stop` is no longer an alias for `down`. `crib stop` pauses the container
+  (preserving state), `crib down` removes it.
 - `crib.home` container label only applied when `CRIB_HOME` is explicitly set.
 - Compose override generation uses compose-go types instead of string
   concatenation.
@@ -41,8 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `crib down`, `crib stop`, and `crib remove` now return a clear error
   immediately when a compose workspace is detected but compose is not
-  installed, instead of silently falling through to single-container
-  cleanup.
+  installed, instead of silently falling through to single-container cleanup.
 - Invalid port numbers in container inspect output are now logged at
   `WARN` level instead of `DEBUG`, making them visible in `crib status`
   output without `--debug`.

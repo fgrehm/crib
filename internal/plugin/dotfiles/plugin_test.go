@@ -23,6 +23,10 @@ type fakeExecCall struct {
 
 func (f *fakeExec) fn(_ context.Context, cmd []string, user string, workDir string) ([]byte, error) {
 	f.calls = append(f.calls, fakeExecCall{cmd: cmd, user: user, workDir: workDir})
+	// "test -d" should fail by default (directory doesn't exist yet).
+	if len(cmd) >= 2 && cmd[0] == "test" && cmd[1] == "-d" {
+		return nil, &fakeError{}
+	}
 	return nil, nil
 }
 
@@ -85,12 +89,12 @@ func TestPostContainerCreate_ClonesRepository(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(exec.calls) == 0 {
-		t.Fatal("expected at least one exec call for clone")
+	// Call order: which git (0), test -d (1), git clone (2).
+	if len(exec.calls) < 3 {
+		t.Fatalf("expected at least 3 exec calls, got %d", len(exec.calls))
 	}
 
-	// First call is which git, second is git clone.
-	cloneCmd := strings.Join(exec.calls[1].cmd, " ")
+	cloneCmd := strings.Join(exec.calls[2].cmd, " ")
 	if !strings.Contains(cloneCmd, "git clone") {
 		t.Errorf("expected git clone command, got: %s", cloneCmd)
 	}
@@ -101,8 +105,8 @@ func TestPostContainerCreate_ClonesRepository(t *testing.T) {
 	if !strings.Contains(cloneCmd, "/home/vscode/dotfiles") {
 		t.Errorf("expected default target path, got: %s", cloneCmd)
 	}
-	if exec.calls[1].user != "vscode" {
-		t.Errorf("expected user vscode, got %s", exec.calls[1].user)
+	if exec.calls[2].user != "vscode" {
+		t.Errorf("expected user vscode, got %s", exec.calls[2].user)
 	}
 }
 
@@ -118,7 +122,7 @@ func TestPostContainerCreate_SSHRepo_AcceptsNewHostKey(t *testing.T) {
 	}
 
 	// Clone via SSH should use sh -c with GIT_SSH_COMMAND.
-	cloneCmd := strings.Join(exec.calls[1].cmd, " ")
+	cloneCmd := strings.Join(exec.calls[2].cmd, " ")
 	if !strings.Contains(cloneCmd, "StrictHostKeyChecking=accept-new") {
 		t.Errorf("expected StrictHostKeyChecking=accept-new for SSH repo, got: %s", cloneCmd)
 	}
@@ -139,7 +143,7 @@ func TestPostContainerCreate_CustomTargetPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cloneCmd := strings.Join(exec.calls[1].cmd, " ")
+	cloneCmd := strings.Join(exec.calls[2].cmd, " ")
 	if !strings.Contains(cloneCmd, "/home/vscode/my-dotfiles") {
 		t.Errorf("expected custom target path with tilde expanded, got: %s", cloneCmd)
 	}
@@ -156,12 +160,12 @@ func TestPostContainerCreate_RootUser(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cloneCmd := strings.Join(exec.calls[1].cmd, " ")
+	cloneCmd := strings.Join(exec.calls[2].cmd, " ")
 	if !strings.Contains(cloneCmd, "/root/dotfiles") {
 		t.Errorf("expected root home path, got: %s", cloneCmd)
 	}
-	if exec.calls[1].user != "root" {
-		t.Errorf("expected user root, got %s", exec.calls[1].user)
+	if exec.calls[2].user != "root" {
+		t.Errorf("expected user root, got %s", exec.calls[2].user)
 	}
 }
 
@@ -177,6 +181,10 @@ func TestPostContainerCreate_AutoDetectsInstallScript(t *testing.T) {
 		// which git succeeds.
 		if cmd[0] == "which" {
 			return nil, nil
+		}
+		// test -d (directory exists check) fails (not cloned yet).
+		if len(cmd) >= 2 && cmd[0] == "test" && cmd[1] == "-d" {
+			return nil, &fakeError{}
 		}
 		// For test -f checks, succeed on install.sh only.
 		if strings.Contains(cmdStr, "test -f") && strings.Contains(cmdStr, "install.sh") {
@@ -219,18 +227,18 @@ func TestPostContainerCreate_InstallCommandOverride(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should have which git (exec) + clone (stream) + install (stream).
-	if len(exec.calls) != 3 {
-		t.Fatalf("expected 3 exec calls (which + clone + install), got %d", len(exec.calls))
+	// Should have which git (exec) + test -d (exec) + clone (stream) + install (stream).
+	if len(exec.calls) != 4 {
+		t.Fatalf("expected 4 exec calls (which + test -d + clone + install), got %d", len(exec.calls))
 	}
 
-	installCmd := strings.Join(exec.calls[2].cmd, " ")
+	installCmd := strings.Join(exec.calls[3].cmd, " ")
 	if !strings.Contains(installCmd, "make install") {
 		t.Errorf("expected install command override, got: %s", installCmd)
 	}
 	// Install should run in the target directory.
-	if exec.calls[2].workDir != "/home/vscode/dotfiles" {
-		t.Errorf("expected workDir /home/vscode/dotfiles, got %s", exec.calls[2].workDir)
+	if exec.calls[3].workDir != "/home/vscode/dotfiles" {
+		t.Errorf("expected workDir /home/vscode/dotfiles, got %s", exec.calls[3].workDir)
 	}
 }
 
@@ -246,9 +254,45 @@ func TestPostContainerCreate_AbsoluteTargetPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cloneCmd := strings.Join(exec.calls[1].cmd, " ")
+	cloneCmd := strings.Join(exec.calls[2].cmd, " ")
 	if !strings.Contains(cloneCmd, "/opt/dotfiles") {
 		t.Errorf("expected absolute target path, got: %s", cloneCmd)
+	}
+}
+
+func TestPostContainerCreate_SkipsCloneWhenTargetExists(t *testing.T) {
+	p := New(globalconfig.DotfilesConfig{
+		Repository: "https://github.com/user/dotfiles",
+	})
+
+	execFn := func(_ context.Context, cmd []string, _ string, _ string) ([]byte, error) {
+		if cmd[0] == "which" {
+			return nil, nil
+		}
+		// test -d succeeds: directory already exists.
+		if len(cmd) >= 2 && cmd[0] == "test" && cmd[1] == "-d" {
+			return nil, nil
+		}
+		t.Fatalf("unexpected exec call: %v", cmd)
+		return nil, nil
+	}
+
+	var streamCalls int
+	streamFn := func(_ context.Context, _ []string, _ string, _ string, _, _ io.Writer) error {
+		streamCalls++
+		return nil
+	}
+
+	_, err := p.PostContainerCreate(context.Background(), &plugin.PostContainerCreateRequest{
+		RemoteUser: "vscode",
+		Exec:       execFn,
+		StreamExec: streamFn,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if streamCalls > 0 {
+		t.Error("should not clone or run install when target directory already exists")
 	}
 }
 
