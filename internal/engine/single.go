@@ -274,7 +274,8 @@ func (e *Engine) execPluginCopies(ctx context.Context, cc containerContext, copi
 			writeCmd += fmt.Sprintf(" && chmod '%s' '%s'", plugin.ShellQuote(cp.Mode), target)
 		}
 		if cp.User != "" {
-			writeCmd += fmt.Sprintf(" && chown '%s' '%s' '%s'", plugin.ShellQuote(cp.User), dir, target)
+			owner := plugin.ShellQuote(cp.User)
+			writeCmd += fmt.Sprintf(" && chown '%s:%s' '%s' '%s'", owner, owner, dir, target)
 		}
 
 		var shellCmd string

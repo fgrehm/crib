@@ -782,6 +782,103 @@ func TestUpExisting_FallsBackToContainerUser(t *testing.T) {
 	}
 }
 
+// commitTrackingDriver wraps fixedFindContainerDriver and tracks CommitContainer calls.
+type commitTrackingDriver struct {
+	fixedFindContainerDriver
+	commitCalls int
+}
+
+func (m *commitTrackingDriver) CommitContainer(_ context.Context, _, _, _ string, _ []string) error {
+	m.commitCalls++
+	return nil
+}
+
+func TestUpExisting_StoppedContainer_UsesResumePath(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-stop-resume", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a previous successful crib up by saving a result.
+	if err := store.SaveResult(ws.ID, &workspace.Result{
+		ImageName:     "ruby:3.2",
+		ContainerID:   "stopped-c",
+		RemoteUser:    "vscode",
+		RemoteEnv:     map[string]string{"PATH": "/usr/local/bin:/usr/bin"},
+		SnapshotImage: "crib-ws-stop-resume:snapshot",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	drv := &commitTrackingDriver{
+		fixedFindContainerDriver: fixedFindContainerDriver{
+			container: &driver.ContainerDetails{
+				ID:    "stopped-c",
+				State: driver.ContainerState{Status: "exited"},
+			},
+		},
+	}
+
+	// Track PostContainerCreate calls via a custom plugin.
+	postCreateCalled := false
+	tp := &postCreateTrackingPlugin{called: &postCreateCalled}
+	mgr := plugin.NewManager(slog.Default())
+	mgr.Register(tp)
+
+	eng := &Engine{
+		driver:      drv,
+		store:       store,
+		plugins:     mgr,
+		runtimeName: "docker",
+		logger:      slog.Default(),
+		stdout:      io.Discard,
+		stderr:      io.Discard,
+		progress:    func(ProgressEvent) {},
+	}
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "ruby:3.2"
+	cfg.RemoteUser = "vscode"
+
+	container := &driver.ContainerDetails{
+		ID:    "stopped-c",
+		State: driver.ContainerState{Status: "exited"},
+	}
+	b := eng.newBackend(ws, cfg, "/workspaces/project")
+	result, err := eng.upExisting(context.Background(), ws, cfg, "/workspaces/project", b, container)
+	if err != nil {
+		t.Fatalf("upExisting: %v", err)
+	}
+
+	if result.ContainerID != "stopped-c" {
+		t.Errorf("ContainerID = %q, want stopped-c", result.ContainerID)
+	}
+
+	// Resume path should NOT commit a new snapshot.
+	if drv.commitCalls > 0 {
+		t.Error("should not commit snapshot when resuming a stopped container")
+	}
+
+	// Resume path should NOT run PostContainerCreate plugins (e.g. dotfiles).
+	if postCreateCalled {
+		t.Error("PostContainerCreate should not run when resuming a stopped container")
+	}
+}
+
+// postCreateTrackingPlugin tracks whether PostContainerCreate was called.
+type postCreateTrackingPlugin struct {
+	plugin.BasePlugin
+	called *bool
+}
+
+func (p *postCreateTrackingPlugin) Name() string { return "post-create-tracker" }
+
+func (p *postCreateTrackingPlugin) PostContainerCreate(_ context.Context, _ *plugin.PostContainerCreateRequest) (*plugin.PostContainerCreateResponse, error) {
+	*p.called = true
+	return nil, nil
+}
+
 func TestConfigRemoteUser(t *testing.T) {
 	tests := []struct {
 		remoteUser    string
