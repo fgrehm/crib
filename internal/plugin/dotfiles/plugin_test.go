@@ -89,11 +89,11 @@ func TestPostContainerCreate_ClonesRepository(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(exec.calls) == 0 {
-		t.Fatal("expected at least one exec call for clone")
+	// Call order: which git (0), test -d (1), git clone (2).
+	if len(exec.calls) < 3 {
+		t.Fatalf("expected at least 3 exec calls, got %d", len(exec.calls))
 	}
 
-	// First call is which git, second is git clone.
 	cloneCmd := strings.Join(exec.calls[2].cmd, " ")
 	if !strings.Contains(cloneCmd, "git clone") {
 		t.Errorf("expected git clone command, got: %s", cloneCmd)

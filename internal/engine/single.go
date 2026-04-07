@@ -275,7 +275,7 @@ func (e *Engine) execPluginCopies(ctx context.Context, cc containerContext, copi
 		}
 		if cp.User != "" {
 			owner := plugin.ShellQuote(cp.User)
-			writeCmd += fmt.Sprintf(" && chown '%s:%s' '%s' '%s'", owner, owner, dir, target)
+			writeCmd += fmt.Sprintf(" && chown '%s:' '%s' '%s'", owner, dir, target)
 		}
 
 		var shellCmd string
