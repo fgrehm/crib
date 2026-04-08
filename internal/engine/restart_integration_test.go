@@ -19,6 +19,7 @@ func TestIntegrationRestartSimple(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -112,6 +113,7 @@ func TestIntegrationRestartSafeChange(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -228,6 +230,7 @@ func TestIntegrationRestartNeedsRebuild(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -293,6 +296,7 @@ func TestIntegrationRestartNoWorkspace(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, _, _ := newTestEngine(t)
@@ -335,6 +339,7 @@ func TestIntegrationRestartMountChange(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)

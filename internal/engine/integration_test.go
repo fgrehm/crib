@@ -92,6 +92,7 @@ func TestIntegrationUpImageBased(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -206,6 +207,7 @@ func TestIntegrationUpWithLifecycleHooks(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -265,6 +267,7 @@ func TestIntegrationUpWithInitializeCommand(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -316,6 +319,7 @@ func TestIntegrationUpWithRecreate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -386,6 +390,7 @@ func TestIntegrationUpWithRemoteUserUID(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("skipping: UID sync is a no-op for root; test requires a non-root host user")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -502,6 +507,7 @@ func TestIntegrationUpWithPlugins(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -565,6 +571,7 @@ func TestIntegrationLogs(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -631,6 +638,7 @@ func TestIntegrationSnapshot(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -713,6 +721,7 @@ func TestIntegrationFeatureLifecycleHooks(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -856,6 +865,7 @@ func TestIntegrationDoctor(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
+	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
