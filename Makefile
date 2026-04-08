@@ -46,7 +46,7 @@ audit: ## Run complexity and vulnerability checks (informational)
 	@go tool govulncheck ./... || true
 
 deadcode: ## Check for dead code (hard gate, matches CI)
-	@out=$$(go tool deadcode ./...); \
+	@out=$$(go tool deadcode -test ./...); \
 	if [ -n "$$out" ]; then \
 		echo "Unreachable functions detected by deadcode:"; \
 		echo "$$out"; \
