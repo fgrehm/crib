@@ -93,6 +93,7 @@ func TestE2EComposeRestartOnFileChange(t *testing.T) {
 	if !hasCompose() {
 		t.Fatal("docker compose or podman compose not available")
 	}
+	t.Parallel()
 
 	projectDir := setupComposeProject(t)
 	cribHome := t.TempDir()
@@ -142,6 +143,7 @@ func TestE2ECompose(t *testing.T) {
 	if !hasCompose() {
 		t.Fatal("docker compose or podman compose not available")
 	}
+	t.Parallel()
 
 	projectDir := setupComposeProject(t)
 	cribHome := t.TempDir()

@@ -11,6 +11,7 @@ func TestE2EShellHistory(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	projectDir := setupProject(t)
 	cribHome := t.TempDir()
@@ -51,6 +52,7 @@ func TestE2EComposeShellHistory(t *testing.T) {
 	if !hasCompose() {
 		t.Fatal("docker compose or podman compose not available")
 	}
+	t.Parallel()
 
 	// Set up a compose project with a non-root user (node:22-alpine with
 	// USER node). No remoteUser in devcontainer.json, so the plugin must

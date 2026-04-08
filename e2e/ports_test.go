@@ -11,6 +11,7 @@ func TestE2EForwardPorts(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	// Create a project with forwardPorts.
 	dir := t.TempDir()

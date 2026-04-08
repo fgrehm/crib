@@ -13,6 +13,7 @@ func TestE2ERestart(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	projectDir := setupProject(t)
 	cribHome := t.TempDir()
@@ -96,6 +97,7 @@ func TestE2ERestartNoPreviousUp(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	projectDir := setupProject(t)
 	cribHome := t.TempDir()

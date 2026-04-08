@@ -13,6 +13,7 @@ func TestE2EDownUpCycle(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	projectDir := setupProject(t)
 	cribHome := t.TempDir()
@@ -71,6 +72,7 @@ func TestE2EDownUpComposeSkipsBuild(t *testing.T) {
 	if !hasCompose() {
 		t.Fatal("docker compose or podman compose not available")
 	}
+	t.Parallel()
 
 	projectDir := setupComposeProject(t)
 	cribHome := t.TempDir()
