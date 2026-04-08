@@ -24,12 +24,9 @@ func TestE2EDoctor(t *testing.T) {
 		cmd := cribCmd(projectDir, cribHome, "rm", "--force")
 		_ = cmd.Run()
 	})
-
 	mustRunCrib(t, projectDir, cribHome, "up")
 
 	// Doctor after up should find no issues for our workspace.
-	// Filter out "dangling-container" warnings since those come from
-	// pre-existing containers on the machine (not managed by our temp cribHome).
 	out = mustRunCrib(t, projectDir, cribHome, "doctor")
 	for line := range strings.SplitSeq(out, "\n") {
 		lower := strings.ToLower(line)
@@ -37,27 +34,9 @@ func TestE2EDoctor(t *testing.T) {
 			t.Errorf("doctor after up: unexpected warning: %s", line)
 		}
 	}
-}
 
-func TestE2EDoctorFix(t *testing.T) {
-	if !hasRuntime() {
-		t.Fatal("container runtime not available or not working (docker or podman required)")
-	}
-
-	projectDir := setupProject(t)
-	cribHome := t.TempDir()
-
-	// Bring up a workspace so doctor --fix has real state to inspect.
-	// Without a workspace in this store, doctor --fix would see containers
-	// from other CRIB_HOME instances as "dangling" and delete them.
-	mustRunCrib(t, projectDir, cribHome, "up")
-	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "rm", "--force")
-		_ = cmd.Run()
-	})
-
-	// Doctor --fix should succeed with no issues for our workspace.
-	out := mustRunCrib(t, projectDir, cribHome, "doctor", "--fix")
+	// Doctor --fix should also succeed with no issues.
+	out = mustRunCrib(t, projectDir, cribHome, "doctor", "--fix")
 	if strings.Contains(strings.ToLower(out), "error") {
 		t.Errorf("doctor --fix: unexpected error in output: %s", out)
 	}
