@@ -6,19 +6,22 @@ import (
 	"testing"
 )
 
-func TestLoadCribRC_CacheKey(t *testing.T) {
+func setupCribRC(t *testing.T, content string) *cribRC {
+	t.Helper()
 	dir := t.TempDir()
-	rcPath := filepath.Join(dir, ".cribrc")
-	if err := os.WriteFile(rcPath, []byte("cache = npm, pip, go\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-
 	t.Chdir(dir)
-
 	rc, err := loadCribRC()
 	if err != nil {
 		t.Fatalf("loadCribRC: %v", err)
 	}
+	return rc
+}
+
+func TestLoadCribRC_CacheKey(t *testing.T) {
+	rc := setupCribRC(t, "cache = npm, pip, go\n")
 	if rc == nil {
 		t.Fatal("expected non-nil rc")
 	}
@@ -35,19 +38,7 @@ func TestLoadCribRC_CacheKey(t *testing.T) {
 }
 
 func TestLoadCribRC_BothKeys(t *testing.T) {
-	dir := t.TempDir()
-	rcPath := filepath.Join(dir, ".cribrc")
-	content := "config = .devcontainer-custom\ncache = npm\n"
-	if err := os.WriteFile(rcPath, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Chdir(dir)
-
-	rc, err := loadCribRC()
-	if err != nil {
-		t.Fatalf("loadCribRC: %v", err)
-	}
+	rc := setupCribRC(t, "config = .devcontainer-custom\ncache = npm\n")
 	if rc.Config != ".devcontainer-custom" {
 		t.Errorf("Config = %q, want .devcontainer-custom", rc.Config)
 	}
@@ -57,100 +48,42 @@ func TestLoadCribRC_BothKeys(t *testing.T) {
 }
 
 func TestLoadCribRC_DotfilesDisable(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte("dotfiles = false\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(dir)
-
-	rc, err := loadCribRC()
-	if err != nil {
-		t.Fatalf("loadCribRC: %v", err)
-	}
+	rc := setupCribRC(t, "dotfiles = false\n")
 	if !rc.Dotfiles.Disabled {
 		t.Error("expected Dotfiles.Disabled = true")
 	}
 }
 
 func TestLoadCribRC_DotfilesUnknownValue_Ignored(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte("dotfiles = maybe\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(dir)
-
-	rc, err := loadCribRC()
-	if err != nil {
-		t.Fatalf("loadCribRC: %v", err)
-	}
+	rc := setupCribRC(t, "dotfiles = maybe\n")
 	if rc.Dotfiles.Disabled {
 		t.Error("expected Dotfiles.Disabled = false for unknown value")
 	}
 }
 
 func TestLoadCribRC_DotfilesRepository(t *testing.T) {
-	dir := t.TempDir()
-	content := "dotfiles.repository = git@github.com:user/dots\n"
-	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(dir)
-
-	rc, err := loadCribRC()
-	if err != nil {
-		t.Fatalf("loadCribRC: %v", err)
-	}
+	rc := setupCribRC(t, "dotfiles.repository = git@github.com:user/dots\n")
 	if rc.Dotfiles.Repository != "git@github.com:user/dots" {
 		t.Errorf("Repository = %q, want git@github.com:user/dots", rc.Dotfiles.Repository)
 	}
 }
 
 func TestLoadCribRC_DotfilesTargetPath(t *testing.T) {
-	dir := t.TempDir()
-	content := "dotfiles.targetPath = ~/my-dots\n"
-	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(dir)
-
-	rc, err := loadCribRC()
-	if err != nil {
-		t.Fatalf("loadCribRC: %v", err)
-	}
+	rc := setupCribRC(t, "dotfiles.targetPath = ~/my-dots\n")
 	if rc.Dotfiles.TargetPath != "~/my-dots" {
 		t.Errorf("TargetPath = %q, want ~/my-dots", rc.Dotfiles.TargetPath)
 	}
 }
 
 func TestLoadCribRC_DotfilesInstallCommand(t *testing.T) {
-	dir := t.TempDir()
-	content := "dotfiles.installCommand = make install\n"
-	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(dir)
-
-	rc, err := loadCribRC()
-	if err != nil {
-		t.Fatalf("loadCribRC: %v", err)
-	}
+	rc := setupCribRC(t, "dotfiles.installCommand = make install\n")
 	if rc.Dotfiles.InstallCommand != "make install" {
 		t.Errorf("InstallCommand = %q, want make install", rc.Dotfiles.InstallCommand)
 	}
 }
 
 func TestLoadCribRC_DotfilesDisableWithRepository(t *testing.T) {
-	dir := t.TempDir()
-	content := "dotfiles = false\ndotfiles.repository = git@github.com:user/dots\n"
-	if err := os.WriteFile(filepath.Join(dir, ".cribrc"), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Chdir(dir)
-
-	rc, err := loadCribRC()
-	if err != nil {
-		t.Fatalf("loadCribRC: %v", err)
-	}
+	rc := setupCribRC(t, "dotfiles = false\ndotfiles.repository = git@github.com:user/dots\n")
 	if !rc.Dotfiles.Disabled {
 		t.Error("expected Dotfiles.Disabled = true")
 	}
