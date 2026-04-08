@@ -88,7 +88,6 @@ func TestIntegrationComposeDownUpSkipsBuild(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Parallel()
 
 	ctx := context.Background()
 	e, d, store := newTestEngineWithCompose(t)
@@ -161,7 +160,6 @@ func TestIntegrationComposeRestartWithStoppedDeps(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngineWithCompose(t)
@@ -249,7 +247,6 @@ func TestIntegrationComposeDownClearsMarkers(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Parallel()
 
 	ctx := context.Background()
 	e, d, store := newTestEngineWithCompose(t)
@@ -295,7 +292,6 @@ func TestIntegrationComposeRecreateRebuildsImage(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Parallel()
 
 	ctx := context.Background()
 	e, d, store := newTestEngineWithCompose(t)
@@ -401,7 +397,6 @@ func TestIntegrationComposeRestartDetectsFileContentChange(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Parallel()
 
 	ctx := context.Background()
 	e, d, store := newTestEngineWithCompose(t)
@@ -502,7 +497,6 @@ func TestIntegrationComposeRestartNoChangeSimple(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngineWithCompose(t)
@@ -536,7 +530,6 @@ func TestIntegrationComposeImageNamePersisted(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Parallel()
 
 	ctx := context.Background()
 	e, d, store := newTestEngineWithCompose(t)

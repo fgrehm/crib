@@ -79,7 +79,6 @@ func TestIntegrationDotfilesPlugin(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
@@ -144,7 +143,6 @@ func TestIntegrationDotfilesPluginInstallCommand(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
-	t.Parallel()
 
 	ctx := context.Background()
 	e, d, _ := newTestEngine(t)
