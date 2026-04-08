@@ -6,6 +6,16 @@ import (
 	"testing"
 )
 
+func writeTOMLConfig(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestLoadFrom_MissingFile(t *testing.T) {
 	cfg, err := LoadFrom("/nonexistent/config.toml")
 	if err != nil {
@@ -17,17 +27,12 @@ func TestLoadFrom_MissingFile(t *testing.T) {
 }
 
 func TestLoadFrom_ValidTOML(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
-	content := `
+	path := writeTOMLConfig(t, `
 [dotfiles]
 repository = "https://github.com/user/dotfiles"
 targetPath = "~/my-dotfiles"
 installCommand = "setup.sh"
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 
 	cfg, err := LoadFrom(path)
 	if err != nil {
@@ -45,11 +50,7 @@ installCommand = "setup.sh"
 }
 
 func TestLoadFrom_MalformedTOML(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(path, []byte("[dotfiles\nbroken"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	path := writeTOMLConfig(t, "[dotfiles\nbroken")
 
 	_, err := LoadFrom(path)
 	if err == nil {
@@ -58,15 +59,10 @@ func TestLoadFrom_MalformedTOML(t *testing.T) {
 }
 
 func TestLoadFrom_DefaultTargetPath(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
-	content := `
+	path := writeTOMLConfig(t, `
 [dotfiles]
 repository = "https://github.com/user/dotfiles"
-`
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 
 	cfg, err := LoadFrom(path)
 	if err != nil {
@@ -114,11 +110,7 @@ func TestLoad_MissingFileReturnsZero(t *testing.T) {
 }
 
 func TestLoadFrom_EmptyFile(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.toml")
-	if err := os.WriteFile(path, []byte(""), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	path := writeTOMLConfig(t, "")
 
 	cfg, err := LoadFrom(path)
 	if err != nil {
