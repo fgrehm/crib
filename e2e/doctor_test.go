@@ -14,10 +14,13 @@ func TestE2EDoctor(t *testing.T) {
 	projectDir := setupProject(t)
 	cribHome := t.TempDir()
 
-	// Doctor on a clean state should succeed with no issues.
+	// Doctor on a clean state should report no issues.
+	// mustRunCrib already asserts exit code 0. We only check the summary
+	// line rather than scanning for "error" because parallel tests can cause
+	// transient WARN logs (e.g., containers vanishing between list and inspect).
 	out := mustRunCrib(t, projectDir, cribHome, "doctor")
-	if strings.Contains(strings.ToLower(out), "error") {
-		t.Errorf("doctor: unexpected error in output: %s", out)
+	if !strings.Contains(out, "No issues found") {
+		t.Errorf("doctor: want 'No issues found' in output, got %q", out)
 	}
 
 	// Bring up a workspace so there's something to check.
@@ -29,16 +32,13 @@ func TestE2EDoctor(t *testing.T) {
 
 	// Doctor after up should find no issues for our workspace.
 	out = mustRunCrib(t, projectDir, cribHome, "doctor")
-	for line := range strings.SplitSeq(out, "\n") {
-		lower := strings.ToLower(line)
-		if strings.Contains(lower, "warning") && !strings.Contains(lower, "dangling-container") {
-			t.Errorf("doctor after up: unexpected warning: %s", line)
-		}
+	if !strings.Contains(out, "No issues found") {
+		t.Errorf("doctor after up: want 'No issues found', got %q", out)
 	}
 
 	// Doctor --fix should also succeed with no issues.
 	out = mustRunCrib(t, projectDir, cribHome, "doctor", "--fix")
-	if strings.Contains(strings.ToLower(out), "error") {
-		t.Errorf("doctor --fix: unexpected error in output: %s", out)
+	if !strings.Contains(out, "No issues found") {
+		t.Errorf("doctor --fix: want 'No issues found', got %q", out)
 	}
 }
