@@ -24,15 +24,18 @@ func TestE2ESnapshot(t *testing.T) {
 
 	// Up should create a container and a snapshot.
 	out := mustRunCrib(t, projectDir, cribHome, "up")
-	if !strings.Contains(out, "container") {
-		t.Errorf("up: want 'container' in output, got %q", out)
+	containerName := extractContainerName(out)
+	if containerName == "" {
+		t.Fatalf("could not extract container name from up output: %q", out)
 	}
+	// Container name is "crib-{wsID}", derive wsID.
+	wsID := strings.TrimPrefix(containerName, "crib-")
 
 	// Verify onCreate hook ran.
 	mustRunCrib(t, projectDir, cribHome, "exec", "--", "test", "-f", "/tmp/snapshot-e2e-marker")
 
-	// Verify snapshot image exists.
-	if !hasSnapshotImage(t) {
+	// Verify snapshot image exists for this workspace.
+	if !hasSnapshotImage(t, wsID) {
 		t.Fatal("expected snapshot image to exist after up with create-time hooks")
 	}
 
@@ -63,13 +66,13 @@ func setupProjectWithHooks(t *testing.T) string {
 	return dir
 }
 
-// hasSnapshotImage checks if any crib snapshot image exists.
-func hasSnapshotImage(t *testing.T) bool {
+// hasSnapshotImage checks if a snapshot image exists for the given workspace.
+func hasSnapshotImage(t *testing.T, wsID string) bool {
 	t.Helper()
+	ref := "crib-" + wsID + ":snapshot"
 	for _, rt := range []string{"docker", "podman"} {
-		cmd := exec.Command(rt, "images", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference=crib-*:snapshot")
-		out, err := cmd.Output()
-		if err == nil && len(strings.TrimSpace(string(out))) > 0 {
+		cmd := exec.Command(rt, "image", "inspect", ref)
+		if cmd.Run() == nil {
 			return true
 		}
 	}
