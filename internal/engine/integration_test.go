@@ -906,3 +906,119 @@ func TestIntegrationDoctor(t *testing.T) {
 	}
 	_ = d // keep linter happy
 }
+
+func TestIntegrationImageMetadataLabel(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Dockerfile with a devcontainer.metadata label declaring remoteUser.
+	// The label is the spec mechanism for pre-built images to carry user config
+	// (e.g. mcr.microsoft.com/devcontainers/* images use this pattern).
+	dockerfile := "FROM alpine:3.20\n" +
+		"RUN adduser -D testlabeluser\n" +
+		`LABEL devcontainer.metadata='[{"remoteUser":"testlabeluser"}]'` + "\n"
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// devcontainer.json intentionally omits remoteUser -- it should be inferred
+	// from the devcontainer.metadata label baked into the image.
+	configContent := `{
+		"build": {"dockerfile": "Dockerfile"},
+		"overrideCommand": true
+	}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-metadata-label"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	if result.RemoteUser != "testlabeluser" {
+		t.Errorf("RemoteUser = %q, want %q (from devcontainer.metadata label)", result.RemoteUser, "testlabeluser")
+	}
+}
+
+func TestIntegrationDockerfileUser(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Dockerfile with a USER instruction but no remoteUser in devcontainer.json.
+	// crib should infer remoteUser from the image's Config.User after the build.
+	dockerfile := `FROM alpine:3.20
+RUN adduser -D nonroot
+USER nonroot
+`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	configContent := `{
+		"build": {"dockerfile": "Dockerfile"},
+		"overrideCommand": true
+	}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-dockerfile-user"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	if result.RemoteUser != "nonroot" {
+		t.Errorf("RemoteUser = %q, want %q (from Dockerfile USER instruction)", result.RemoteUser, "nonroot")
+	}
+}
