@@ -53,7 +53,7 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	var imageUser string
 	var labelMetadata []*config.ImageMetadata
 	if details, err := e.driver.InspectImage(ctx, cfg.Image); err == nil {
-		imageUser = details.Config.User
+		imageUser = userFromConfigUser(details.Config.User)
 		labelMetadata = parseImageMetadataLabel(details.Config.Labels)
 	}
 
@@ -87,7 +87,17 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	if err != nil {
 		return nil, err
 	}
-	result.imageUser = imageUser
+	// Inspect the built image for the final Config.User and metadata label.
+	// Features may add a USER instruction, so we use result.imageName rather
+	// than the pre-build base image inspection.
+	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil {
+		result.imageUser = userFromConfigUser(details.Config.User)
+		if builtLabelMeta := parseImageMetadataLabel(details.Config.Labels); len(builtLabelMeta) > 0 {
+			labelMetadata = builtLabelMeta
+		}
+	} else {
+		result.imageUser = imageUser // fall back to pre-build inspection
+	}
 	// Prepend label metadata before feature metadata (label = lower priority than features).
 	if len(labelMetadata) > 0 {
 		result.imageMetadata = append(labelMetadata, result.imageMetadata...)
@@ -163,7 +173,7 @@ func (e *Engine) buildFromDockerfile(ctx context.Context, ws *workspace.Workspac
 
 	// Inspect the built image for Config.User and metadata label.
 	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil {
-		result.imageUser = details.Config.User
+		result.imageUser = userFromConfigUser(details.Config.User)
 		if labelMeta := parseImageMetadataLabel(details.Config.Labels); len(labelMeta) > 0 {
 			result.imageMetadata = append(labelMeta, result.imageMetadata...)
 		}
@@ -327,7 +337,7 @@ func (e *Engine) resolveComposeContainerUser(ctx context.Context, cfg *config.De
 	}
 	if baseImage != "" {
 		if details, err := e.driver.InspectImage(ctx, baseImage); err == nil && details.Config.User != "" {
-			return details.Config.User
+			return userFromConfigUser(details.Config.User)
 		}
 	}
 	return "root"
@@ -451,17 +461,30 @@ func parseImageMetadataLabel(labels map[string]string) []*config.ImageMetadata {
 	return nil
 }
 
-// remoteUserFromMetadata returns the first non-empty RemoteUser found in the
-// metadata entries, then the first non-empty ContainerUser, or "" if none set.
+// userFromConfigUser extracts the user portion from an image Config.User value.
+// Docker/OCI images may set Config.User as "user", "uid", "user:group", or
+// "uid:gid". Only the user/uid portion is meaningful for exec --user and chown.
+func userFromConfigUser(configUser string) string {
+	if before, _, ok := strings.Cut(configUser, ":"); ok {
+		return before
+	}
+	return configUser
+}
+
+// remoteUserFromMetadata returns the remoteUser from the highest-priority
+// metadata entry that declares one, or the containerUser as fallback.
+// Metadata is stored [label..., feature...] where features have higher
+// priority; iterating in reverse (last entry first) matches the
+// "last entry wins" semantics of config.MergeConfiguration.
 func remoteUserFromMetadata(metadata []*config.ImageMetadata) string {
-	for _, m := range metadata {
-		if m.RemoteUser != "" {
-			return m.RemoteUser
+	for i := len(metadata) - 1; i >= 0; i-- {
+		if metadata[i].RemoteUser != "" {
+			return metadata[i].RemoteUser
 		}
 	}
-	for _, m := range metadata {
-		if m.ContainerUser != "" {
-			return m.ContainerUser
+	for i := len(metadata) - 1; i >= 0; i-- {
+		if metadata[i].ContainerUser != "" {
+			return metadata[i].ContainerUser
 		}
 	}
 	return ""
