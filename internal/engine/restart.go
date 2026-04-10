@@ -195,6 +195,14 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 		imgResult.hasEntrypoints = buildRes.hasEntrypoints
 		metadata = buildRes.imageMetadata
 		imageUser = buildRes.imageUser
+	} else if imgResult.imageName != "" {
+		// Inspect the cached/snapshot image for metadata and Config.User
+		// so finalize can infer remoteUser from devcontainer.metadata or
+		// Dockerfile USER even when no rebuild is needed.
+		if details, inspErr := e.driver.InspectImage(ctx, imgResult.imageName); inspErr == nil && details != nil {
+			imageUser = userFromConfigUser(details.Config.User)
+			metadata = parseImageMetadataLabel(details.Config.Labels)
+		}
 	}
 
 	// Dispatch plugins.

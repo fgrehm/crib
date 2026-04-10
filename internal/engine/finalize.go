@@ -63,11 +63,11 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 		// declare their intended dev user (e.g. node image sets remoteUser=node
 		// even though Config.User may be root). Fall back to Config.User only
 		// when metadata doesn't specify a user.
-		imageUser := remoteUserFromMetadata(opts.imageMetadata)
-		if imageUser == "" {
-			imageUser = opts.imageUser
+		fallbackUser := remoteUserFromMetadata(opts.imageMetadata)
+		if fallbackUser == "" {
+			fallbackUser = opts.imageUser
 		}
-		cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg, imageUser)
+		cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg, fallbackUser)
 	}
 
 	// 3. Build result (shared across both paths).

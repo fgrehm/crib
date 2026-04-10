@@ -1041,3 +1041,78 @@ USER nonroot
 		t.Errorf("RemoteUser = %q, want %q (from Dockerfile USER instruction)", result.RemoteUser, "nonroot")
 	}
 }
+
+// TestIntegrationImageBasedMetadataLabel tests the cfg.Image path (no
+// Dockerfile, no features) where remoteUser is inferred from a pre-built
+// image's devcontainer.metadata label.
+func TestIntegrationImageBasedMetadataLabel(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	// Pre-build an image with a devcontainer.metadata label.
+	prebuiltImage := "crib-test-prebuilt-metadata:latest"
+	buildDir := t.TempDir()
+	dockerfile := "FROM alpine:3.20\n" +
+		"RUN adduser -D imguser\n" +
+		`LABEL devcontainer.metadata='[{"remoteUser":"imguser"}]'` + "\n"
+	if err := os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.BuildImage(ctx, "", &driver.BuildOptions{
+		Image:      prebuiltImage,
+		Dockerfile: filepath.Join(buildDir, "Dockerfile"),
+		Context:    buildDir,
+	}); err != nil {
+		t.Fatalf("pre-building image: %v", err)
+	}
+	t.Cleanup(func() { _ = d.RemoveImage(ctx, prebuiltImage) })
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// devcontainer.json uses "image" (no build), omits remoteUser.
+	configContent := fmt.Sprintf(`{
+		"image": %q,
+		"overrideCommand": true
+	}`, prebuiltImage)
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-image-metadata"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_ = d.ExecContainer(ctx, wsID, result.ContainerID,
+			[]string{"chmod", "-R", "a+rwX", result.WorkspaceFolder},
+			nil, io.Discard, io.Discard, nil, "root")
+	})
+
+	if result.RemoteUser != "imguser" {
+		t.Errorf("RemoteUser = %q, want %q (from devcontainer.metadata label on pre-built image)", result.RemoteUser, "imguser")
+	}
+}

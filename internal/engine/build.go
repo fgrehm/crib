@@ -456,6 +456,9 @@ func parseImageMetadataLabel(labels map[string]string) []*config.ImageMetadata {
 				out = append(out, m)
 			}
 		}
+		if len(out) == 0 {
+			return nil
+		}
 		return out
 	}
 	// Fall back to single object.
