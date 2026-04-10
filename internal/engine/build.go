@@ -92,11 +92,13 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	// than the pre-build base image inspection.
 	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil {
 		result.imageUser = userFromConfigUser(details.Config.User)
-		// Always replace pre-build labelMetadata with the built image's label,
-		// even when the built image has no label (it may have cleared it).
-		_, labelPresent := details.Config.Labels["devcontainer.metadata"]
-		if labelPresent {
+		// Replace pre-build labelMetadata with the built image's label.
+		// If the label is absent from the built image, clear it so pre-build
+		// metadata from the base image doesn't leak into the result.
+		if _, labelPresent := details.Config.Labels["devcontainer.metadata"]; labelPresent {
 			labelMetadata = parseImageMetadataLabel(details.Config.Labels)
+		} else {
+			labelMetadata = nil
 		}
 	} else {
 		result.imageUser = imageUser // fall back to pre-build inspection

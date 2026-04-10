@@ -320,6 +320,15 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 
 	// Dispatch plugins.
 	pluginUser := b.pluginUser(ctx)
+	if pluginUser == "" {
+		// When devcontainer.json omits remoteUser/containerUser, use the user
+		// inferred from image metadata or Config.User so plugins target the
+		// correct home directory (e.g. /home/node instead of /root).
+		pluginUser = remoteUserFromMetadata(buildRes.imageMetadata)
+	}
+	if pluginUser == "" {
+		pluginUser = buildRes.imageUser
+	}
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, buildRes.imageName, workspaceFolder, pluginUser)
 	if err != nil {
 		return nil, err

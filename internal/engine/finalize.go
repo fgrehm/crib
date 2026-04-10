@@ -40,10 +40,13 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 		if !opts.skipVolumeChown {
 			remoteUser := configRemoteUser(cfg)
 			if remoteUser == "" {
-				remoteUser = opts.imageUser
+				// devcontainer.metadata remoteUser/containerUser takes priority
+				// over raw image Config.User -- the label is the spec mechanism
+				// for images to declare their intended dev user.
+				remoteUser = remoteUserFromMetadata(opts.imageMetadata)
 			}
 			if remoteUser == "" {
-				remoteUser = remoteUserFromMetadata(opts.imageMetadata)
+				remoteUser = opts.imageUser
 			}
 			if remoteUser != "" && remoteUser != "root" {
 				volCC := cc
@@ -55,11 +58,14 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 
 	// 2. Resolve remote user (skip if already set, e.g. from restartSimple).
 	if cc.remoteUser == "" {
-		// Config.User from image inspect is the primary imageUser fallback.
-		// If not set, check devcontainer.metadata label entries for remoteUser.
-		imageUser := opts.imageUser
+		// devcontainer.metadata remoteUser/containerUser takes priority over
+		// raw image Config.User: the label is the spec mechanism for images to
+		// declare their intended dev user (e.g. node image sets remoteUser=node
+		// even though Config.User may be root). Fall back to Config.User only
+		// when metadata doesn't specify a user.
+		imageUser := remoteUserFromMetadata(opts.imageMetadata)
 		if imageUser == "" {
-			imageUser = remoteUserFromMetadata(opts.imageMetadata)
+			imageUser = opts.imageUser
 		}
 		cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg, imageUser)
 	}
