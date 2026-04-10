@@ -29,6 +29,9 @@ func TestE2ESnapshot(t *testing.T) {
 		t.Fatalf("could not extract container name from up output: %q", out)
 	}
 	// Container name is "crib-{wsID}", derive wsID.
+	if !strings.HasPrefix(containerName, "crib-") {
+		t.Fatalf("unexpected container name format %q, want crib-* prefix", containerName)
+	}
 	wsID := strings.TrimPrefix(containerName, "crib-")
 
 	// Verify onCreate hook ran.

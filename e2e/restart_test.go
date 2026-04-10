@@ -9,7 +9,7 @@ import (
 
 // TestE2ERestart verifies restart behavior: simple restart (same container ID)
 // and restart after config change (recreated container).
-// Subtests share container state and must run sequentially (no t.Parallel).
+// Subtests share container state and must not call t.Parallel.
 func TestE2ERestart(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
