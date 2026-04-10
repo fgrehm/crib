@@ -10,6 +10,7 @@ func TestE2EAliases(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	projectDir := setupProject(t)
 	cribHome := t.TempDir()

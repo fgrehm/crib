@@ -36,12 +36,16 @@ const composeDevcontainerJSON = `{
 	"postCreateCommand": "touch /tmp/post-create-ran"
 }`
 
-// setupComposeProject creates a temporary project directory with a known
-// basename ("compose-e2e") so ${localWorkspaceFolderBasename} is predictable.
+// setupComposeProject creates a temporary project directory with a unique
+// basename derived from the test name so parallel tests don't collide on
+// workspace/compose project names.
 func setupComposeProject(t *testing.T) string {
 	t.Helper()
 	parent := t.TempDir()
-	dir := filepath.Join(parent, "compose-e2e")
+	// Use a sanitized test name as basename so each parallel test gets a
+	// unique workspace ID and compose project name.
+	basename := strings.NewReplacer("/", "-", " ", "-").Replace(t.Name())
+	dir := filepath.Join(parent, basename)
 	devDir := filepath.Join(dir, ".devcontainer")
 	if err := os.MkdirAll(devDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -93,6 +97,7 @@ func TestE2EComposeRestartOnFileChange(t *testing.T) {
 	if !hasCompose() {
 		t.Fatal("docker compose or podman compose not available")
 	}
+	t.Parallel()
 
 	projectDir := setupComposeProject(t)
 	cribHome := t.TempDir()
@@ -142,6 +147,7 @@ func TestE2ECompose(t *testing.T) {
 	if !hasCompose() {
 		t.Fatal("docker compose or podman compose not available")
 	}
+	t.Parallel()
 
 	projectDir := setupComposeProject(t)
 	cribHome := t.TempDir()
@@ -158,15 +164,16 @@ func TestE2ECompose(t *testing.T) {
 		t.Errorf("up: want 'container' in output, got %q", out)
 	}
 	// Workspace folder must have ${localWorkspaceFolderBasename} expanded.
-	if !strings.Contains(out, "/workspaces/compose-e2e") {
-		t.Errorf("up: want 'workspace: /workspaces/compose-e2e' in output, got %q", out)
+	baseName := filepath.Base(projectDir)
+	if !strings.Contains(out, "/workspaces/"+baseName) {
+		t.Errorf("up: want '/workspaces/%s' in output, got %q", baseName, out)
 	}
 
 	// 2. remoteEnv: PROJECT_NAME resolved via ${containerEnv:PROJECT}.
 	out = mustRunCrib(t, projectDir, cribHome, "exec", "--", "printenv", "PROJECT_NAME")
 	outLast := lastLine(out)
-	if outLast != "compose-e2e" {
-		t.Errorf("printenv PROJECT_NAME: want %q, got %q", "compose-e2e", outLast)
+	if outLast != baseName {
+		t.Errorf("printenv PROJECT_NAME: want %q, got %q", baseName, outLast)
 	}
 
 	// 3. remoteEnv: static REDIS_URL passed through unchanged.

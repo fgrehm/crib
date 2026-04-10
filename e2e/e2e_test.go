@@ -142,6 +142,7 @@ func TestE2EFullLifecycle(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	projectDir := setupProject(t)
 	cribHome := t.TempDir()
@@ -246,6 +247,7 @@ func TestE2EUpRecreate(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	projectDir := setupProject(t)
 	cribHome := t.TempDir()
@@ -276,6 +278,7 @@ func TestE2ENoDevcontainer(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	// A directory with no devcontainer.json.
 	emptyDir := t.TempDir()
@@ -291,6 +294,7 @@ func TestE2EShellRejectsArgs(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	// No up needed: cobra's Args validator rejects before RunE.
 	projectDir := setupProject(t)
@@ -309,6 +313,7 @@ func TestE2ERebuildNoContainer(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	projectDir := setupProject(t)
 	cribHome := t.TempDir()

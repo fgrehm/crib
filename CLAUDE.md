@@ -94,6 +94,24 @@ image (small, fast to pull). Local features go in the temp project's
 touch the container lifecycle (hooks, env, user, features). Unit tests with mock
 drivers are good for logic but miss real Docker/Podman behavior.
 
+### Parallel test safety
+
+E2E tests use `t.Parallel()`. Integration tests do not (container runtime
+contention on 2-core CI runners). When adding or modifying parallel tests that
+touch real containers, check:
+
+- **Unique workspace IDs**: directory basenames must differ across parallel tests.
+  Avoid fixed names like `"my-project"`. Derive from `t.Name()` or use
+  `t.TempDir()` basenames.
+- **Scoped assertions**: never query all containers/images globally (e.g.,
+  `docker images --filter reference=crib-*`). Always scope to the specific
+  workspace ID or container name.
+- **Log noise tolerance**: parallel tests cause transient warnings (containers
+  vanishing between list and inspect). Assert on structured output (summary
+  lines, exit codes) rather than scanning for words like "error" in raw output.
+- **Subtest sequencing**: when subtests share container state, document that they
+  must not call `t.Parallel()`. The parent test can be parallel.
+
 ## Conventions
 
 - Go module: `github.com/fgrehm/crib`

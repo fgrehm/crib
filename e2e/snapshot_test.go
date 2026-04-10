@@ -8,10 +8,11 @@ import (
 	"testing"
 )
 
-func TestE2ESnapshotCreatedAfterUp(t *testing.T) {
+func TestE2ESnapshot(t *testing.T) {
 	if !hasRuntime() {
 		t.Fatal("container runtime not available or not working (docker or podman required)")
 	}
+	t.Parallel()
 
 	projectDir := setupProjectWithHooks(t)
 	cribHome := t.TempDir()
@@ -23,44 +24,28 @@ func TestE2ESnapshotCreatedAfterUp(t *testing.T) {
 
 	// Up should create a container and a snapshot.
 	out := mustRunCrib(t, projectDir, cribHome, "up")
-	if !strings.Contains(out, "container") {
-		t.Errorf("up: want 'container' in output, got %q", out)
+	containerName := extractContainerName(out)
+	if containerName == "" {
+		t.Fatalf("could not extract container name from up output: %q", out)
 	}
+	// Container name is "crib-{wsID}", derive wsID.
+	if !strings.HasPrefix(containerName, "crib-") {
+		t.Fatalf("unexpected container name format %q, want crib-* prefix", containerName)
+	}
+	wsID := strings.TrimPrefix(containerName, "crib-")
 
 	// Verify onCreate hook ran.
 	mustRunCrib(t, projectDir, cribHome, "exec", "--", "test", "-f", "/tmp/snapshot-e2e-marker")
 
-	// Verify snapshot image exists (has "snapshot" tag).
-	if !hasSnapshotImage(t) {
-		t.Error("expected snapshot image to exist after up with create-time hooks")
-	}
-}
-
-func TestE2ERebuildClearsSnapshot(t *testing.T) {
-	if !hasRuntime() {
-		t.Fatal("container runtime not available or not working (docker or podman required)")
+	// Verify snapshot image exists for this workspace.
+	if !hasSnapshotImage(t, wsID) {
+		t.Fatal("expected snapshot image to exist after up with create-time hooks")
 	}
 
-	projectDir := setupProjectWithHooks(t)
-	cribHome := t.TempDir()
-
-	t.Cleanup(func() {
-		cmd := cribCmd(projectDir, cribHome, "rm", "--force")
-		_ = cmd.Run()
-	})
-
-	// Up creates the snapshot.
-	mustRunCrib(t, projectDir, cribHome, "up")
-	if !hasSnapshotImage(t) {
-		t.Fatal("expected snapshot after up")
-	}
-
-	// Rebuild should clear the snapshot and start fresh.
+	// Rebuild should clear the old snapshot and start fresh.
 	mustRunCrib(t, projectDir, cribHome, "rebuild")
 
-	// The rebuild should have created a new snapshot (since hooks ran again).
-	// But the old snapshot should have been cleared first.
-	// Verify the container is running and hooks ran.
+	// Verify hooks ran again after rebuild.
 	mustRunCrib(t, projectDir, cribHome, "exec", "--", "test", "-f", "/tmp/snapshot-e2e-marker")
 }
 
@@ -84,13 +69,13 @@ func setupProjectWithHooks(t *testing.T) string {
 	return dir
 }
 
-// hasSnapshotImage checks if any crib snapshot image exists.
-func hasSnapshotImage(t *testing.T) bool {
+// hasSnapshotImage checks if a snapshot image exists for the given workspace.
+func hasSnapshotImage(t *testing.T, wsID string) bool {
 	t.Helper()
+	ref := "crib-" + wsID + ":snapshot"
 	for _, rt := range []string{"docker", "podman"} {
-		cmd := exec.Command(rt, "images", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference=crib-*:snapshot")
-		out, err := cmd.Output()
-		if err == nil && len(strings.TrimSpace(string(out))) > 0 {
+		cmd := exec.Command(rt, "image", "inspect", ref)
+		if cmd.Run() == nil {
 			return true
 		}
 	}

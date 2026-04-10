@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   test:
-    name: Unit tests & lint
+    name: Tests & lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -21,6 +21,11 @@ jobs:
       - name: Unit tests
         run: set -euo pipefail && make test | tee /tmp/gotest.log | gotestfmt
         env:
+          GO_TEST_FLAGS: -json
+      - name: Integration tests (Docker)
+        run: set -euo pipefail && make test-integration | tee /tmp/gotest-integration.log | gotestfmt
+        env:
+          CRIB_RUNTIME: docker
           GO_TEST_FLAGS: -json
       - name: Lint
         run: make lint
@@ -64,11 +69,6 @@ jobs:
         run: |
           podman system service -t 0 &
           sleep 2
-      - name: Integration tests
-        run: set -euo pipefail && make test-integration | tee /tmp/gotest.log | gotestfmt
-        env:
-          CRIB_RUNTIME: podman
-          GO_TEST_FLAGS: -json
       - name: E2E tests
         run: set -euo pipefail && make test-e2e | tee /tmp/gotest.log | gotestfmt
         env:
@@ -90,11 +90,6 @@ jobs:
         run: go install github.com/gotesttools/gotestfmt/v2/cmd/gotestfmt@latest
       - name: Verify Docker is available
         run: docker info
-      - name: Integration tests
-        run: set -euo pipefail && make test-integration | tee /tmp/gotest.log | gotestfmt
-        env:
-          CRIB_RUNTIME: docker
-          GO_TEST_FLAGS: -json
       - name: E2E tests
         run: set -euo pipefail && make test-e2e | tee /tmp/gotest.log | gotestfmt
         env:

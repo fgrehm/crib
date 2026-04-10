@@ -9,20 +9,8 @@ import (
 	"testing"
 
 	"github.com/fgrehm/crib/internal/plugin"
+	"github.com/fgrehm/crib/internal/plugin/plugintest"
 )
-
-func testReq(workspaceDir, remoteUser string) *plugin.PreContainerRunRequest {
-	return &plugin.PreContainerRunRequest{
-		WorkspaceID:     "test-ws",
-		WorkspaceDir:    workspaceDir,
-		SourceDir:       "/home/user/project",
-		Runtime:         "docker",
-		ImageName:       "ubuntu:22.04",
-		RemoteUser:      remoteUser,
-		WorkspaceFolder: "/workspaces/project",
-		ContainerName:   "crib-test-ws",
-	}
-}
 
 func TestName(t *testing.T) {
 	p := New()
@@ -39,7 +27,7 @@ func TestPreContainerRun_NoSSHDir_NoAgent(t *testing.T) {
 		gitConfigCmd: func(string) string { return "" },
 	}
 
-	resp, err := p.PreContainerRun(context.Background(), testReq(t.TempDir(), "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(t.TempDir(), "vscode"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -72,7 +60,7 @@ func TestPreContainerRun_AgentForwarding(t *testing.T) {
 		gitConfigCmd: func(string) string { return "" },
 	}
 
-	resp, err := p.PreContainerRun(context.Background(), testReq(t.TempDir(), "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(t.TempDir(), "vscode"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +97,7 @@ func TestPreContainerRun_AgentForwarding_NoSocket(t *testing.T) {
 		gitConfigCmd: func(string) string { return "" },
 	}
 
-	resp, err := p.PreContainerRun(context.Background(), testReq(t.TempDir(), "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(t.TempDir(), "vscode"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +126,7 @@ func TestPreContainerRun_SSHConfig(t *testing.T) {
 		gitConfigCmd: func(string) string { return "" },
 	}
 
-	resp, err := p.PreContainerRun(context.Background(), testReq(wsDir, "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(wsDir, "vscode"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +199,7 @@ func TestPreContainerRun_SSHPublicKeys(t *testing.T) {
 		gitConfigCmd: func(string) string { return "" },
 	}
 
-	resp, err := p.PreContainerRun(context.Background(), testReq(wsDir, "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(wsDir, "vscode"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +269,7 @@ func TestPreContainerRun_GitSigningSSH(t *testing.T) {
 		},
 	}
 
-	resp, err := p.PreContainerRun(context.Background(), testReq(wsDir, "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(wsDir, "vscode"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +326,7 @@ func TestPreContainerRun_GitSigningNonSSH(t *testing.T) {
 		},
 	}
 
-	resp, err := p.PreContainerRun(context.Background(), testReq(t.TempDir(), "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(t.TempDir(), "vscode"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +348,7 @@ func TestPreContainerRun_GitSigningNoFormat(t *testing.T) {
 		gitConfigCmd: func(string) string { return "" },
 	}
 
-	resp, err := p.PreContainerRun(context.Background(), testReq(t.TempDir(), "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(t.TempDir(), "vscode"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,7 +437,7 @@ func TestPreContainerRun_RootUser(t *testing.T) {
 		gitConfigCmd: func(string) string { return "" },
 	}
 
-	resp, err := p.PreContainerRun(context.Background(), testReq(t.TempDir(), "root"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(t.TempDir(), "root"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -480,7 +468,7 @@ func TestPreContainerRun_EmptyUser(t *testing.T) {
 		gitConfigCmd: func(string) string { return "" },
 	}
 
-	resp, err := p.PreContainerRun(context.Background(), testReq(t.TempDir(), ""))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(t.TempDir(), ""))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -544,7 +532,7 @@ func TestPreContainerRun_AllFeatures(t *testing.T) {
 		},
 	}
 
-	resp, err := p.PreContainerRun(context.Background(), testReq(wsDir, "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(wsDir, "vscode"))
 	if err != nil {
 		t.Fatal(err)
 	}

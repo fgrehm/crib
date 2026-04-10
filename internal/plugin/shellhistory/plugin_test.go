@@ -6,21 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/fgrehm/crib/internal/plugin"
+	"github.com/fgrehm/crib/internal/plugin/plugintest"
 )
-
-func testReq(workspaceDir, remoteUser string) *plugin.PreContainerRunRequest {
-	return &plugin.PreContainerRunRequest{
-		WorkspaceID:     "test-ws",
-		WorkspaceDir:    workspaceDir,
-		SourceDir:       "/home/user/project",
-		Runtime:         "docker",
-		ImageName:       "ubuntu:22.04",
-		RemoteUser:      remoteUser,
-		WorkspaceFolder: "/workspaces/project",
-		ContainerName:   "crib-test-ws",
-	}
-}
 
 func TestName(t *testing.T) {
 	p := New()
@@ -32,7 +19,7 @@ func TestName(t *testing.T) {
 func TestPreContainerRun_CreatesHistoryDir(t *testing.T) {
 	wsDir := t.TempDir()
 	p := New()
-	resp, err := p.PreContainerRun(context.Background(), testReq(wsDir, "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(wsDir, "vscode"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,7 +41,7 @@ func TestPreContainerRun_CreatesHistoryDir(t *testing.T) {
 func TestPreContainerRun_TouchesHistoryFile(t *testing.T) {
 	wsDir := t.TempDir()
 	p := New()
-	if _, err := p.PreContainerRun(context.Background(), testReq(wsDir, "vscode")); err != nil {
+	if _, err := p.PreContainerRun(context.Background(), plugintest.TestReq(wsDir, "vscode")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -76,7 +63,7 @@ func TestPreContainerRun_PreservesExistingHistory(t *testing.T) {
 	}
 
 	p := New()
-	if _, err := p.PreContainerRun(context.Background(), testReq(wsDir, "vscode")); err != nil {
+	if _, err := p.PreContainerRun(context.Background(), plugintest.TestReq(wsDir, "vscode")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -92,7 +79,7 @@ func TestPreContainerRun_PreservesExistingHistory(t *testing.T) {
 func TestPreContainerRun_MountsDirectory(t *testing.T) {
 	wsDir := t.TempDir()
 	p := New()
-	resp, err := p.PreContainerRun(context.Background(), testReq(wsDir, "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(wsDir, "vscode"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +107,7 @@ func TestPreContainerRun_MountsDirectory(t *testing.T) {
 func TestPreContainerRun_SetsHistfileEnv(t *testing.T) {
 	wsDir := t.TempDir()
 	p := New()
-	resp, err := p.PreContainerRun(context.Background(), testReq(wsDir, "vscode"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(wsDir, "vscode"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +124,7 @@ func TestPreContainerRun_SetsHistfileEnv(t *testing.T) {
 func TestPreContainerRun_RemoteUserRoot(t *testing.T) {
 	wsDir := t.TempDir()
 	p := New()
-	resp, err := p.PreContainerRun(context.Background(), testReq(wsDir, "root"))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(wsDir, "root"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +140,7 @@ func TestPreContainerRun_RemoteUserRoot(t *testing.T) {
 func TestPreContainerRun_RemoteUserEmpty(t *testing.T) {
 	wsDir := t.TempDir()
 	p := New()
-	resp, err := p.PreContainerRun(context.Background(), testReq(wsDir, ""))
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(wsDir, ""))
 	if err != nil {
 		t.Fatal(err)
 	}
