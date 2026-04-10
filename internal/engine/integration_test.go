@@ -962,12 +962,12 @@ func TestIntegrationImageMetadataLabel(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
-	// Restore workspace ownership so t.TempDir cleanup can remove the dir.
-	// chownWorkspace transfers ownership to the non-root remoteUser; we must
-	// chown it back to root before the container is deleted.
+	// Make the workspace world-writable so t.TempDir cleanup can remove it.
+	// chownWorkspace transfers directory ownership to the non-root remoteUser;
+	// chmod a+rwX lets the test runner (a different UID) still unlink files.
 	t.Cleanup(func() {
 		_ = d.ExecContainer(ctx, wsID, result.ContainerID,
-			[]string{"chown", "-R", "root:root", result.WorkspaceFolder},
+			[]string{"chmod", "-R", "a+rwX", result.WorkspaceFolder},
 			nil, io.Discard, io.Discard, nil, "root")
 	})
 
@@ -1028,12 +1028,12 @@ USER nonroot
 		t.Fatalf("Up: %v", err)
 	}
 
-	// Restore workspace ownership so t.TempDir cleanup can remove the dir.
-	// chownWorkspace transfers ownership to the non-root remoteUser; we must
-	// chown it back to root before the container is deleted.
+	// Make the workspace world-writable so t.TempDir cleanup can remove it.
+	// chownWorkspace transfers directory ownership to the non-root remoteUser;
+	// chmod a+rwX lets the test runner (a different UID) still unlink files.
 	t.Cleanup(func() {
 		_ = d.ExecContainer(ctx, wsID, result.ContainerID,
-			[]string{"chown", "-R", "root:root", result.WorkspaceFolder},
+			[]string{"chmod", "-R", "a+rwX", result.WorkspaceFolder},
 			nil, io.Discard, io.Discard, nil, "root")
 	})
 
