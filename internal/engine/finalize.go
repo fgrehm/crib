@@ -42,6 +42,9 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 			if remoteUser == "" {
 				remoteUser = opts.imageUser
 			}
+			if remoteUser == "" {
+				remoteUser = remoteUserFromMetadata(opts.imageMetadata)
+			}
 			if remoteUser != "" && remoteUser != "root" {
 				volCC := cc
 				volCC.remoteUser = remoteUser
@@ -52,7 +55,13 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 
 	// 2. Resolve remote user (skip if already set, e.g. from restartSimple).
 	if cc.remoteUser == "" {
-		cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg, opts.imageUser)
+		// Config.User from image inspect is the primary imageUser fallback.
+		// If not set, check devcontainer.metadata label entries for remoteUser.
+		imageUser := opts.imageUser
+		if imageUser == "" {
+			imageUser = remoteUserFromMetadata(opts.imageMetadata)
+		}
+		cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg, imageUser)
 	}
 
 	// 3. Build result (shared across both paths).

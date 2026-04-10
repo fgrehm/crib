@@ -992,7 +992,8 @@ USER nonroot
 
 	configContent := `{
 		"build": {"dockerfile": "Dockerfile"},
-		"overrideCommand": true
+		"overrideCommand": true,
+		"updateRemoteUserUID": false
 	}`
 	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
 		t.Fatal(err)

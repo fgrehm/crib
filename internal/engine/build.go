@@ -442,6 +442,22 @@ func parseImageMetadataLabel(labels map[string]string) []*config.ImageMetadata {
 	return nil
 }
 
+// remoteUserFromMetadata returns the first non-empty RemoteUser found in the
+// metadata entries, then the first non-empty ContainerUser, or "" if none set.
+func remoteUserFromMetadata(metadata []*config.ImageMetadata) string {
+	for _, m := range metadata {
+		if m.RemoteUser != "" {
+			return m.RemoteUser
+		}
+	}
+	for _, m := range metadata {
+		if m.ContainerUser != "" {
+			return m.ContainerUser
+		}
+	}
+	return ""
+}
+
 // featureToMetadata converts a FeatureSet to an ImageMetadata entry.
 func featureToMetadata(f *feature.FeatureSet) *config.ImageMetadata {
 	m := &config.ImageMetadata{
