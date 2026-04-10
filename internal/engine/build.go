@@ -52,7 +52,7 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	// Fail open: image may not be pulled yet; the runtime pulls it at container start.
 	var imageUser string
 	var labelMetadata []*config.ImageMetadata
-	if details, err := e.driver.InspectImage(ctx, cfg.Image); err == nil {
+	if details, err := e.driver.InspectImage(ctx, cfg.Image); err == nil && details != nil {
 		imageUser = userFromConfigUser(details.Config.User)
 		labelMetadata = parseImageMetadataLabel(details.Config.Labels)
 	}
@@ -90,7 +90,7 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	// Inspect the built image for the final Config.User and metadata label.
 	// Features may add a USER instruction, so we use result.imageName rather
 	// than the pre-build base image inspection.
-	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil {
+	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil && details != nil {
 		result.imageUser = userFromConfigUser(details.Config.User)
 		// Replace pre-build labelMetadata with the built image's label.
 		// If the label is absent from the built image, clear it so pre-build
@@ -177,7 +177,7 @@ func (e *Engine) buildFromDockerfile(ctx context.Context, ws *workspace.Workspac
 	}
 
 	// Inspect the built image for Config.User and metadata label.
-	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil {
+	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil && details != nil {
 		result.imageUser = userFromConfigUser(details.Config.User)
 		if labelMeta := parseImageMetadataLabel(details.Config.Labels); len(labelMeta) > 0 {
 			result.imageMetadata = append(labelMeta, result.imageMetadata...)
@@ -341,7 +341,7 @@ func (e *Engine) resolveComposeContainerUser(ctx context.Context, cfg *config.De
 		return serviceUser
 	}
 	if baseImage != "" {
-		if details, err := e.driver.InspectImage(ctx, baseImage); err == nil && details.Config.User != "" {
+		if details, err := e.driver.InspectImage(ctx, baseImage); err == nil && details != nil && details.Config.User != "" {
 			return userFromConfigUser(details.Config.User)
 		}
 	}

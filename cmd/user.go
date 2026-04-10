@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/workspace"
@@ -18,10 +19,19 @@ func liveRemoteUser(ws *workspace.Workspace) string {
 	if err != nil {
 		return ""
 	}
+	workspaceFolder := cfg.WorkspaceFolder
+	if workspaceFolder == "" {
+		workspaceFolder = "/workspaces/" + filepath.Base(ws.Source)
+	}
+	workspaceFolder = strings.NewReplacer(
+		"${localWorkspaceFolder}", ws.Source,
+		"${localWorkspaceFolderBasename}", filepath.Base(ws.Source),
+	).Replace(workspaceFolder)
 	subCtx := &config.SubstitutionContext{
-		DevContainerID:       ws.ID,
-		LocalWorkspaceFolder: ws.Source,
-		Env:                  envMap(),
+		DevContainerID:           ws.ID,
+		LocalWorkspaceFolder:     ws.Source,
+		ContainerWorkspaceFolder: workspaceFolder,
+		Env:                      envMap(),
 	}
 	if cfg.RemoteUser != "" {
 		return config.SubstituteString(subCtx, cfg.RemoteUser)
