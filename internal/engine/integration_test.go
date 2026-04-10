@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -961,6 +962,15 @@ func TestIntegrationImageMetadataLabel(t *testing.T) {
 		t.Fatalf("Up: %v", err)
 	}
 
+	// Restore workspace ownership so t.TempDir cleanup can remove the dir.
+	// chownWorkspace transfers ownership to the non-root remoteUser; we must
+	// chown it back to root before the container is deleted.
+	t.Cleanup(func() {
+		_ = d.ExecContainer(ctx, wsID, result.ContainerID,
+			[]string{"chown", "-R", "root:root", result.WorkspaceFolder},
+			nil, io.Discard, io.Discard, nil, "root")
+	})
+
 	if result.RemoteUser != "testlabeluser" {
 		t.Errorf("RemoteUser = %q, want %q (from devcontainer.metadata label)", result.RemoteUser, "testlabeluser")
 	}
@@ -992,8 +1002,7 @@ USER nonroot
 
 	configContent := `{
 		"build": {"dockerfile": "Dockerfile"},
-		"overrideCommand": true,
-		"updateRemoteUserUID": false
+		"overrideCommand": true
 	}`
 	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
 		t.Fatal(err)
@@ -1018,6 +1027,15 @@ USER nonroot
 	if err != nil {
 		t.Fatalf("Up: %v", err)
 	}
+
+	// Restore workspace ownership so t.TempDir cleanup can remove the dir.
+	// chownWorkspace transfers ownership to the non-root remoteUser; we must
+	// chown it back to root before the container is deleted.
+	t.Cleanup(func() {
+		_ = d.ExecContainer(ctx, wsID, result.ContainerID,
+			[]string{"chown", "-R", "root:root", result.WorkspaceFolder},
+			nil, io.Discard, io.Discard, nil, "root")
+	})
 
 	if result.RemoteUser != "nonroot" {
 		t.Errorf("RemoteUser = %q, want %q (from Dockerfile USER instruction)", result.RemoteUser, "nonroot")
