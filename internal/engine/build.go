@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,7 +20,8 @@ import (
 type buildResult struct {
 	imageName      string
 	imageMetadata  []*config.ImageMetadata
-	hasEntrypoints bool // true if any feature declared an entrypoint
+	imageUser      string // Config.User from image inspect (Dockerfile USER)
+	hasEntrypoints bool   // true if any feature declared an entrypoint
 }
 
 // buildImage handles image building for the single container path.
@@ -46,9 +48,27 @@ func (e *Engine) buildImage(ctx context.Context, ws *workspace.Workspace, cfg *c
 // buildFromImage handles the image-based devcontainer path.
 // If features are specified, generates a Dockerfile that extends the base image.
 func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, features []*feature.FeatureSet, containerUser string) (*buildResult, error) {
+	// Inspect image for metadata label and Config.User.
+	// Fail open: image may not be pulled yet; the runtime pulls it at container start.
+	var imageUser string
+	var labelMetadata []*config.ImageMetadata
+	if details, err := e.driver.InspectImage(ctx, cfg.Image); err == nil {
+		imageUser = details.Config.User
+		labelMetadata = parseImageMetadataLabel(details.Config.Labels)
+	}
+
 	if len(features) == 0 {
 		// No features, no build needed. Just use the image directly.
-		return &buildResult{imageName: cfg.Image}, nil
+		return &buildResult{
+			imageName:     cfg.Image,
+			imageMetadata: labelMetadata,
+			imageUser:     imageUser,
+		}, nil
+	}
+
+	// Override containerUser from image if config didn't set either user field.
+	if cfg.ContainerUser == "" && cfg.RemoteUser == "" && imageUser != "" {
+		containerUser = imageUser
 	}
 
 	// Generate a Dockerfile that installs features on top of the base image.
@@ -63,7 +83,16 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	featurePrefix = strings.ReplaceAll(featurePrefix, "=placeholder", "="+cfg.Image)
 	dockerfileContent := featurePrefix + "\n" + featureContent
 
-	return e.doBuild(ctx, ws, cfg, dockerfileContent, features, containerUser, remoteUser)
+	result, err := e.doBuild(ctx, ws, cfg, dockerfileContent, features, containerUser, remoteUser)
+	if err != nil {
+		return nil, err
+	}
+	result.imageUser = imageUser
+	// Prepend label metadata before feature metadata (label = lower priority than features).
+	if len(labelMetadata) > 0 {
+		result.imageMetadata = append(labelMetadata, result.imageMetadata...)
+	}
+	return result, nil
 }
 
 // buildFromDockerfile handles the Dockerfile-based devcontainer path.
@@ -125,7 +154,19 @@ func (e *Engine) buildFromDockerfile(ctx context.Context, ws *workspace.Workspac
 		dockerfileContent = featurePrefix + "\n" + dockerfileContent + "\n" + featureContent
 	}
 
-	return e.doBuild(ctx, ws, cfg, dockerfileContent, features, containerUser, remoteUser)
+	result, err := e.doBuild(ctx, ws, cfg, dockerfileContent, features, containerUser, remoteUser)
+	if err != nil {
+		return nil, err
+	}
+
+	// Inspect the built image for Config.User and metadata label.
+	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil {
+		result.imageUser = details.Config.User
+		if labelMeta := parseImageMetadataLabel(details.Config.Labels); len(labelMeta) > 0 {
+			result.imageMetadata = append(labelMeta, result.imageMetadata...)
+		}
+	}
+	return result, nil
 }
 
 // doBuild writes the final Dockerfile and invokes the driver to build.
@@ -378,6 +419,27 @@ func (e *Engine) cleanupPreviousBuildImage(ctx context.Context, wsID, newImageNa
 	if err := e.driver.RemoveImage(ctx, oldImage); err != nil {
 		e.logger.Debug("failed to remove previous build image", "image", oldImage, "error", err)
 	}
+}
+
+// parseImageMetadataLabel parses the devcontainer.metadata label from image
+// labels. The label value is either a JSON array of ImageMetadata objects or a
+// single object. Returns nil on missing label, empty label, or parse error.
+func parseImageMetadataLabel(labels map[string]string) []*config.ImageMetadata {
+	raw, ok := labels["devcontainer.metadata"]
+	if !ok || raw == "" {
+		return nil
+	}
+	// Try array first (standard format).
+	var arr []*config.ImageMetadata
+	if err := json.Unmarshal([]byte(raw), &arr); err == nil {
+		return arr
+	}
+	// Fall back to single object.
+	var single config.ImageMetadata
+	if err := json.Unmarshal([]byte(raw), &single); err == nil {
+		return []*config.ImageMetadata{&single}
+	}
+	return nil
 }
 
 // featureToMetadata converts a FeatureSet to an ImageMetadata entry.

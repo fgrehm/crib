@@ -346,6 +346,7 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 		hasEntrypoints: buildRes.hasEntrypoints,
 		pluginResp:     pluginResp,
 		imageMetadata:  buildRes.imageMetadata,
+		imageUser:      buildRes.imageUser,
 	})
 }
 
@@ -717,11 +718,13 @@ func configRemoteUser(cfg *config.DevContainerConfig) string {
 	return cfg.ContainerUser
 }
 
-// resolveRemoteUser determines the remote user for a container, using the
-// config's remoteUser/containerUser with fallback to detecting the container's
-// default user via whoami.
-func (e *Engine) resolveRemoteUser(ctx context.Context, cc containerContext, cfg *config.DevContainerConfig) string {
+// resolveRemoteUser determines the remote user for a container. Precedence:
+// config (remoteUser/containerUser) > imageUser (image Config.User) > whoami > "root".
+func (e *Engine) resolveRemoteUser(ctx context.Context, cc containerContext, cfg *config.DevContainerConfig, imageUser string) string {
 	remoteUser := configRemoteUser(cfg)
+	if remoteUser == "" && imageUser != "" {
+		remoteUser = imageUser
+	}
 	if remoteUser == "" {
 		remoteUser = e.detectContainerUser(ctx, cc)
 	}

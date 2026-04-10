@@ -183,6 +183,7 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 	// Determine the image to use.
 	imgResult := resolveRestartImage(hasSnapshot, snapshotImage, *storedResult, cfg)
 	var metadata []*config.ImageMetadata
+	var imageUser string
 
 	if imgResult.needsBuild {
 		e.reportProgress(PhaseBuild, "No cached image found, rebuilding...")
@@ -193,6 +194,7 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 		imgResult.imageName = buildRes.imageName
 		imgResult.hasEntrypoints = buildRes.hasEntrypoints
 		metadata = buildRes.imageMetadata
+		imageUser = buildRes.imageUser
 	}
 
 	// Dispatch plugins.
@@ -233,6 +235,7 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 		storedResult:   storedResult,
 		fromSnapshot:   hasSnapshot,
 		imageMetadata:  metadata,
+		imageUser:      imageUser,
 	})
 	if err != nil {
 		if upResult != nil {

@@ -19,6 +19,7 @@ type finalizeOpts struct {
 	fromSnapshot    bool                            // true = restore env + resume hooks
 	skipVolumeChown bool                            // true for restart (volumes exist)
 	imageMetadata   []*config.ImageMetadata         // feature metadata for hook merging (nil = no features)
+	imageUser       string                          // Config.User from image inspect (Dockerfile USER fallback)
 }
 
 // finalize runs post-creation/post-restart steps: plugin file copies, volume
@@ -38,6 +39,9 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 
 		if !opts.skipVolumeChown {
 			remoteUser := configRemoteUser(cfg)
+			if remoteUser == "" {
+				remoteUser = opts.imageUser
+			}
 			if remoteUser != "" && remoteUser != "root" {
 				volCC := cc
 				volCC.remoteUser = remoteUser
@@ -48,7 +52,7 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 
 	// 2. Resolve remote user (skip if already set, e.g. from restartSimple).
 	if cc.remoteUser == "" {
-		cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg)
+		cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg, opts.imageUser)
 	}
 
 	// 3. Build result (shared across both paths).

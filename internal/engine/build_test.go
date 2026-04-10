@@ -273,6 +273,99 @@ func TestResolveComposeContainerUser(t *testing.T) {
 	}
 }
 
+func TestParseImageMetadataLabel(t *testing.T) {
+	tests := []struct {
+		name      string
+		labels    map[string]string
+		wantCount int
+		wantUser  string // remoteUser of first entry (if any)
+	}{
+		{
+			name:      "array format",
+			labels:    map[string]string{"devcontainer.metadata": `[{"remoteUser":"node"}]`},
+			wantCount: 1,
+			wantUser:  "node",
+		},
+		{
+			name:      "single object format",
+			labels:    map[string]string{"devcontainer.metadata": `{"remoteUser":"vscode"}`},
+			wantCount: 1,
+			wantUser:  "vscode",
+		},
+		{
+			name:      "multiple entries",
+			labels:    map[string]string{"devcontainer.metadata": `[{"id":"feature1"},{"remoteUser":"dev"}]`},
+			wantCount: 2,
+		},
+		{
+			name:      "missing label",
+			labels:    map[string]string{},
+			wantCount: 0,
+		},
+		{
+			name:      "empty label",
+			labels:    map[string]string{"devcontainer.metadata": ""},
+			wantCount: 0,
+		},
+		{
+			name:      "malformed JSON",
+			labels:    map[string]string{"devcontainer.metadata": "{bad json"},
+			wantCount: 0,
+		},
+		{
+			name:      "nil labels",
+			labels:    nil,
+			wantCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseImageMetadataLabel(tt.labels)
+			if len(got) != tt.wantCount {
+				t.Errorf("got %d entries, want %d", len(got), tt.wantCount)
+			}
+			if tt.wantUser != "" && len(got) > 0 && got[0].RemoteUser != tt.wantUser {
+				t.Errorf("remoteUser = %q, want %q", got[0].RemoteUser, tt.wantUser)
+			}
+		})
+	}
+}
+
+func TestResolveRemoteUser_ImageUserFallback(t *testing.T) {
+	eng := &Engine{driver: &mockDriver{}, logger: slog.Default()}
+	cfg := &config.DevContainerConfig{} // no remoteUser or containerUser
+	cc := containerContext{workspaceID: "test", containerID: "abc"}
+
+	got := eng.resolveRemoteUser(context.Background(), cc, cfg, "node")
+	if got != "node" {
+		t.Errorf("resolveRemoteUser = %q, want %q (from imageUser)", got, "node")
+	}
+}
+
+func TestResolveRemoteUser_ConfigWinsOverImageUser(t *testing.T) {
+	eng := &Engine{driver: &mockDriver{}, logger: slog.Default()}
+	cfg := &config.DevContainerConfig{}
+	cfg.RemoteUser = "vscode"
+	cc := containerContext{workspaceID: "test", containerID: "abc"}
+
+	got := eng.resolveRemoteUser(context.Background(), cc, cfg, "node")
+	if got != "vscode" {
+		t.Errorf("resolveRemoteUser = %q, want %q (config wins)", got, "vscode")
+	}
+}
+
+func TestResolveRemoteUser_DefaultsToRoot(t *testing.T) {
+	eng := &Engine{driver: &mockDriver{}, logger: slog.Default()}
+	cfg := &config.DevContainerConfig{}
+	cc := containerContext{workspaceID: "test", containerID: "abc"}
+
+	got := eng.resolveRemoteUser(context.Background(), cc, cfg, "")
+	if got != "root" {
+		t.Errorf("resolveRemoteUser = %q, want root", got)
+	}
+}
+
 func TestResolveContainerUser_FromConfig(t *testing.T) {
 	tests := []struct {
 		name          string
