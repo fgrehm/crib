@@ -125,12 +125,14 @@ func (e *Engine) buildFromDockerfile(ctx context.Context, ws *workspace.Workspac
 			buildTarget = cfg.Build.Target
 		}
 
-		// Determine the container user from the Dockerfile if not set.
-		if containerUser == "" {
-			containerUser = df.FindUserStatement(nil, nil, buildTarget)
-		}
-		if remoteUser == "" {
-			remoteUser = containerUser
+		// Determine the container user from the Dockerfile if config didn't set
+		// either user field. resolveContainerUser defaults to "root" when both
+		// are empty, so check the config fields directly here.
+		if cfg.ContainerUser == "" && cfg.RemoteUser == "" {
+			if dfUser := df.FindUserStatement(nil, nil, buildTarget); dfUser != "" {
+				containerUser = dfUser
+				remoteUser = dfUser
+			}
 		}
 
 		// Ensure the final stage has a name for feature overlay.
@@ -432,7 +434,14 @@ func parseImageMetadataLabel(labels map[string]string) []*config.ImageMetadata {
 	// Try array first (standard format).
 	var arr []*config.ImageMetadata
 	if err := json.Unmarshal([]byte(raw), &arr); err == nil {
-		return arr
+		// Filter out null entries that JSON unmarshaling may produce.
+		out := arr[:0]
+		for _, m := range arr {
+			if m != nil {
+				out = append(out, m)
+			}
+		}
+		return out
 	}
 	// Fall back to single object.
 	var single config.ImageMetadata
