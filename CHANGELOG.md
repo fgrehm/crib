@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Go fuzz tests for config parsing (`ParseBytes`, `ParseMount`,
+  `SubstituteString`) and Dockerfile handling (`Parse`, `RemoveSyntaxVersion`,
+  `EnsureFinalStageName`). Runs in CI with a 10s per-target budget.
+- Cosign keyless signing for release artifacts. `checksums.txt.sigstore.json`
+  is now attached to each GitHub release.
+- `SECURITY.md` with responsible disclosure instructions.
+
+### Security
+
+- GitHub Actions pinned to commit SHAs across all workflows.
+- `contents: write` permission scoped to the GoReleaser job in `release.yml`
+  (was workflow-level).
+
 ## [0.8.0] - 2026-04-07
 
 ### Added
