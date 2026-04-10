@@ -67,7 +67,7 @@ func TestE2EComposeShellHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	projectDir := filepath.Join(parent, "compose-plugin-e2e")
+	projectDir := filepath.Join(parent, strings.NewReplacer("/", "-", " ", "-").Replace(t.Name()))
 	devDir := filepath.Join(projectDir, ".devcontainer")
 	if err := os.MkdirAll(devDir, 0o755); err != nil {
 		t.Fatal(err)
