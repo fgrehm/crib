@@ -92,8 +92,11 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	// than the pre-build base image inspection.
 	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil {
 		result.imageUser = userFromConfigUser(details.Config.User)
-		if builtLabelMeta := parseImageMetadataLabel(details.Config.Labels); len(builtLabelMeta) > 0 {
-			labelMetadata = builtLabelMeta
+		// Always replace pre-build labelMetadata with the built image's label,
+		// even when the built image has no label (it may have cleared it).
+		_, labelPresent := details.Config.Labels["devcontainer.metadata"]
+		if labelPresent {
+			labelMetadata = parseImageMetadataLabel(details.Config.Labels)
 		}
 	} else {
 		result.imageUser = imageUser // fall back to pre-build inspection
@@ -478,12 +481,12 @@ func userFromConfigUser(configUser string) string {
 // "last entry wins" semantics of config.MergeConfiguration.
 func remoteUserFromMetadata(metadata []*config.ImageMetadata) string {
 	for i := len(metadata) - 1; i >= 0; i-- {
-		if metadata[i].RemoteUser != "" {
+		if metadata[i] != nil && metadata[i].RemoteUser != "" {
 			return metadata[i].RemoteUser
 		}
 	}
 	for i := len(metadata) - 1; i >= 0; i-- {
-		if metadata[i].ContainerUser != "" {
+		if metadata[i] != nil && metadata[i].ContainerUser != "" {
 			return metadata[i].ContainerUser
 		}
 	}
