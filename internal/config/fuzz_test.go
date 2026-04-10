@@ -19,6 +19,32 @@ func FuzzParseBytes(f *testing.F) {
 	})
 }
 
+func FuzzSubstituteString(f *testing.F) {
+	f.Add("${localWorkspaceFolder}/src")
+	f.Add("${containerWorkspaceFolder}")
+	f.Add("${localEnv:HOME}")
+	f.Add("${localEnv:MISSING:default-value}")
+	f.Add("${containerEnv:PATH}")
+	f.Add("${devcontainerId}")
+	f.Add("${localWorkspaceFolderBasename}")
+	f.Add("no variables here")
+	f.Add("${unknown}")
+	f.Add("nested ${localEnv:${nope}}")
+	f.Add("")
+
+	ctx := &SubstitutionContext{
+		DevContainerID:           "test-id",
+		LocalWorkspaceFolder:     "/home/user/project",
+		ContainerWorkspaceFolder: "/workspaces/project",
+		Env:                      map[string]string{"HOME": "/home/user", "PATH": "/usr/bin"},
+	}
+
+	f.Fuzz(func(t *testing.T, s string) {
+		// SubstituteString must not panic on any input.
+		_ = SubstituteString(ctx, s)
+	})
+}
+
 func FuzzParseMount(f *testing.F) {
 	f.Add("type=bind,src=/tmp,dst=/tmp")
 	f.Add("type=volume,source=mydata,target=/data")

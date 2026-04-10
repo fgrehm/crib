@@ -24,6 +24,19 @@ func FuzzParse(f *testing.F) {
 	})
 }
 
+func FuzzRemoveSyntaxVersion(f *testing.F) {
+	f.Add("# syntax=docker/dockerfile:1\nFROM ubuntu:22.04")
+	f.Add("#syntax=docker/dockerfile:1.4\nFROM node:20")
+	f.Add("FROM alpine:3.20")
+	f.Add("# syntax=docker/dockerfile:1\n# syntax=docker/dockerfile:1.4\nFROM scratch")
+	f.Add("")
+
+	f.Fuzz(func(t *testing.T, content string) {
+		// RemoveSyntaxVersion must not panic on any input.
+		_ = RemoveSyntaxVersion(content)
+	})
+}
+
 func FuzzEnsureFinalStageName(f *testing.F) {
 	f.Add("FROM ubuntu:22.04", "dev_container")
 	f.Add("FROM golang:1.22 AS builder\nFROM alpine:3.20", "dev_container")
