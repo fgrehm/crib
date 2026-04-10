@@ -27,6 +27,14 @@ jobs:
         env:
           CRIB_RUNTIME: docker
           GO_TEST_FLAGS: -json
+      - name: Fuzz tests (30s budget)
+        run: |
+          for pkg in ./internal/config/ ./internal/dockerfile/; do
+            for fuzz in $(go test "$pkg" -list 'Fuzz.*' 2>/dev/null | grep '^Fuzz'); do
+              echo "==> $pkg $fuzz"
+              go test "$pkg" -run "^$fuzz\$" -fuzz "^$fuzz\$" -fuzztime 10s
+            done
+          done
       - name: Lint
         run: make lint
       - name: Check formatting
