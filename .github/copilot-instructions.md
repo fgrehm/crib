@@ -64,12 +64,19 @@ the regex definition before flagging injection concerns.
 
 ## Go Version
 
-This project requires Go 1.26+ (see `go.mod`). Modern Go features are used
-throughout the codebase:
+This project requires Go 1.26+ (see `go.mod`). The minimum version is
+enforced by `go.mod` and CI. Do not flag Go 1.22+ features as compatibility
+issues; backwards compatibility with older Go versions is not a concern.
 
-- `for i := range n` (integer range) is valid and idiomatic. Do not flag it
-  as a compilation error or suggest rewriting to `for i := 0; i < n; i++`.
-- `range` over function iterators may also appear.
+Modern Go features are used throughout the codebase:
+
+- `for i := range n` (integer range, Go 1.22+): **valid and enforced by the
+  `intrange` linter**. The pre-commit hook rewrites `for i := 0; i < n; i++`
+  to `for i := range n` automatically. Do not flag this form or suggest
+  reverting it to the old style.
+- `range` over function iterators (Go 1.23+) may also appear.
+- `strings.Cut`, `slices.*`, `maps.*` and other stdlib additions are used
+  freely without compatibility shims.
 
 ## Conventions
 
