@@ -56,15 +56,21 @@ The probe shell type maps to:
 - `internal/engine/setup.go` (`probeUserEnv`, `detectUserShell`)
 - `internal/engine/env.go` (`mergeEnv`)
 
-### Container user detection for compose containers
+### Container user detection
 
-For single containers, `containerUser` and `remoteUser` from `devcontainer.json` control which
-user runs hooks. For compose containers, the Dockerfile's `USER` directive sets the running
-user, but `devcontainer.json` often doesn't set `remoteUser` or `containerUser`.
+`remoteUser` and `containerUser` from `devcontainer.json` are consulted first. When neither
+is set, crib falls back through several sources depending on the container type.
 
-There are two detection mechanisms, used at different stages:
+**Single containers:** `buildFromImage` and `buildFromDockerfile` both inspect the image after
+build to capture `Config.User` (the last `USER` instruction) and parse the `devcontainer.metadata`
+label (JSON array of `ImageMetadata`; used by pre-built images like
+`mcr.microsoft.com/devcontainers/*` to carry `remoteUser`). This data flows as `buildResult.imageUser`
+and `buildResult.imageMetadata` into `finalizeOpts`, where `resolveRemoteUser` applies it as a
+fallback before running `whoami` in the container. `crib shell`, `exec`, and `run` re-read the
+live `devcontainer.json` on each invocation (via `liveRemoteUser()` in `cmd/user.go`) rather
+than relying on the cached value in `result.json`.
 
-**Pre-start (for plugins):** `resolveComposeUser()` runs before the container exists, so plugins
+**Compose containers:** `resolveComposeUser()` runs before the container exists, so plugins
 get the correct home directory for mounts and file copies. It checks, in order:
 1. `remoteUser`/`containerUser` from devcontainer.json (if set, returns early).
 2. The `user:` directive from the compose service definition.
@@ -78,9 +84,11 @@ If the detected user is root, it falls through to the default "root" behavior. N
 
 **Files**:
 
+- `internal/engine/build.go` (`buildFromImage`, `buildFromDockerfile`, `parseImageMetadataLabel`, `resolveComposeContainerUser`)
 - `internal/engine/compose.go` (`resolveComposeUser`, `resolveComposeDockerfileInfo`)
-- `internal/engine/build.go` (`resolveComposeContainerUser`)
+- `internal/engine/engine.go` (`resolveRemoteUser`)
 - `internal/engine/single.go` (`detectContainerUser`, `setupAndReturn`)
+- `cmd/user.go` (`liveRemoteUser`)
 
 ### Smart restart with change detection
 

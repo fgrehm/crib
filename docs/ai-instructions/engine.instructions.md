@@ -65,6 +65,21 @@ Steps in order:
 5. Lifecycle hooks or snapshot restore
 6. Final save after setup completes (with probed env)
 
+## imageMetadata vs featureMetadata
+
+The `finalizeOpts.imageMetadata` field serves two purposes, controlled by `fromBuild`:
+
+- **User inference**: Always used. Extracts `remoteUser`/`containerUser` from
+  `devcontainer.metadata` label entries when devcontainer.json omits user fields.
+- **Feature hook merging**: Only when `fromBuild=true`. Merges feature lifecycle
+  hooks with user hooks and stores them for the restart/resume path.
+
+**Why the distinction?** On restart recreate without a rebuild, we inspect the
+cached image for metadata labels. This label metadata typically lacks feature
+lifecycle hooks. If we used it for merging, we'd overwrite stored feature hooks
+with empty values. The `fromBuild` flag ensures we only merge+store hooks when
+metadata came from an actual build (which includes feature metadata).
+
 ## remoteEnv is injected at exec time, not baked in
 
 `remoteEnv` (including plugin `PathPrepend` entries) is injected via
