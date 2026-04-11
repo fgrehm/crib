@@ -356,6 +356,17 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 		return nil, err
 	}
 
+	// Late inspect: if the initial inspect in buildFromImage failed (image
+	// wasn't pulled yet), the runtime pulled it during createContainer. Re-
+	// inspect to capture devcontainer.metadata and Config.User so finalize
+	// can infer remoteUser correctly on first run.
+	if buildRes.imageMetadata == nil && buildRes.imageUser == "" && buildRes.imageName != "" {
+		if details, inspErr := e.driver.InspectImage(ctx, buildRes.imageName); inspErr == nil && details != nil {
+			buildRes.imageUser = userFromConfigUser(details.Config.User)
+			buildRes.imageMetadata = parseImageMetadataLabel(details.Config.Labels)
+		}
+	}
+
 	cc := containerContext{
 		workspaceID:     ws.ID,
 		containerID:     containerID,
