@@ -1210,8 +1210,17 @@ func TestIntegrationResumePreservesMetadataUser(t *testing.T) {
 	})
 
 	// Step 3: Edit devcontainer.json to override remoteUser, then recreate.
-	// The explicit config value should take precedence over the metadata label.
+	// chownWorkspace in step 1 transferred ownership to metauser; restore
+	// write access so the test can modify devcontainer.json (Docker chown
+	// takes real effect, unlike rootless Podman where it silently fails).
 	t.Run("config override after recreate", func(t *testing.T) {
+		if latestResult != nil {
+			_ = d.ExecContainer(ctx, wsID, latestResult.ContainerID,
+				[]string{"chmod", "-R", "a+rwX", latestResult.WorkspaceFolder},
+				nil, io.Discard, io.Discard, nil, "root")
+		}
+
+		// The explicit config value should take precedence over the metadata label.
 		overrideConfig := fmt.Sprintf(`{
 			"image": %q,
 			"remoteUser": "root",
