@@ -61,7 +61,12 @@ func TestE2ERemoteUserLiveOverride(t *testing.T) {
 		t.Errorf("whoami after up: got %q, want %q (from metadata label)", got, "metauser")
 	}
 
-	// 3. Edit devcontainer.json to override remoteUser (container still running).
+	// 3. Restore write access to the workspace. chownWorkspace transferred
+	// ownership to metauser; on Docker the chown takes real effect so the
+	// test runner can't write to .devcontainer/ without this.
+	mustRunCrib(t, projectDir, cribHome, "exec", "--user", "root", "--", "chmod", "-R", "a+rwX", wsFolder)
+
+	// Edit devcontainer.json to override remoteUser (container still running).
 	overrideConfig := `{
 		"build": {"dockerfile": "Dockerfile"},
 		"remoteUser": "root",
