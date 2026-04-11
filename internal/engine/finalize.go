@@ -18,7 +18,8 @@ type finalizeOpts struct {
 	storedResult    *workspace.Result               // non-nil for snapshot/stored resume
 	fromSnapshot    bool                            // true = restore env + resume hooks
 	skipVolumeChown bool                            // true for restart (volumes exist)
-	imageMetadata   []*config.ImageMetadata         // feature metadata for hook merging (nil = no features)
+	fromBuild       bool                            // true if imageMetadata came from a build (not just inspect)
+	imageMetadata   []*config.ImageMetadata         // metadata for user inference and hook merging
 	imageUser       string                          // Config.User from image inspect (Dockerfile USER fallback)
 }
 
@@ -122,9 +123,12 @@ func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace,
 	envb.AddPluginResponse(opts.pluginResp)
 
 	// Merge feature hooks with user hooks once (used for both storage and dispatch).
+	// Only merge from imageMetadata when we actually built with features (fromBuild=true).
+	// Otherwise, use stored feature hooks to avoid overwriting them with label metadata
+	// that lacks feature lifecycle hooks.
 	var hooks *hookSet
 	switch {
-	case len(opts.imageMetadata) > 0:
+	case opts.fromBuild && len(opts.imageMetadata) > 0:
 		merged := config.MergeConfiguration(cfg, opts.imageMetadata)
 		hooks = hookSetFromMerged(merged)
 		// Store feature-only hooks so the resume/restart path can dispatch them

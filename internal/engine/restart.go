@@ -159,6 +159,7 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		storedResult:    storedResult,
 		fromSnapshot:    true,
 		skipVolumeChown: true,
+		fromBuild:       false,
 	})
 	if err != nil {
 		return nil, err
@@ -244,6 +245,7 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 		fromSnapshot:   hasSnapshot,
 		imageMetadata:  metadata,
 		imageUser:      imageUser,
+		fromBuild:      imgResult.needsBuild,
 	})
 	if err != nil {
 		if upResult != nil {

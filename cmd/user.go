@@ -19,6 +19,10 @@ func liveRemoteUser(ws *workspace.Workspace) string {
 	if err != nil {
 		return ""
 	}
+
+	// Mirror Engine.parseAndSubstitute: resolve workspaceFolder, substitute
+	// local-path variables, then run full config substitution and re-resolve
+	// in case workspaceFolder references other variables (e.g. ${devcontainerId}).
 	workspaceFolder := cfg.WorkspaceFolder
 	if workspaceFolder == "" {
 		workspaceFolder = "/workspaces/" + filepath.Base(ws.Source)
@@ -27,17 +31,27 @@ func liveRemoteUser(ws *workspace.Workspace) string {
 		"${localWorkspaceFolder}", ws.Source,
 		"${localWorkspaceFolderBasename}", filepath.Base(ws.Source),
 	).Replace(workspaceFolder)
+
 	subCtx := &config.SubstitutionContext{
 		DevContainerID:           ws.ID,
 		LocalWorkspaceFolder:     ws.Source,
 		ContainerWorkspaceFolder: workspaceFolder,
 		Env:                      envMap(),
 	}
+
+	cfg, err = config.Substitute(subCtx, cfg)
+	if err != nil {
+		// Fall back to stored result in result.json if substitution fails.
+		return ""
+	}
+
+	// RemoteUser/ContainerUser are already substituted by config.Substitute above.
+	// No need to re-resolve workspaceFolder since we don't return it.
 	if cfg.RemoteUser != "" {
-		return config.SubstituteString(subCtx, cfg.RemoteUser)
+		return cfg.RemoteUser
 	}
 	if cfg.ContainerUser != "" {
-		return config.SubstituteString(subCtx, cfg.ContainerUser)
+		return cfg.ContainerUser
 	}
 	return ""
 }

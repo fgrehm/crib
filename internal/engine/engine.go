@@ -293,6 +293,7 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 		pluginResp:     pluginResp,
 		storedResult:   storedResult,
 		fromSnapshot:   storedResult != nil,
+		fromBuild:      false,
 	})
 }
 
@@ -356,6 +357,7 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 		pluginResp:     pluginResp,
 		imageMetadata:  buildRes.imageMetadata,
 		imageUser:      buildRes.imageUser,
+		fromBuild:      true,
 	})
 }
 
@@ -398,6 +400,7 @@ func (e *Engine) upFromImage(ctx context.Context, ws *workspace.Workspace, cfg *
 		pluginResp:     pluginResp,
 		storedResult:   storedResult,
 		fromSnapshot:   isSnapshot,
+		fromBuild:      false,
 	})
 }
 
@@ -728,11 +731,13 @@ func configRemoteUser(cfg *config.DevContainerConfig) string {
 }
 
 // resolveRemoteUser determines the remote user for a container. Precedence:
-// config (remoteUser/containerUser) > imageUser (image Config.User) > whoami > "root".
-func (e *Engine) resolveRemoteUser(ctx context.Context, cc containerContext, cfg *config.DevContainerConfig, imageUser string) string {
+// config (remoteUser/containerUser) > fallbackUser (metadata/image-derived) > whoami > "root".
+// The fallbackUser is typically derived from devcontainer.metadata or image Config.User
+// when the devcontainer.json does not explicitly set user fields.
+func (e *Engine) resolveRemoteUser(ctx context.Context, cc containerContext, cfg *config.DevContainerConfig, fallbackUser string) string {
 	remoteUser := configRemoteUser(cfg)
-	if remoteUser == "" && imageUser != "" {
-		remoteUser = imageUser
+	if remoteUser == "" && fallbackUser != "" {
+		remoteUser = fallbackUser
 	}
 	if remoteUser == "" {
 		remoteUser = e.detectContainerUser(ctx, cc)
