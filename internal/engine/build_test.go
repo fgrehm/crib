@@ -366,6 +366,92 @@ func TestResolveRemoteUser_DefaultsToRoot(t *testing.T) {
 	}
 }
 
+func TestUserFromConfigUser(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain user", "node", "node"},
+		{"user:group", "node:nodejs", "node"},
+		{"uid", "1000", "1000"},
+		{"uid:gid", "1000:1000", "1000"},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := userFromConfigUser(tt.input)
+			if got != tt.want {
+				t.Errorf("userFromConfigUser(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRemoteUserFromMetadata(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata []*config.ImageMetadata
+		want     string
+	}{
+		{
+			name:     "single remoteUser",
+			metadata: []*config.ImageMetadata{{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "node"}}},
+			want:     "node",
+		},
+		{
+			name: "last entry wins",
+			metadata: []*config.ImageMetadata{
+				{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "first"}},
+				{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "last"}},
+			},
+			want: "last",
+		},
+		{
+			name: "containerUser fallback",
+			metadata: []*config.ImageMetadata{
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "cuser"}},
+			},
+			want: "cuser",
+		},
+		{
+			name: "remoteUser preferred over containerUser",
+			metadata: []*config.ImageMetadata{
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "cuser"}},
+				{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "ruser"}},
+			},
+			want: "ruser",
+		},
+		{
+			name:     "empty metadata",
+			metadata: []*config.ImageMetadata{},
+			want:     "",
+		},
+		{
+			name:     "nil metadata",
+			metadata: nil,
+			want:     "",
+		},
+		{
+			name: "nil entries skipped",
+			metadata: []*config.ImageMetadata{
+				nil,
+				{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "valid"}},
+				nil,
+			},
+			want: "valid",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := remoteUserFromMetadata(tt.metadata)
+			if got != tt.want {
+				t.Errorf("remoteUserFromMetadata() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveContainerUser_FromConfig(t *testing.T) {
 	tests := []struct {
 		name          string

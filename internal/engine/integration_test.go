@@ -1116,3 +1116,127 @@ func TestIntegrationImageBasedMetadataLabel(t *testing.T) {
 		t.Errorf("RemoteUser = %q, want %q (from devcontainer.metadata label on pre-built image)", result.RemoteUser, "imguser")
 	}
 }
+
+// TestIntegrationResumePreservesMetadataUser verifies the full lifecycle:
+//  1. Up infers remoteUser from devcontainer.metadata label
+//  2. Second Up (upExisting, container running) preserves the inferred user
+//  3. Editing devcontainer.json to set explicit remoteUser + recreate picks it up
+//
+// Subtests are sequential (shared container state); do not add t.Parallel.
+func TestIntegrationResumePreservesMetadataUser(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	// Pre-build an image with a devcontainer.metadata label.
+	prebuiltImage := "crib-test-resume-metadata:latest"
+	buildDir := t.TempDir()
+	dockerfile := "FROM alpine:3.20\n" +
+		"RUN adduser -D metauser\n" +
+		`LABEL devcontainer.metadata='[{"remoteUser":"metauser"}]'` + "\n"
+	if err := os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.BuildImage(ctx, "", &driver.BuildOptions{
+		Image:      prebuiltImage,
+		Dockerfile: filepath.Join(buildDir, "Dockerfile"),
+		Context:    buildDir,
+	}); err != nil {
+		t.Fatalf("pre-building image: %v", err)
+	}
+	t.Cleanup(func() { _ = d.RemoveImage(ctx, prebuiltImage) })
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(devcontainerDir, "devcontainer.json")
+
+	// Initial config: no remoteUser, should be inferred from metadata.
+	initialConfig := fmt.Sprintf(`{
+		"image": %q,
+		"overrideCommand": true
+	}`, prebuiltImage)
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-resume-metadata"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	// Track the latest result so the chmod cleanup targets the right container.
+	var latestResult *UpResult
+
+	// Step 1: First Up infers remoteUser from metadata label.
+	t.Run("initial up infers metadata remoteUser", func(t *testing.T) {
+		result, err := e.Up(ctx, ws, UpOptions{})
+		if err != nil {
+			t.Fatalf("Up: %v", err)
+		}
+		if result.RemoteUser != "metauser" {
+			t.Errorf("RemoteUser = %q, want %q", result.RemoteUser, "metauser")
+		}
+		latestResult = result
+	})
+
+	// Step 2: Second Up finds existing container (upExisting path).
+	// Without the storedResult pre-set fix, this would regress to "root"
+	// because the metadata fallback isn't available in the resume path.
+	t.Run("second up preserves remoteUser", func(t *testing.T) {
+		result, err := e.Up(ctx, ws, UpOptions{})
+		if err != nil {
+			t.Fatalf("Up: %v", err)
+		}
+		if result.RemoteUser != "metauser" {
+			t.Errorf("RemoteUser = %q, want %q (preserved on resume)", result.RemoteUser, "metauser")
+		}
+		latestResult = result
+	})
+
+	// Step 3: Edit devcontainer.json to override remoteUser, then recreate.
+	// The explicit config value should take precedence over the metadata label.
+	t.Run("config override after recreate", func(t *testing.T) {
+		overrideConfig := fmt.Sprintf(`{
+			"image": %q,
+			"remoteUser": "root",
+			"overrideCommand": true
+		}`, prebuiltImage)
+		if err := os.WriteFile(configPath, []byte(overrideConfig), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		result, err := e.Up(ctx, ws, UpOptions{Recreate: true})
+		if err != nil {
+			t.Fatalf("Up (recreate): %v", err)
+		}
+		if result.RemoteUser != "root" {
+			t.Errorf("RemoteUser = %q, want %q (config override)", result.RemoteUser, "root")
+		}
+		latestResult = result
+	})
+
+	// Restore workspace permissions for TempDir cleanup (runs before container delete due to LIFO).
+	t.Cleanup(func() {
+		if latestResult != nil {
+			_ = d.ExecContainer(ctx, wsID, latestResult.ContainerID,
+				[]string{"chmod", "-R", "a+rwX", latestResult.WorkspaceFolder},
+				nil, io.Discard, io.Discard, nil, "root")
+		}
+	})
+}

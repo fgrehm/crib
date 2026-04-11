@@ -261,8 +261,12 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 		storedHasEntrypoints = stored.HasFeatureEntrypoints
 	}
 
-	// Dispatch plugins.
+	// Dispatch plugins. Use stored remoteUser as fallback so plugins
+	// target the correct home directory on resume (single backend returns "").
 	pluginUser := b.pluginUser(ctx)
+	if pluginUser == "" && storedResult != nil {
+		pluginUser = storedResult.RemoteUser
+	}
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, storedImageName, workspaceFolder, pluginUser)
 	if err != nil {
 		e.logger.Warn("plugin dispatch failed for existing container", "error", err)
@@ -273,6 +277,13 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 		workspaceID:     ws.ID,
 		containerID:     container.ID,
 		workspaceFolder: workspaceFolder,
+	}
+	// Pre-set remoteUser from stored result so finalize skips re-resolution.
+	// Without this, metadata-only remoteUser (e.g. node image with
+	// devcontainer.metadata label) would be lost on resume because finalize
+	// falls through to whoami which returns the container process user (root).
+	if storedResult != nil && storedResult.RemoteUser != "" {
+		cc.remoteUser = storedResult.RemoteUser
 	}
 
 	if !container.State.IsRunning() {
@@ -365,8 +376,12 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 func (e *Engine) upFromImage(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, b containerBackend, imageName string, storedResult *workspace.Result, isSnapshot bool) (*UpResult, error) {
 	e.logger.Debug("up from image", "image", imageName, "snapshot", isSnapshot)
 
-	// Dispatch plugins.
+	// Dispatch plugins. Use stored remoteUser as fallback so plugins
+	// target the correct home directory on resume (single backend returns "").
 	pluginUser := b.pluginUser(ctx)
+	if pluginUser == "" {
+		pluginUser = storedResult.RemoteUser
+	}
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, imageName, workspaceFolder, pluginUser)
 	if err != nil {
 		return nil, err
@@ -388,6 +403,7 @@ func (e *Engine) upFromImage(ctx context.Context, ws *workspace.Workspace, cfg *
 		workspaceID:     ws.ID,
 		containerID:     containerID,
 		workspaceFolder: workspaceFolder,
+		remoteUser:      storedResult.RemoteUser, // pre-set to skip re-resolution in finalize
 	}
 
 	// Use the original image name (not snapshot) for the result.

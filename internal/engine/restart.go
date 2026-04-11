@@ -206,8 +206,15 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 		}
 	}
 
-	// Dispatch plugins.
+	// Dispatch plugins. Apply the same metadata/imageUser fallback as upCreate
+	// so plugins target the correct home directory when config omits user fields.
 	pluginUser := b.pluginUser(ctx)
+	if pluginUser == "" {
+		pluginUser = remoteUserFromMetadata(metadata)
+	}
+	if pluginUser == "" {
+		pluginUser = imageUser
+	}
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, imgResult.imageName, workspaceFolder, pluginUser)
 	if err != nil {
 		return nil, err
