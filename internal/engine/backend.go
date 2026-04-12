@@ -15,11 +15,15 @@ import (
 type containerBackend interface {
 	// pluginUser returns the remote user for plugin dispatch.
 	//
-	// For compose backends, resolves from compose config (ignores fallbacks).
-	// For single backends, returns configRemoteUser(cfg) if set, otherwise
+	// Single backends: returns configRemoteUser(cfg) if set, otherwise
 	// iterates fallbacks in order and returns the first non-empty value.
 	//
-	// The contract: config always wins over fallbacks.
+	// Compose backends: returns configRemoteUser(cfg) if set, otherwise
+	// resolveComposeUser (compose service user), otherwise iterates
+	// fallbacks in order.
+	//
+	// The contract: config always wins over fallbacks. Compose-derived
+	// user sits between config and generic fallbacks.
 	pluginUser(ctx context.Context, fallbacks ...string) string
 
 	// start brings up a stopped container (and dependent services for compose).

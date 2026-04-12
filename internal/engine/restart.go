@@ -209,9 +209,11 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 	}
 
 	// Dispatch plugins. Backend handles config-vs-fallback precedence.
+	// Fallback chain: metadata remoteUser → image Config.User → stored result.
 	pluginUser := b.pluginUser(ctx,
 		remoteUserFromMetadata(metadata),
-		imageUser)
+		imageUser,
+		storedResult.RemoteUser)
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, imgResult.imageName, workspaceFolder, pluginUser)
 	if err != nil {
 		return nil, err

@@ -67,8 +67,16 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	}
 
 	// Override containerUser from image if config didn't set either user field.
-	if cfg.ContainerUser == "" && cfg.RemoteUser == "" && imageUser != "" {
-		containerUser = imageUser
+	// Prefer metadata label user over Config.User: images like
+	// mcr.microsoft.com/devcontainers/* set Config.User to root but
+	// the devcontainer.metadata label specifies remoteUser (e.g. "node").
+	if cfg.ContainerUser == "" && cfg.RemoteUser == "" {
+		labelUser := remoteUserFromMetadata(labelMetadata)
+		if labelUser != "" {
+			containerUser = labelUser
+		} else if imageUser != "" {
+			containerUser = imageUser
+		}
 	}
 
 	// Generate a Dockerfile that installs features on top of the base image.
