@@ -261,11 +261,12 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 		storedHasEntrypoints = stored.HasFeatureEntrypoints
 	}
 
-	// Dispatch plugins. Use stored remoteUser as fallback so plugins
-	// target the correct home directory on resume (single backend returns "").
-	pluginUser := b.pluginUser(ctx)
-	if pluginUser == "" && storedResult != nil {
-		pluginUser = storedResult.RemoteUser
+	// Dispatch plugins. Backend handles config-vs-fallback precedence.
+	var pluginUser string
+	if storedResult != nil {
+		pluginUser = b.pluginUser(ctx, storedResult.RemoteUser)
+	} else {
+		pluginUser = b.pluginUser(ctx)
 	}
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, storedImageName, workspaceFolder, pluginUser)
 	if err != nil {
@@ -278,11 +279,12 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 		containerID:     container.ID,
 		workspaceFolder: workspaceFolder,
 	}
-	// Pre-set remoteUser from stored result so finalize skips re-resolution.
-	// Without this, metadata-only remoteUser (e.g. node image with
+	// Pre-set remoteUser from stored result only when config doesn't have
+	// an explicit user. This allows live config changes to take effect.
+	// Without this guard, metadata-only remoteUser (e.g. node image with
 	// devcontainer.metadata label) would be lost on resume because finalize
 	// falls through to whoami which returns the container process user (root).
-	if storedResult != nil && storedResult.RemoteUser != "" {
+	if storedResult != nil && storedResult.RemoteUser != "" && configRemoteUser(cfg) == "" {
 		cc.remoteUser = storedResult.RemoteUser
 	}
 
@@ -330,17 +332,10 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 		return nil, err
 	}
 
-	// Dispatch plugins.
-	pluginUser := b.pluginUser(ctx)
-	if pluginUser == "" {
-		// When devcontainer.json omits remoteUser/containerUser, use the user
-		// inferred from image metadata or Config.User so plugins target the
-		// correct home directory (e.g. /home/node instead of /root).
-		pluginUser = remoteUserFromMetadata(buildRes.imageMetadata)
-	}
-	if pluginUser == "" {
-		pluginUser = buildRes.imageUser
-	}
+	// Dispatch plugins. Backend handles config-vs-fallback precedence.
+	pluginUser := b.pluginUser(ctx,
+		remoteUserFromMetadata(buildRes.imageMetadata),
+		buildRes.imageUser)
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, buildRes.imageName, workspaceFolder, pluginUser)
 	if err != nil {
 		return nil, err
@@ -387,12 +382,8 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 func (e *Engine) upFromImage(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, b containerBackend, imageName string, storedResult *workspace.Result, isSnapshot bool) (*UpResult, error) {
 	e.logger.Debug("up from image", "image", imageName, "snapshot", isSnapshot)
 
-	// Dispatch plugins. Use stored remoteUser as fallback so plugins
-	// target the correct home directory on resume (single backend returns "").
-	pluginUser := b.pluginUser(ctx)
-	if pluginUser == "" {
-		pluginUser = storedResult.RemoteUser
-	}
+	// Dispatch plugins. Backend handles config-vs-fallback precedence.
+	pluginUser := b.pluginUser(ctx, storedResult.RemoteUser)
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, imageName, workspaceFolder, pluginUser)
 	if err != nil {
 		return nil, err
@@ -410,11 +401,17 @@ func (e *Engine) upFromImage(ctx context.Context, ws *workspace.Workspace, cfg *
 		return nil, err
 	}
 
+	// Pre-set remoteUser from stored result only when config doesn't have
+	// an explicit user. This allows live config changes to take effect.
+	remoteUser := ""
+	if configRemoteUser(cfg) == "" && storedResult.RemoteUser != "" {
+		remoteUser = storedResult.RemoteUser
+	}
 	cc := containerContext{
 		workspaceID:     ws.ID,
 		containerID:     containerID,
 		workspaceFolder: workspaceFolder,
-		remoteUser:      storedResult.RemoteUser, // pre-set to skip re-resolution in finalize
+		remoteUser:      remoteUser,
 	}
 
 	// Use the original image name (not snapshot) for the result.

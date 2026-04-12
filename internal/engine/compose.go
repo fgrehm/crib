@@ -60,13 +60,9 @@ func (e *Engine) buildComposeFeatures(ctx context.Context, ws *workspace.Workspa
 // resolveComposeUser determines the container user for the compose service by
 // querying the compose config and delegating to resolveComposeContainerUser.
 // This is used before plugin dispatch so plugins get the correct remote user
-// even when devcontainer.json doesn't set remoteUser/containerUser.
+// when devcontainer.json doesn't set remoteUser/containerUser.
+// Caller (pluginUser) checks config first; this only resolves from compose files.
 func (e *Engine) resolveComposeUser(ctx context.Context, cfg *config.DevContainerConfig, composeFiles []string) string {
-	// If devcontainer.json already specifies a user, no need to inspect.
-	if cfg.RemoteUser != "" || cfg.ContainerUser != "" {
-		return ""
-	}
-
 	serviceName := cfg.Service
 	svcInfo, err := composehelper.GetServiceInfo(ctx, composeFiles, serviceName, nil)
 	if err != nil {

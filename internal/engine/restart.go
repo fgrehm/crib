@@ -126,12 +126,8 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		return nil, &ErrNoContainer{WorkspaceID: ws.ID}
 	}
 
-	// Dispatch plugins.
-	pluginUser := b.pluginUser(ctx)
-	if pluginUser == "" {
-		// For non-compose, use stored remote user for plugin dispatch.
-		pluginUser = storedResult.RemoteUser
-	}
+	// Dispatch plugins. Backend handles config-vs-fallback precedence.
+	pluginUser := b.pluginUser(ctx, storedResult.RemoteUser)
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, storedResult.ImageName, workspaceFolder, pluginUser)
 	if err != nil {
 		e.logger.Warn("plugin dispatch failed, continuing without plugins", "error", err)
@@ -144,10 +140,16 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		return nil, err
 	}
 
+	// Pre-set remoteUser from stored result only when config doesn't have
+	// an explicit user. This allows live config changes to take effect.
+	remoteUser := ""
+	if configRemoteUser(cfg) == "" && storedResult.RemoteUser != "" {
+		remoteUser = storedResult.RemoteUser
+	}
 	cc := containerContext{
 		workspaceID:     ws.ID,
 		containerID:     newID,
-		remoteUser:      storedResult.RemoteUser, // pre-set to skip whoami
+		remoteUser:      remoteUser,
 		workspaceFolder: workspaceFolder,
 	}
 
@@ -206,15 +208,10 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 		}
 	}
 
-	// Dispatch plugins. Apply the same metadata/imageUser fallback as upCreate
-	// so plugins target the correct home directory when config omits user fields.
-	pluginUser := b.pluginUser(ctx)
-	if pluginUser == "" {
-		pluginUser = remoteUserFromMetadata(metadata)
-	}
-	if pluginUser == "" {
-		pluginUser = imageUser
-	}
+	// Dispatch plugins. Backend handles config-vs-fallback precedence.
+	pluginUser := b.pluginUser(ctx,
+		remoteUserFromMetadata(metadata),
+		imageUser)
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, imgResult.imageName, workspaceFolder, pluginUser)
 	if err != nil {
 		return nil, err
