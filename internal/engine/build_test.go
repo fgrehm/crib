@@ -452,6 +452,69 @@ func TestRemoteUserFromMetadata(t *testing.T) {
 	}
 }
 
+func TestContainerUserFromMetadata(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata []*config.ImageMetadata
+		want     string
+	}{
+		{
+			name:     "single containerUser",
+			metadata: []*config.ImageMetadata{{NonComposeBase: config.NonComposeBase{ContainerUser: "node"}}},
+			want:     "node",
+		},
+		{
+			name: "containerUser wins over remoteUser",
+			metadata: []*config.ImageMetadata{
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "root"}, DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "node"}},
+			},
+			want: "root",
+		},
+		{
+			name: "remoteUser as fallback",
+			metadata: []*config.ImageMetadata{
+				{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "node"}},
+			},
+			want: "node",
+		},
+		{
+			name: "last entry wins",
+			metadata: []*config.ImageMetadata{
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "first"}},
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "last"}},
+			},
+			want: "last",
+		},
+		{
+			name:     "empty metadata",
+			metadata: []*config.ImageMetadata{},
+			want:     "",
+		},
+		{
+			name:     "nil metadata",
+			metadata: nil,
+			want:     "",
+		},
+		{
+			name: "nil entries skipped",
+			metadata: []*config.ImageMetadata{
+				nil,
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "valid"}},
+				nil,
+			},
+			want: "valid",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := containerUserFromMetadata(tt.metadata)
+			if got != tt.want {
+				t.Errorf("containerUserFromMetadata() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveContainerUser_FromConfig(t *testing.T) {
 	tests := []struct {
 		name          string

@@ -67,13 +67,15 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	}
 
 	// Override containerUser from image if config didn't set either user field.
-	// Prefer metadata label user over Config.User: images like
+	// Prefer metadata label users over Config.User: images like
 	// mcr.microsoft.com/devcontainers/* set Config.User to root but
 	// the devcontainer.metadata label specifies remoteUser (e.g. "node").
+	// Resolve containerUser and remoteUser separately from metadata per
+	// the spec: containerUser and remoteUser are independent properties
+	// that each follow "last value wins" merge semantics.
 	if cfg.ContainerUser == "" && cfg.RemoteUser == "" {
-		labelUser := remoteUserFromMetadata(labelMetadata)
-		if labelUser != "" {
-			containerUser = labelUser
+		if cu := containerUserFromMetadata(labelMetadata); cu != "" {
+			containerUser = cu
 		} else if imageUser != "" {
 			containerUser = imageUser
 		}
@@ -82,7 +84,12 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	// Generate a Dockerfile that installs features on top of the base image.
 	remoteUser := cfg.RemoteUser
 	if remoteUser == "" {
-		remoteUser = containerUser
+		ru := remoteUserFromMetadata(labelMetadata)
+		if ru != "" {
+			remoteUser = ru
+		} else {
+			remoteUser = containerUser
+		}
 	}
 
 	featureContent, featurePrefix := feature.GenerateDockerfile(features, containerUser, remoteUser, e.buildCacheMounts)
@@ -501,6 +508,24 @@ func remoteUserFromMetadata(metadata []*config.ImageMetadata) string {
 	for i := len(metadata) - 1; i >= 0; i-- {
 		if metadata[i] != nil && metadata[i].ContainerUser != "" {
 			return metadata[i].ContainerUser
+		}
+	}
+	return ""
+}
+
+// containerUserFromMetadata returns the containerUser from the highest-priority
+// metadata entry that declares one. Falls back to remoteUser per the
+// devcontainers spec (remoteUser defaults to containerUser, so if only
+// remoteUser is set, it implies the containerUser as well).
+func containerUserFromMetadata(metadata []*config.ImageMetadata) string {
+	for i := len(metadata) - 1; i >= 0; i-- {
+		if metadata[i] != nil && metadata[i].ContainerUser != "" {
+			return metadata[i].ContainerUser
+		}
+	}
+	for i := len(metadata) - 1; i >= 0; i-- {
+		if metadata[i] != nil && metadata[i].RemoteUser != "" {
+			return metadata[i].RemoteUser
 		}
 	}
 	return ""
