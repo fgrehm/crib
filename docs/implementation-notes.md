@@ -61,6 +61,10 @@ The probe shell type maps to:
 `remoteUser` and `containerUser` from `devcontainer.json` are consulted first. When neither
 is set, crib falls back through several sources depending on the container type.
 
+The "config wins" contract is enforced by `backend.pluginUser()` before plugin dispatch.
+Both single and compose backends check `configRemoteUser(cfg)` first, then fall back to
+backend-specific resolution, then generic fallbacks.
+
 **Single containers:** `buildFromImage` and `buildFromDockerfile` both inspect the image after
 build to capture `Config.User` (the last `USER` instruction) and parse the `devcontainer.metadata`
 label (JSON array of `ImageMetadata`; used by pre-built images like
@@ -70,9 +74,10 @@ fallback before running `whoami` in the container. `crib shell`, `exec`, and `ru
 live `devcontainer.json` on each invocation (via `liveRemoteUser()` in `cmd/user.go`) rather
 than relying on the cached value in `result.json`.
 
-**Compose containers:** `resolveComposeUser()` runs before the container exists, so plugins
-get the correct home directory for mounts and file copies. It checks, in order:
-1. `remoteUser`/`containerUser` from devcontainer.json (if set, returns early).
+**Compose containers:** `resolveComposeUser()` resolves the user from compose configuration
+(service `user:` directive, Dockerfile `USER` instruction, or base image). It's called by
+`pluginUser()` after the config check. The precedence:
+1. `remoteUser`/`containerUser` from devcontainer.json (handled by pluginUser).
 2. The `user:` directive from the compose service definition.
 3. For build-based services (`build:` instead of `image:`), parses the Dockerfile to find the
    last `USER` instruction and the base image (`resolveComposeDockerfileInfo`).
@@ -84,6 +89,9 @@ If the detected user is root, it falls through to the default "root" behavior. N
 
 **Files**:
 
+- `internal/engine/backend.go` (`pluginUser` interface with config-first contract)
+- `internal/engine/backend_single.go` (config → fallbacks precedence)
+- `internal/engine/backend_compose.go` (config → compose user → fallbacks)
 - `internal/engine/build.go` (`buildFromImage`, `buildFromDockerfile`, `parseImageMetadataLabel`, `resolveComposeContainerUser`)
 - `internal/engine/compose.go` (`resolveComposeUser`, `resolveComposeDockerfileInfo`)
 - `internal/engine/engine.go` (`resolveRemoteUser`)
