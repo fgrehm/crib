@@ -14,12 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `result.json` at `crib up` time. Changes to `remoteUser` take effect
   without a rebuild.
 - `remoteUser` and `containerUser` are now inferred from the image when
-  `devcontainer.json` does not set them explicitly. Pre-built images that carry
-  a `devcontainer.metadata` label (e.g.
+  `devcontainer.json` does not set them explicitly. Per the devcontainers spec,
+  `containerUser` and `remoteUser` are resolved independently from the
+  `devcontainer.metadata` label (each following "last value wins" merge), with
+  `Config.User` as the final fallback. Pre-built images that carry a
+  `devcontainer.metadata` label (e.g.
   `mcr.microsoft.com/devcontainers/javascript-node` sets `remoteUser: "node"`)
-  have their metadata merged as the spec requires. Images built from a
-  Dockerfile with a `USER` instruction now have that user reflected in
-  `remoteUser` automatically.
+  now correctly use the label user instead of `Config.User` (often `root`) for
+  feature context and plugin dispatch. Images built from a Dockerfile with a
+  `USER` instruction have that user reflected in `remoteUser` automatically.
+- Plugin user dispatch now threads image-derived and stored-result fallbacks
+  through both single-container and compose backends. On restart recreate,
+  `storedResult.RemoteUser` is used as a last fallback when image inspection
+  yields no user, preserving prior user resolution instead of falling back to
+  empty.
 
 ## [0.8.0] - 2026-04-07
 

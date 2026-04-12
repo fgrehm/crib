@@ -154,14 +154,14 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 	}
 
 	result, err := e.finalize(ctx, ws, cfg, finalizeOpts{
-		cc:              cc,
-		imageName:       storedResult.ImageName,
-		hasEntrypoints:  storedResult.HasFeatureEntrypoints,
-		pluginResp:      pluginResp,
-		storedResult:    storedResult,
-		fromSnapshot:    true,
-		skipVolumeChown: true,
-		fromBuild:       false,
+		cc:                      cc,
+		imageName:               storedResult.ImageName,
+		hasEntrypoints:          storedResult.HasFeatureEntrypoints,
+		pluginResp:              pluginResp,
+		storedResult:            storedResult,
+		fromSnapshot:            true,
+		skipVolumeChown:         true,
+		shouldMergeFeatureHooks: false,
 	})
 	if err != nil {
 		return nil, err
@@ -243,15 +243,15 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 	}
 
 	upResult, err := e.finalize(ctx, ws, cfg, finalizeOpts{
-		cc:             cc,
-		imageName:      resultImageName,
-		hasEntrypoints: imgResult.hasEntrypoints,
-		pluginResp:     pluginResp,
-		storedResult:   storedResult,
-		fromSnapshot:   hasSnapshot,
-		imageMetadata:  metadata,
-		imageUser:      imageUser,
-		fromBuild:      imgResult.needsBuild,
+		cc:                      cc,
+		imageName:               resultImageName,
+		hasEntrypoints:          imgResult.hasEntrypoints,
+		pluginResp:              pluginResp,
+		storedResult:            storedResult,
+		fromSnapshot:            hasSnapshot,
+		imageMetadata:           metadata,
+		imageUser:               imageUser,
+		shouldMergeFeatureHooks: imgResult.needsBuild,
 	})
 	if err != nil {
 		if upResult != nil {

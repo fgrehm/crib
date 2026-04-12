@@ -300,13 +300,13 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 	}
 
 	return e.finalize(ctx, ws, cfg, finalizeOpts{
-		cc:             cc,
-		imageName:      storedImageName,
-		hasEntrypoints: storedHasEntrypoints,
-		pluginResp:     pluginResp,
-		storedResult:   storedResult,
-		fromSnapshot:   storedResult != nil,
-		fromBuild:      false,
+		cc:                      cc,
+		imageName:               storedImageName,
+		hasEntrypoints:          storedHasEntrypoints,
+		pluginResp:              pluginResp,
+		storedResult:            storedResult,
+		fromSnapshot:            storedResult != nil,
+		shouldMergeFeatureHooks: false,
 	})
 }
 
@@ -368,13 +368,13 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 		workspaceFolder: workspaceFolder,
 	}
 	return e.finalize(ctx, ws, cfg, finalizeOpts{
-		cc:             cc,
-		imageName:      buildRes.imageName,
-		hasEntrypoints: buildRes.hasEntrypoints,
-		pluginResp:     pluginResp,
-		imageMetadata:  buildRes.imageMetadata,
-		imageUser:      buildRes.imageUser,
-		fromBuild:      true,
+		cc:                      cc,
+		imageName:               buildRes.imageName,
+		hasEntrypoints:          buildRes.hasEntrypoints,
+		pluginResp:              pluginResp,
+		imageMetadata:           buildRes.imageMetadata,
+		imageUser:               buildRes.imageUser,
+		shouldMergeFeatureHooks: true,
 	})
 }
 
@@ -418,13 +418,13 @@ func (e *Engine) upFromImage(ctx context.Context, ws *workspace.Workspace, cfg *
 	resultImageName := storedResult.ImageName
 
 	return e.finalize(ctx, ws, cfg, finalizeOpts{
-		cc:             cc,
-		imageName:      resultImageName,
-		hasEntrypoints: hasEntrypoints,
-		pluginResp:     pluginResp,
-		storedResult:   storedResult,
-		fromSnapshot:   isSnapshot,
-		fromBuild:      false,
+		cc:                      cc,
+		imageName:               resultImageName,
+		hasEntrypoints:          hasEntrypoints,
+		pluginResp:              pluginResp,
+		storedResult:            storedResult,
+		fromSnapshot:            isSnapshot,
+		shouldMergeFeatureHooks: false,
 	})
 }
 

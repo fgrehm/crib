@@ -65,14 +65,18 @@ The "config wins" contract is enforced by `backend.pluginUser()` before plugin d
 Both single and compose backends check `configRemoteUser(cfg)` first, then fall back to
 backend-specific resolution, then generic fallbacks.
 
-**Single containers:** `buildFromImage` and `buildFromDockerfile` both inspect the image after
-build to capture `Config.User` (the last `USER` instruction) and parse the `devcontainer.metadata`
-label (JSON array of `ImageMetadata`; used by pre-built images like
-`mcr.microsoft.com/devcontainers/*` to carry `remoteUser`). This data flows as `buildResult.imageUser`
-and `buildResult.imageMetadata` into `finalizeOpts`, where `resolveRemoteUser` applies it as a
-fallback before running `whoami` in the container. `crib shell`, `exec`, and `run` re-read the
-live `devcontainer.json` on each invocation (via `liveRemoteUser()` in `cmd/user.go`) rather
-than relying on the cached value in `result.json`.
+**Single containers:** `buildFromImage` and `buildFromDockerfile` both inspect images
+to capture `Config.User` (the last `USER` instruction) and parse the
+`devcontainer.metadata` label (JSON array of `ImageMetadata`; used by pre-built
+images like `mcr.microsoft.com/devcontainers/*` to carry `remoteUser`). For
+image-based devcontainers without features, the base image is inspected before
+use. After a build or runtime pull, a second inspection captures the final
+metadata. This data flows as `buildResult.imageUser` and
+`buildResult.imageMetadata` into `finalizeOpts`, where `resolveRemoteUser`
+applies it as a fallback before running `whoami` in the container. `crib shell`,
+`exec`, and `run` re-read the live `devcontainer.json` on each invocation (via
+`liveRemoteUser()` in `cmd/user.go`) rather than relying on the cached value in
+`result.json`.
 
 **Compose containers:** `resolveComposeUser()` resolves the user from compose configuration
 (service `user:` directive, Dockerfile `USER` instruction, or base image). It's called by
