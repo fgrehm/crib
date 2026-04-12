@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -37,7 +36,7 @@ func liveRemoteUser(ws *workspace.Workspace) string {
 		DevContainerID:           ws.ID,
 		LocalWorkspaceFolder:     ws.Source,
 		ContainerWorkspaceFolder: workspaceFolder,
-		Env:                      envMap(),
+		Env:                      config.EnvMap(),
 	}
 
 	cfg, err = config.Substitute(subCtx, cfg)
@@ -55,18 +54,4 @@ func liveRemoteUser(ws *workspace.Workspace) string {
 		return cfg.ContainerUser
 	}
 	return ""
-}
-
-// envMap returns the current process environment as a map.
-func envMap() map[string]string {
-	env := make(map[string]string, len(os.Environ()))
-	for _, e := range os.Environ() {
-		for i := range len(e) {
-			if e[i] == '=' {
-				env[e[:i]] = e[i+1:]
-				break
-			}
-		}
-	}
-	return env
 }
