@@ -9,25 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+#### Spec-compliant `remoteUser` / `containerUser` resolution
+
 - `crib shell`, `crib exec`, and `crib run` now re-read `remoteUser` from the
-  live `devcontainer.json` on each invocation instead of using the value cached
-  in `result.json` at `crib up` time. Changes to `remoteUser` take effect
-  without a rebuild.
+  live `devcontainer.json` on each invocation. Changes take effect without a
+  rebuild.
 - `remoteUser` and `containerUser` are now inferred from the image when
-  `devcontainer.json` does not set them explicitly. Per the devcontainers spec,
-  `containerUser` and `remoteUser` are resolved independently from the
-  `devcontainer.metadata` label (each following "last value wins" merge), with
-  `Config.User` as the final fallback. Pre-built images that carry a
+  `devcontainer.json` does not set them explicitly. Resolution follows the spec:
+  config wins, then `devcontainer.metadata` label (last-wins merge), then
+  Dockerfile `USER` / `Config.User`. Pre-built images that carry a
   `devcontainer.metadata` label (e.g.
   `mcr.microsoft.com/devcontainers/javascript-node` sets `remoteUser: "node"`)
-  now correctly use the label user instead of `Config.User` (often `root`) for
-  feature context and plugin dispatch. Images built from a Dockerfile with a
-  `USER` instruction have that user reflected in `remoteUser` automatically.
-- Plugin user dispatch now threads image-derived and stored-result fallbacks
-  through both single-container and compose backends. On restart recreate,
-  `storedResult.RemoteUser` is used as a last fallback when image inspection
-  yields no user, preserving prior user resolution instead of falling back to
-  empty.
+  now correctly use the label user for feature context and plugin dispatch.
+- `containerUser` and `remoteUser` are resolved independently -- neither falls
+  back to the other except `remoteUser` → `containerUser` (one direction only,
+  per spec).
+- Resume and restart recreate paths preserve a previously-inferred `remoteUser`
+  instead of silently falling back to `root` when image inspection yields no
+  metadata.
 
 ## [0.8.0] - 2026-04-07
 
