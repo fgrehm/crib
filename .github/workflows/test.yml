@@ -27,10 +27,10 @@ jobs:
         env:
           CRIB_RUNTIME: docker
           GO_TEST_FLAGS: -json
-      - name: Fuzz tests (30s budget)
+      - name: Fuzz tests (10s per target)
         run: |
           for pkg in ./internal/config/ ./internal/dockerfile/; do
-            for fuzz in $(go test "$pkg" -list 'Fuzz.*' 2>/dev/null | grep '^Fuzz'); do
+            for fuzz in $(go test "$pkg" -list 'Fuzz.*' | grep '^Fuzz'); do
               echo "==> $pkg $fuzz"
               go test "$pkg" -run "^$fuzz\$" -fuzz "^$fuzz\$" -fuzztime 10s
             done
