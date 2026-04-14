@@ -49,12 +49,14 @@ func (e *Engine) buildImage(ctx context.Context, ws *workspace.Workspace, cfg *c
 // If features are specified, generates a Dockerfile that extends the base image.
 func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, features []*feature.FeatureSet, containerUser string) (*buildResult, error) {
 	// Inspect image for metadata label and Config.User.
-	// Fail open: image may not be pulled yet; the runtime pulls it at container start.
+	// Fail open: image may not be pulled yet; the build below will pull it.
 	var imageUser string
 	var labelMetadata []*config.ImageMetadata
+	baseImageInspected := false
 	if details, err := e.driver.InspectImage(ctx, cfg.Image); err == nil && details != nil {
 		imageUser = userFromConfigUser(details.Config.User)
 		labelMetadata = parseImageMetadataLabel(details.Config.Labels)
+		baseImageInspected = true
 	}
 
 	if len(features) == 0 {
@@ -118,6 +120,21 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	} else {
 		result.imageUser = imageUser // fall back to pre-build inspection
 	}
+
+	// If the base image wasn't locally available before the build, re-inspect
+	// it now that doBuild has pulled it. The built image doesn't inherit the
+	// base image's devcontainer.metadata label (each Dockerfile stage starts
+	// fresh), so this is the only way to recover remoteUser/containerUser from
+	// images like mcr.microsoft.com/devcontainers/* on first pull.
+	if !baseImageInspected && labelMetadata == nil {
+		if details, inspErr := e.driver.InspectImage(ctx, cfg.Image); inspErr == nil && details != nil {
+			labelMetadata = parseImageMetadataLabel(details.Config.Labels)
+			if result.imageUser == "" {
+				result.imageUser = userFromConfigUser(details.Config.User)
+			}
+		}
+	}
+
 	// Prepend label metadata before feature metadata (label = lower priority than features).
 	if len(labelMetadata) > 0 {
 		result.imageMetadata = append(labelMetadata, result.imageMetadata...)
