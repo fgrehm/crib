@@ -14,8 +14,17 @@ import (
 // shared orchestration layer.
 type containerBackend interface {
 	// pluginUser returns the remote user for plugin dispatch.
-	// Compose resolves from service config; single returns "" (config fallback).
-	pluginUser(ctx context.Context) string
+	//
+	// Single backends: returns configRemoteUser(cfg) if set, otherwise
+	// iterates fallbacks in order and returns the first non-empty value.
+	//
+	// Compose backends: returns configRemoteUser(cfg) if set, otherwise
+	// resolveComposeUser (compose service user), otherwise iterates
+	// fallbacks in order.
+	//
+	// The contract: config always wins over fallbacks. Compose-derived
+	// user sits between config and generic fallbacks.
+	pluginUser(ctx context.Context, fallbacks ...string) string
 
 	// start brings up a stopped container (and dependent services for compose).
 	// pluginResp is passed for compose override regeneration.

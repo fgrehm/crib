@@ -18,7 +18,18 @@ type singleBackend struct {
 	workspaceFolder string
 }
 
-func (b *singleBackend) pluginUser(_ context.Context) string {
+func (b *singleBackend) pluginUser(_ context.Context, fallbacks ...string) string {
+	// Config always wins over fallbacks.
+	if b.cfg != nil {
+		if user := configRemoteUser(b.cfg); user != "" {
+			return user
+		}
+	}
+	for _, f := range fallbacks {
+		if f != "" {
+			return f
+		}
+	}
 	return ""
 }
 

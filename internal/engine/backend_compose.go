@@ -20,8 +20,21 @@ type composeBackend struct {
 	inv             composeInvocation
 }
 
-func (b *composeBackend) pluginUser(ctx context.Context) string {
-	return b.e.resolveComposeUser(ctx, b.cfg, b.inv.files)
+func (b *composeBackend) pluginUser(ctx context.Context, fallbacks ...string) string {
+	// Config always wins over fallbacks/compose-derived user.
+	if user := configRemoteUser(b.cfg); user != "" {
+		return user
+	}
+	// Compose-derived user takes precedence over generic fallbacks.
+	if user := b.e.resolveComposeUser(ctx, b.cfg, b.inv.files); user != "" {
+		return user
+	}
+	for _, f := range fallbacks {
+		if f != "" {
+			return f
+		}
+	}
+	return ""
 }
 
 func (b *composeBackend) start(ctx context.Context, containerID string, pluginResp *plugin.PreContainerRunResponse) (string, error) {

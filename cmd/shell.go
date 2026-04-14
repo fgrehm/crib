@@ -67,8 +67,15 @@ Working directory is set to the workspace folder if available.`,
 
 		// Inject remoteEnv variables and set working directory from saved result.
 		result, _ := store.LoadResult(ws.ID)
-		if result != nil && result.RemoteUser != "" {
-			execArgs = append(execArgs, "-u", result.RemoteUser)
+
+		// Prefer remoteUser from current devcontainer.json; fall back to stored result.
+		// This ensures edits to remoteUser take effect without rebuilding.
+		remoteUser := liveRemoteUser(ws)
+		if remoteUser == "" && result != nil {
+			remoteUser = result.RemoteUser
+		}
+		if remoteUser != "" {
+			execArgs = append(execArgs, "-u", remoteUser)
 		}
 		execArgs = appendRemoteEnv(execArgs, result)
 		if result != nil && result.WorkspaceFolder != "" {

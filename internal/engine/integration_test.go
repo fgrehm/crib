@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -905,4 +906,647 @@ func TestIntegrationDoctor(t *testing.T) {
 		t.Error("orphaned workspace should have been removed by --fix")
 	}
 	_ = d // keep linter happy
+}
+
+func TestIntegrationImageMetadataLabel(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Dockerfile with a devcontainer.metadata label declaring remoteUser.
+	// The label is the spec mechanism for pre-built images to carry user config
+	// (e.g. mcr.microsoft.com/devcontainers/* images use this pattern).
+	dockerfile := "FROM alpine:3.20\n" +
+		"RUN adduser -D testlabeluser\n" +
+		`LABEL devcontainer.metadata='[{"remoteUser":"testlabeluser"}]'` + "\n"
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// devcontainer.json intentionally omits remoteUser -- it should be inferred
+	// from the devcontainer.metadata label baked into the image.
+	configContent := `{
+		"build": {"dockerfile": "Dockerfile"},
+		"overrideCommand": true
+	}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-metadata-label"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	// Make the workspace world-writable so t.TempDir cleanup can remove it.
+	// chownWorkspace transfers directory ownership to the non-root remoteUser;
+	// chmod a+rwX lets the test runner (a different UID) still unlink files.
+	t.Cleanup(func() {
+		_ = d.ExecContainer(ctx, wsID, result.ContainerID,
+			[]string{"chmod", "-R", "a+rwX", result.WorkspaceFolder},
+			nil, io.Discard, io.Discard, nil, "root")
+	})
+
+	if result.RemoteUser != "testlabeluser" {
+		t.Errorf("RemoteUser = %q, want %q (from devcontainer.metadata label)", result.RemoteUser, "testlabeluser")
+	}
+}
+
+func TestIntegrationDockerfileUser(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Dockerfile with a USER instruction but no remoteUser in devcontainer.json.
+	// crib should infer remoteUser from the image's Config.User after the build.
+	dockerfile := `FROM alpine:3.20
+RUN adduser -D nonroot
+USER nonroot
+`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	configContent := `{
+		"build": {"dockerfile": "Dockerfile"},
+		"overrideCommand": true
+	}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-dockerfile-user"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	// Make the workspace world-writable so t.TempDir cleanup can remove it.
+	// chownWorkspace transfers directory ownership to the non-root remoteUser;
+	// chmod a+rwX lets the test runner (a different UID) still unlink files.
+	t.Cleanup(func() {
+		_ = d.ExecContainer(ctx, wsID, result.ContainerID,
+			[]string{"chmod", "-R", "a+rwX", result.WorkspaceFolder},
+			nil, io.Discard, io.Discard, nil, "root")
+	})
+
+	if result.RemoteUser != "nonroot" {
+		t.Errorf("RemoteUser = %q, want %q (from Dockerfile USER instruction)", result.RemoteUser, "nonroot")
+	}
+}
+
+// TestIntegrationImageBasedMetadataLabel tests the cfg.Image path (no
+// Dockerfile, no features) where remoteUser is inferred from a pre-built
+// image's devcontainer.metadata label.
+func TestIntegrationImageBasedMetadataLabel(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	// Pre-build an image with a devcontainer.metadata label.
+	prebuiltImage := "crib-test-prebuilt-metadata:latest"
+	buildDir := t.TempDir()
+	dockerfile := "FROM alpine:3.20\n" +
+		"RUN adduser -D imguser\n" +
+		`LABEL devcontainer.metadata='[{"remoteUser":"imguser"}]'` + "\n"
+	if err := os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.BuildImage(ctx, "", &driver.BuildOptions{
+		Image:      prebuiltImage,
+		Dockerfile: filepath.Join(buildDir, "Dockerfile"),
+		Context:    buildDir,
+	}); err != nil {
+		t.Fatalf("pre-building image: %v", err)
+	}
+	t.Cleanup(func() { _ = d.RemoveImage(ctx, prebuiltImage) })
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// devcontainer.json uses "image" (no build), omits remoteUser.
+	configContent := fmt.Sprintf(`{
+		"image": %q,
+		"overrideCommand": true
+	}`, prebuiltImage)
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-image-metadata"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_ = d.ExecContainer(ctx, wsID, result.ContainerID,
+			[]string{"chmod", "-R", "a+rwX", result.WorkspaceFolder},
+			nil, io.Discard, io.Discard, nil, "root")
+	})
+
+	if result.RemoteUser != "imguser" {
+		t.Errorf("RemoteUser = %q, want %q (from devcontainer.metadata label on pre-built image)", result.RemoteUser, "imguser")
+	}
+}
+
+// TestIntegrationResumePreservesMetadataUser verifies the full lifecycle:
+//  1. Up infers remoteUser from devcontainer.metadata label
+//  2. Second Up (upExisting, container running) preserves the inferred user
+//  3. Editing devcontainer.json to set explicit remoteUser + recreate picks it up
+//
+// Subtests are sequential (shared container state); do not add t.Parallel.
+func TestIntegrationResumePreservesMetadataUser(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	// Pre-build an image with a devcontainer.metadata label.
+	prebuiltImage := "crib-test-resume-metadata:latest"
+	buildDir := t.TempDir()
+	dockerfile := "FROM alpine:3.20\n" +
+		"RUN adduser -D metauser\n" +
+		`LABEL devcontainer.metadata='[{"remoteUser":"metauser"}]'` + "\n"
+	if err := os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfile), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.BuildImage(ctx, "", &driver.BuildOptions{
+		Image:      prebuiltImage,
+		Dockerfile: filepath.Join(buildDir, "Dockerfile"),
+		Context:    buildDir,
+	}); err != nil {
+		t.Fatalf("pre-building image: %v", err)
+	}
+	t.Cleanup(func() { _ = d.RemoveImage(ctx, prebuiltImage) })
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(devcontainerDir, "devcontainer.json")
+
+	// Initial config: no remoteUser, should be inferred from metadata.
+	initialConfig := fmt.Sprintf(`{
+		"image": %q,
+		"overrideCommand": true
+	}`, prebuiltImage)
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-resume-metadata"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	// Track the latest result so the chmod cleanup targets the right container.
+	var latestResult *UpResult
+
+	// Step 1: First Up infers remoteUser from metadata label.
+	t.Run("initial up infers metadata remoteUser", func(t *testing.T) {
+		result, err := e.Up(ctx, ws, UpOptions{})
+		if err != nil {
+			t.Fatalf("Up: %v", err)
+		}
+		if result.RemoteUser != "metauser" {
+			t.Errorf("RemoteUser = %q, want %q", result.RemoteUser, "metauser")
+		}
+		latestResult = result
+	})
+
+	// Step 2: Second Up finds existing container (upExisting path).
+	// Without the storedResult pre-set fix, this would regress to "root"
+	// because the metadata fallback isn't available in the resume path.
+	t.Run("second up preserves remoteUser", func(t *testing.T) {
+		result, err := e.Up(ctx, ws, UpOptions{})
+		if err != nil {
+			t.Fatalf("Up: %v", err)
+		}
+		if result.RemoteUser != "metauser" {
+			t.Errorf("RemoteUser = %q, want %q (preserved on resume)", result.RemoteUser, "metauser")
+		}
+		latestResult = result
+	})
+
+	// Step 3: Edit devcontainer.json to override remoteUser, then recreate.
+	// chownWorkspace in step 1 transferred ownership to metauser; restore
+	// write access so the test can modify devcontainer.json (Docker chown
+	// takes real effect, unlike rootless Podman where it silently fails).
+	t.Run("config override after recreate", func(t *testing.T) {
+		if latestResult != nil {
+			_ = d.ExecContainer(ctx, wsID, latestResult.ContainerID,
+				[]string{"chmod", "-R", "a+rwX", latestResult.WorkspaceFolder},
+				nil, io.Discard, io.Discard, nil, "root")
+		}
+
+		// The explicit config value should take precedence over the metadata label.
+		overrideConfig := fmt.Sprintf(`{
+			"image": %q,
+			"remoteUser": "root",
+			"overrideCommand": true
+		}`, prebuiltImage)
+		if err := os.WriteFile(configPath, []byte(overrideConfig), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		result, err := e.Up(ctx, ws, UpOptions{Recreate: true})
+		if err != nil {
+			t.Fatalf("Up (recreate): %v", err)
+		}
+		if result.RemoteUser != "root" {
+			t.Errorf("RemoteUser = %q, want %q (config override)", result.RemoteUser, "root")
+		}
+		latestResult = result
+	})
+
+	// Restore workspace permissions for TempDir cleanup (runs before container delete due to LIFO).
+	t.Cleanup(func() {
+		if latestResult != nil {
+			_ = d.ExecContainer(ctx, wsID, latestResult.ContainerID,
+				[]string{"chmod", "-R", "a+rwX", latestResult.WorkspaceFolder},
+				nil, io.Discard, io.Discard, nil, "root")
+		}
+	})
+}
+
+// TestIntegrationRestartRecreatePreservesUser verifies that engine.Restart
+// preserves a metadata-inferred remoteUser through a safe-config-change
+// recreate (changeSafe path). Without the storedResult pre-set in
+// restartRecreate, user resolution could fall back to "root" if image
+// inspection yields no metadata.
+func TestIntegrationRestartRecreatePreservesUser(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	// Pre-build an image with a devcontainer.metadata label.
+	prebuiltImage := "crib-test-restart-user:latest"
+	buildDir := t.TempDir()
+	dockerfileContent := "FROM alpine:3.20\n" +
+		"RUN adduser -D restartuser\n" +
+		`LABEL devcontainer.metadata='[{"remoteUser":"restartuser"}]'` + "\n"
+	if err := os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfileContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.BuildImage(ctx, "", &driver.BuildOptions{
+		Image:      prebuiltImage,
+		Dockerfile: filepath.Join(buildDir, "Dockerfile"),
+		Context:    buildDir,
+	}); err != nil {
+		t.Fatalf("pre-building image: %v", err)
+	}
+	t.Cleanup(func() { _ = d.RemoveImage(ctx, prebuiltImage) })
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(devcontainerDir, "devcontainer.json")
+
+	// Initial config: no remoteUser -- will be inferred from metadata.
+	writeConfig := func(extra string) {
+		content := fmt.Sprintf(`{"image":%q,"overrideCommand":true%s}`, prebuiltImage, extra)
+		if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeConfig("")
+
+	wsID := "test-engine-restart-user"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	// Step 1: initial Up -- infer remoteUser from metadata.
+	upResult, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	if upResult.RemoteUser != "restartuser" {
+		t.Fatalf("Up: RemoteUser = %q, want %q", upResult.RemoteUser, "restartuser")
+	}
+
+	// Restore workspace write permissions before touching devcontainer.json.
+	// chownWorkspace transferred ownership to restartuser; chmod lets the test
+	// runner (a different UID) write the config file (Docker chown is real).
+	_ = d.ExecContainer(ctx, wsID, upResult.ContainerID,
+		[]string{"chmod", "-R", "a+rwX", upResult.WorkspaceFolder},
+		nil, io.Discard, io.Discard, nil, "root")
+
+	// Step 2: safe config change (add a containerEnv entry) → changeSafe →
+	// restartRecreate path. remoteUser must be preserved from storedResult.
+	writeConfig(`,"containerEnv":{"CRIB_TEST":"1"}`)
+
+	restartResult, err := e.Restart(ctx, ws)
+	if err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	if !restartResult.Recreated {
+		t.Errorf("Restart: Recreated = false, want true (config changed)")
+	}
+	if restartResult.RemoteUser != "restartuser" {
+		t.Errorf("Restart: RemoteUser = %q, want %q (preserved from stored result)", restartResult.RemoteUser, "restartuser")
+	}
+
+	t.Cleanup(func() {
+		_ = d.ExecContainer(ctx, wsID, restartResult.ContainerID,
+			[]string{"chmod", "-R", "a+rwX", restartResult.WorkspaceFolder},
+			nil, io.Discard, io.Discard, nil, "root")
+	})
+}
+
+// TestIntegrationFeaturesPreserveBaseImageMetadata verifies that building a
+// cfg.Image workspace with local features preserves the base image's
+// devcontainer.metadata label. Feature overlay Dockerfiles do not inherit
+// labels, so crib must carry the pre-build base metadata forward.
+// Without the fix (retaining pre-build labelMetadata when the built image
+// lacks the label), remoteUser inference would silently fall back to "root".
+func TestIntegrationFeaturesPreserveBaseImageMetadata(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	// Pre-build a base image carrying a devcontainer.metadata label.
+	baseImage := "crib-test-feature-meta-base:latest"
+	buildDir := t.TempDir()
+	dockerfileContent := "FROM alpine:3.20\n" +
+		"RUN adduser -D featurebaseuser\n" +
+		`LABEL devcontainer.metadata='[{"remoteUser":"featurebaseuser"}]'` + "\n"
+	if err := os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfileContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.BuildImage(ctx, "", &driver.BuildOptions{
+		Image:      baseImage,
+		Dockerfile: filepath.Join(buildDir, "Dockerfile"),
+		Context:    buildDir,
+	}); err != nil {
+		t.Fatalf("pre-building base image: %v", err)
+	}
+	t.Cleanup(func() { _ = d.RemoveImage(ctx, baseImage) })
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Minimal no-op local feature required to trigger the image+features path
+	// (buildFromImage with features, where the built image lacks the metadata label).
+	featureDir := filepath.Join(devcontainerDir, "noop-feature")
+	if err := os.MkdirAll(featureDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	featureJSON := `{"id":"noop-feature","version":"1.0.0","name":"No-op Feature","description":"Used for testing metadata label retention"}`
+	if err := os.WriteFile(filepath.Join(featureDir, "devcontainer-feature.json"), []byte(featureJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(featureDir, "install.sh"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// devcontainer.json uses cfg.Image + the local feature, no remoteUser.
+	// remoteUser must be inferred from the base image's metadata label.
+	configContent := fmt.Sprintf(`{
+		"image": %q,
+		"features": {"./noop-feature": {}},
+		"overrideCommand": true
+	}`, baseImage)
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-engine-feature-meta"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_ = d.ExecContainer(ctx, wsID, result.ContainerID,
+			[]string{"chmod", "-R", "a+rwX", result.WorkspaceFolder},
+			nil, io.Discard, io.Discard, nil, "root")
+	})
+
+	if result.RemoteUser != "featurebaseuser" {
+		t.Errorf("RemoteUser = %q, want %q (from base image devcontainer.metadata, preserved through feature build)",
+			result.RemoteUser, "featurebaseuser")
+	}
+}
+
+// TestIntegrationCfgRemoteUserWinsOverImage verifies that an explicit
+// remoteUser in devcontainer.json takes precedence over image metadata and
+// Dockerfile USER for both the cfg.Image and cfg.build.dockerfile paths.
+func TestIntegrationCfgRemoteUserWinsOverImage(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	tests := []struct {
+		name             string
+		wsID             string
+		buildDockerfile  string // non-empty = cfg.build.dockerfile; empty = pre-built cfg.Image
+		configRemoteUser string
+		wantRemoteUser   string
+	}{
+		{
+			name:             "cfg.Image: config remoteUser wins over metadata",
+			wsID:             "test-engine-cfguser-image",
+			configRemoteUser: "root",
+			wantRemoteUser:   "root",
+		},
+		{
+			name:             "cfg.build.dockerfile: config remoteUser wins over Dockerfile USER",
+			wsID:             "test-engine-cfguser-dockerfile",
+			buildDockerfile:  "FROM alpine:3.20\nRUN adduser -D dfuser\nUSER dfuser\n",
+			configRemoteUser: "root",
+			wantRemoteUser:   "root",
+		},
+	}
+
+	// Pre-build a shared base image with a metadata label for the cfg.Image test case.
+	baseImage := "crib-test-cfguser-base:latest"
+	buildDir := t.TempDir()
+	dockerfileContent := "FROM alpine:3.20\n" +
+		"RUN adduser -D imguser\n" +
+		`LABEL devcontainer.metadata='[{"remoteUser":"imguser"}]'` + "\n"
+	if err := os.WriteFile(filepath.Join(buildDir, "Dockerfile"), []byte(dockerfileContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.BuildImage(ctx, "", &driver.BuildOptions{
+		Image:      baseImage,
+		Dockerfile: filepath.Join(buildDir, "Dockerfile"),
+		Context:    buildDir,
+	}); err != nil {
+		t.Fatalf("pre-building base image: %v", err)
+	}
+	t.Cleanup(func() { _ = d.RemoveImage(ctx, baseImage) })
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			projectDir := t.TempDir()
+			devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+			if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+
+			var configContent string
+			if tt.buildDockerfile != "" {
+				if err := os.WriteFile(filepath.Join(devcontainerDir, "Dockerfile"), []byte(tt.buildDockerfile), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				configContent = fmt.Sprintf(`{
+					"build": {"dockerfile": "Dockerfile"},
+					"remoteUser": %q,
+					"overrideCommand": true
+				}`, tt.configRemoteUser)
+			} else {
+				configContent = fmt.Sprintf(`{
+					"image": %q,
+					"remoteUser": %q,
+					"overrideCommand": true
+				}`, baseImage, tt.configRemoteUser)
+			}
+			if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			ws := &workspace.Workspace{
+				ID:               tt.wsID,
+				Source:           projectDir,
+				DevContainerPath: ".devcontainer/devcontainer.json",
+				CreatedAt:        time.Now(),
+				LastUsedAt:       time.Now(),
+			}
+
+			_ = d.DeleteContainer(ctx, tt.wsID, oci.ContainerName(tt.wsID))
+			t.Cleanup(func() {
+				_ = d.DeleteContainer(ctx, tt.wsID, oci.ContainerName(tt.wsID))
+				cleanupWorkspaceImages(t, d, tt.wsID)
+			})
+
+			result, err := e.Up(ctx, ws, UpOptions{})
+			if err != nil {
+				t.Fatalf("Up: %v", err)
+			}
+
+			if result.RemoteUser != tt.wantRemoteUser {
+				t.Errorf("RemoteUser = %q, want %q", result.RemoteUser, tt.wantRemoteUser)
+			}
+		})
+	}
 }

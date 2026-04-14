@@ -126,12 +126,8 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		return nil, &ErrNoContainer{WorkspaceID: ws.ID}
 	}
 
-	// Dispatch plugins.
-	pluginUser := b.pluginUser(ctx)
-	if pluginUser == "" {
-		// For non-compose, use stored remote user for plugin dispatch.
-		pluginUser = storedResult.RemoteUser
-	}
+	// Dispatch plugins. Backend handles config-vs-fallback precedence.
+	pluginUser := b.pluginUser(ctx, storedResult.RemoteUser)
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, storedResult.ImageName, workspaceFolder, pluginUser)
 	if err != nil {
 		e.logger.Warn("plugin dispatch failed, continuing without plugins", "error", err)
@@ -144,21 +140,28 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 		return nil, err
 	}
 
+	// Pre-set remoteUser from stored result only when config doesn't have
+	// an explicit user. This allows live config changes to take effect.
+	remoteUser := ""
+	if configRemoteUser(cfg) == "" && storedResult.RemoteUser != "" {
+		remoteUser = storedResult.RemoteUser
+	}
 	cc := containerContext{
 		workspaceID:     ws.ID,
 		containerID:     newID,
-		remoteUser:      storedResult.RemoteUser, // pre-set to skip whoami
+		remoteUser:      remoteUser,
 		workspaceFolder: workspaceFolder,
 	}
 
 	result, err := e.finalize(ctx, ws, cfg, finalizeOpts{
-		cc:              cc,
-		imageName:       storedResult.ImageName,
-		hasEntrypoints:  storedResult.HasFeatureEntrypoints,
-		pluginResp:      pluginResp,
-		storedResult:    storedResult,
-		fromSnapshot:    true,
-		skipVolumeChown: true,
+		cc:                      cc,
+		imageName:               storedResult.ImageName,
+		hasEntrypoints:          storedResult.HasFeatureEntrypoints,
+		pluginResp:              pluginResp,
+		storedResult:            storedResult,
+		fromSnapshot:            true,
+		skipVolumeChown:         true,
+		shouldMergeFeatureHooks: false,
 	})
 	if err != nil {
 		return nil, err
@@ -183,6 +186,7 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 	// Determine the image to use.
 	imgResult := resolveRestartImage(hasSnapshot, snapshotImage, *storedResult, cfg)
 	var metadata []*config.ImageMetadata
+	var imageUser string
 
 	if imgResult.needsBuild {
 		e.reportProgress(PhaseBuild, "No cached image found, rebuilding...")
@@ -193,10 +197,23 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 		imgResult.imageName = buildRes.imageName
 		imgResult.hasEntrypoints = buildRes.hasEntrypoints
 		metadata = buildRes.imageMetadata
+		imageUser = buildRes.imageUser
+	} else if imgResult.imageName != "" {
+		// Inspect the cached/snapshot image for metadata and Config.User
+		// so finalize can infer remoteUser from devcontainer.metadata or
+		// Dockerfile USER even when no rebuild is needed.
+		if details, inspErr := e.driver.InspectImage(ctx, imgResult.imageName); inspErr == nil && details != nil {
+			imageUser = userFromConfigUser(details.Config.User)
+			metadata = parseImageMetadataLabel(details.Config.Labels)
+		}
 	}
 
-	// Dispatch plugins.
-	pluginUser := b.pluginUser(ctx)
+	// Dispatch plugins. Backend handles config-vs-fallback precedence.
+	// Fallback chain: metadata remoteUser → image Config.User → stored result.
+	pluginUser := b.pluginUser(ctx,
+		remoteUserFromMetadata(metadata),
+		imageUser,
+		storedResult.RemoteUser)
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, imgResult.imageName, workspaceFolder, pluginUser)
 	if err != nil {
 		return nil, err
@@ -213,9 +230,19 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 		return nil, err
 	}
 
+	// Pre-set remoteUser from stored result only when config doesn't have an
+	// explicit user. This guards against inspection failures (image pruned,
+	// transient runtime error) causing finalize to fall back to "root" and
+	// skip volume chown for a previously-inferred non-root user.
+	// Mirrors the same guard in restartSimple.
+	remoteUser := ""
+	if configRemoteUser(cfg) == "" && storedResult.RemoteUser != "" {
+		remoteUser = storedResult.RemoteUser
+	}
 	cc := containerContext{
 		workspaceID:     ws.ID,
 		containerID:     containerID,
+		remoteUser:      remoteUser,
 		workspaceFolder: workspaceFolder,
 	}
 
@@ -226,13 +253,15 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 	}
 
 	upResult, err := e.finalize(ctx, ws, cfg, finalizeOpts{
-		cc:             cc,
-		imageName:      resultImageName,
-		hasEntrypoints: imgResult.hasEntrypoints,
-		pluginResp:     pluginResp,
-		storedResult:   storedResult,
-		fromSnapshot:   hasSnapshot,
-		imageMetadata:  metadata,
+		cc:                      cc,
+		imageName:               resultImageName,
+		hasEntrypoints:          imgResult.hasEntrypoints,
+		pluginResp:              pluginResp,
+		storedResult:            storedResult,
+		fromSnapshot:            hasSnapshot,
+		imageMetadata:           metadata,
+		imageUser:               imageUser,
+		shouldMergeFeatureHooks: imgResult.needsBuild,
 	})
 	if err != nil {
 		if upResult != nil {

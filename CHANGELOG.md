@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+#### Spec-compliant `remoteUser` / `containerUser` resolution
+
+- `crib shell`, `crib exec`, and `crib run` now re-read `remoteUser` from the
+  live `devcontainer.json` on each invocation. Changes take effect without a
+  rebuild.
+- `remoteUser` and `containerUser` are now inferred from the image when
+  `devcontainer.json` does not set them explicitly. Resolution follows the spec:
+  config wins, then `devcontainer.metadata` label (last-wins merge), then
+  Dockerfile `USER` / `Config.User`. Pre-built images that carry a
+  `devcontainer.metadata` label (e.g.
+  `mcr.microsoft.com/devcontainers/javascript-node` sets `remoteUser: "node"`)
+  now correctly use the label user for feature context and plugin dispatch.
+- `containerUser` and `remoteUser` are resolved independently -- neither falls
+  back to the other except `remoteUser` → `containerUser` (one direction only,
+  per spec).
+- Resume and restart recreate paths preserve a previously-inferred `remoteUser`
+  instead of silently falling back to `root` when image inspection yields no
+  metadata.
+
 ## [0.8.0] - 2026-04-07
 
 ### Added
