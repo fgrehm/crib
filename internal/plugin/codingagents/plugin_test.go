@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/plugin"
@@ -277,9 +278,11 @@ func TestPreContainerRun_WorkspaceMode(t *testing.T) {
 		t.Fatal("expected non-nil response")
 	}
 
-	// Should produce one mount (persistent ~/.claude/) and one copy (onboarding config).
+	// Claude workspace mode alone produces one mount (persistent ~/.claude/)
+	// and one onboarding config copy. pi is untouched unless the pi key
+	// explicitly opts in.
 	if len(resp.Mounts) != 1 {
-		t.Fatalf("expected 1 mount, got %d", len(resp.Mounts))
+		t.Fatalf("expected 1 mount (claude only), got %d", len(resp.Mounts))
 	}
 	mount := resp.Mounts[0]
 	expectedSource := filepath.Join(wsDir, "plugins", "coding-agents", "claude-state")
@@ -296,14 +299,14 @@ func TestPreContainerRun_WorkspaceMode(t *testing.T) {
 	if len(resp.Copies) != 1 {
 		t.Fatalf("expected 1 copy (onboarding config only), got %d", len(resp.Copies))
 	}
-	copy := resp.Copies[0]
-	if copy.Target != "/home/vscode/.claude.json" {
-		t.Errorf("config target: expected /home/vscode/.claude.json, got %s", copy.Target)
+	cfg := resp.Copies[0]
+	if cfg.Target != "/home/vscode/.claude.json" {
+		t.Errorf("config target: expected /home/vscode/.claude.json, got %s", cfg.Target)
 	}
-	if copy.User != "vscode" {
-		t.Errorf("config user: expected vscode, got %s", copy.User)
+	if cfg.User != "vscode" {
+		t.Errorf("config user: expected vscode, got %s", cfg.User)
 	}
-	if !copy.IfNotExists {
+	if !cfg.IfNotExists {
 		t.Errorf("config IfNotExists: expected true (don't overwrite user's ~/.claude.json)")
 	}
 }
@@ -428,5 +431,191 @@ func TestGetCredentialsMode(t *testing.T) {
 				t.Errorf("getCredentialsMode() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// --- pi tests ---
+
+// setupPiAuth creates a minimal ~/.pi/agent/auth.json file.
+func setupPiAuth(t *testing.T, home string) {
+	t.Helper()
+	piAgentDir := filepath.Join(home, ".pi", "agent")
+	if err := os.MkdirAll(piAgentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	auth := `{"anthropic":{"type":"api_key","key":"sk-ant-test"}}`
+	if err := os.WriteFile(filepath.Join(piAgentDir, "auth.json"), []byte(auth), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPreContainerRun_PiHostMode_CredentialsExist(t *testing.T) {
+	home := t.TempDir()
+	setupPiAuth(t, home)
+
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: home}
+	req := testReqWithCustomizations(wsDir, "vscode", nil)
+	resp, err := p.PreContainerRun(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+
+	// Should have one copy for pi auth.json (no Claude creds on host).
+	if len(resp.Copies) != 1 {
+		t.Fatalf("expected 1 copy, got %d", len(resp.Copies))
+	}
+
+	piCopy := resp.Copies[0]
+	expectedSource := filepath.Join(wsDir, "plugins", "coding-agents", "pi", "auth.json")
+	if piCopy.Source != expectedSource {
+		t.Errorf("auth source: expected %s, got %s", expectedSource, piCopy.Source)
+	}
+	if piCopy.Target != "/home/vscode/.pi/agent/auth.json" {
+		t.Errorf("auth target: expected /home/vscode/.pi/agent/auth.json, got %s", piCopy.Target)
+	}
+	if piCopy.Mode != "0600" {
+		t.Errorf("auth mode: expected 0600, got %s", piCopy.Mode)
+	}
+	if piCopy.User != "vscode" {
+		t.Errorf("auth user: expected vscode, got %s", piCopy.User)
+	}
+}
+
+func TestPreContainerRun_PiHostMode_NoAuthFile(t *testing.T) {
+	home := t.TempDir() // no ~/.pi/agent/auth.json, no Claude creds
+
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: home}
+	req := testReqWithCustomizations(wsDir, "vscode", nil)
+	resp, err := p.PreContainerRun(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp != nil {
+		t.Errorf("expected nil response when no creds exist, got %+v", resp)
+	}
+}
+
+func TestPreContainerRun_PiHostMode_WithClaudeCredentials(t *testing.T) {
+	// Both Claude and pi credentials exist - both should be injected
+	home := t.TempDir()
+	setupCredentials(t, home)
+	setupPiAuth(t, home)
+
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: home}
+	req := testReqWithCustomizations(wsDir, "vscode", nil)
+	resp, err := p.PreContainerRun(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Should have 3 copies: 2 Claude + 1 pi
+	if len(resp.Copies) != 3 {
+		t.Fatalf("expected 3 copies (2 claude + 1 pi), got %d", len(resp.Copies))
+	}
+
+	// Locate pi copy by target suffix rather than index.
+	var piCopy *plugin.FileCopy
+	for i := range resp.Copies {
+		if strings.HasSuffix(resp.Copies[i].Target, ".pi/agent/auth.json") {
+			piCopy = &resp.Copies[i]
+			break
+		}
+	}
+	if piCopy == nil {
+		t.Fatal("expected a pi auth copy among responses")
+	}
+	if piCopy.User != "vscode" {
+		t.Errorf("pi auth user: expected vscode, got %s", piCopy.User)
+	}
+}
+
+func TestPreContainerRun_PiWorkspaceMode(t *testing.T) {
+	home := t.TempDir()
+	setupPiAuth(t, home)
+
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: home}
+	req := testReqWithCustomizations(wsDir, "vscode", map[string]any{
+		"coding-agents": map[string]any{
+			"credentials": "workspace",
+		},
+	})
+	resp, err := p.PreContainerRun(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected non-nil response")
+	}
+
+	// Claude workspace mount + pi workspace mount = 2 mounts.
+	if len(resp.Mounts) != 2 {
+		t.Fatalf("expected 2 mounts, got %d", len(resp.Mounts))
+	}
+
+	piMount := resp.Mounts[1]
+	expectedSource := filepath.Join(wsDir, "plugins", "coding-agents", "pi-state")
+	if piMount.Source != expectedSource {
+		t.Errorf("pi mount source: expected %s, got %s", expectedSource, piMount.Source)
+	}
+	if piMount.Target != "/home/vscode/.pi/agent" {
+		t.Errorf("pi mount target: expected /home/vscode/.pi/agent, got %s", piMount.Target)
+	}
+	if piMount.Type != "bind" {
+		t.Errorf("pi mount type: expected bind, got %s", piMount.Type)
+	}
+}
+
+// TestPreContainerRun_ClaudeWorkspaceMode_NoPiArtifacts verifies that a user
+// who only opts Claude into workspace mode does not get a stray pi-state
+// directory or bind mount. This regression would otherwise let processes in
+// the container write files into the workspace state dir.
+func TestPreContainerRun_ClaudeWorkspaceMode_NoPiArtifacts(t *testing.T) {
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: t.TempDir()} // no host pi auth
+	req := testReqWithCustomizations(wsDir, "vscode", map[string]any{
+		"coding-agents": map[string]any{
+			"credentials": "workspace",
+		},
+	})
+
+	if _, err := p.PreContainerRun(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(wsDir, "plugins", "coding-agents", "pi-state")); !os.IsNotExist(err) {
+		t.Errorf("expected pi-state dir to NOT exist, stat err: %v", err)
+	}
+}
+
+func TestPreContainerRun_PiWorkspaceMode_CreatesStateDir(t *testing.T) {
+	home := t.TempDir()
+	setupPiAuth(t, home)
+
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: home}
+	req := testReqWithCustomizations(wsDir, "vscode", map[string]any{
+		"coding-agents": map[string]any{
+			"credentials": "workspace",
+		},
+	})
+
+	if _, err := p.PreContainerRun(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := filepath.Join(wsDir, "plugins", "coding-agents", "pi-state")
+	info, err := os.Stat(stateDir)
+	if err != nil {
+		t.Fatalf("expected pi state dir to exist: %v", err)
+	}
+	if !info.IsDir() {
+		t.Errorf("expected pi state dir to be a directory")
 	}
 }

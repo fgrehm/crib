@@ -131,6 +131,28 @@ After switching to workspace mode, run `claude` inside the container and authent
 | Claude not installed on host | Workspace |
 | Credentials should stay per-project | Workspace |
 
+### pi support
+
+In addition to Claude Code, crib also supports [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) credentials. Both agents can run side-by-side in the same container and share the same `credentials` mode.
+
+**Enablement is auto-detected.** pi is only active when `~/.pi/agent/auth.json` exists on the host. If the file is missing, crib produces no pi artifacts regardless of mode. Once enabled, pi follows whichever `credentials` mode you pick for Claude:
+
+| Mode | `~/.pi/agent/auth.json` on host? | Behavior |
+|---|---|---|
+| `host` (default) | yes | `auth.json` is copied into the container on each `crib up`. |
+| `workspace` | yes | `~/.crib/workspaces/{id}/plugins/coding-agents/pi-state/` is bind-mounted over `~/.pi/agent/`. The mount shadows the host file; authenticate inside the container and the credentials persist across rebuilds. |
+| either | no | Nothing. |
+
+:::note[Enabling pi without installing it on the host]
+If you want per-workspace pi credentials but don't have pi installed on the host, `touch` the auth file to signal intent, then use workspace mode:
+
+```sh
+mkdir -p ~/.pi/agent && touch ~/.pi/agent/auth.json
+```
+
+Then set `credentials: "workspace"` and authenticate inside the container on first use. (Don't use this with host mode — an empty auth file would get copied into the container.)
+:::
+
 ### Credential cleanup
 
 In both modes, plugin data (including credentials) is stored on the host under `~/.crib/workspaces/{id}/plugins/coding-agents/`. Running `crib remove` deletes the workspace and all plugin data with it.
