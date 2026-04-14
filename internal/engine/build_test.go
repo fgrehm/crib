@@ -273,6 +273,248 @@ func TestResolveComposeContainerUser(t *testing.T) {
 	}
 }
 
+func TestParseImageMetadataLabel(t *testing.T) {
+	tests := []struct {
+		name      string
+		labels    map[string]string
+		wantCount int
+		wantUser  string // remoteUser of first entry (if any)
+	}{
+		{
+			name:      "array format",
+			labels:    map[string]string{"devcontainer.metadata": `[{"remoteUser":"node"}]`},
+			wantCount: 1,
+			wantUser:  "node",
+		},
+		{
+			name:      "single object format",
+			labels:    map[string]string{"devcontainer.metadata": `{"remoteUser":"vscode"}`},
+			wantCount: 1,
+			wantUser:  "vscode",
+		},
+		{
+			name:      "multiple entries",
+			labels:    map[string]string{"devcontainer.metadata": `[{"id":"feature1"},{"remoteUser":"dev"}]`},
+			wantCount: 2,
+		},
+		{
+			name:      "missing label",
+			labels:    map[string]string{},
+			wantCount: 0,
+		},
+		{
+			name:      "empty label",
+			labels:    map[string]string{"devcontainer.metadata": ""},
+			wantCount: 0,
+		},
+		{
+			name:      "malformed JSON",
+			labels:    map[string]string{"devcontainer.metadata": "{bad json"},
+			wantCount: 0,
+		},
+		{
+			name:      "nil labels",
+			labels:    nil,
+			wantCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseImageMetadataLabel(tt.labels)
+			if len(got) != tt.wantCount {
+				t.Errorf("got %d entries, want %d", len(got), tt.wantCount)
+			}
+			if tt.wantUser != "" && len(got) > 0 && got[0].RemoteUser != tt.wantUser {
+				t.Errorf("remoteUser = %q, want %q", got[0].RemoteUser, tt.wantUser)
+			}
+		})
+	}
+}
+
+func TestResolveRemoteUser_ImageUserFallback(t *testing.T) {
+	eng := &Engine{driver: &mockDriver{}, logger: slog.Default()}
+	cfg := &config.DevContainerConfig{} // no remoteUser or containerUser
+	cc := containerContext{workspaceID: "test", containerID: "abc"}
+
+	got := eng.resolveRemoteUser(context.Background(), cc, cfg, "node")
+	if got != "node" {
+		t.Errorf("resolveRemoteUser = %q, want %q (from imageUser)", got, "node")
+	}
+}
+
+func TestResolveRemoteUser_ConfigWinsOverImageUser(t *testing.T) {
+	eng := &Engine{driver: &mockDriver{}, logger: slog.Default()}
+	cfg := &config.DevContainerConfig{}
+	cfg.RemoteUser = "vscode"
+	cc := containerContext{workspaceID: "test", containerID: "abc"}
+
+	got := eng.resolveRemoteUser(context.Background(), cc, cfg, "node")
+	if got != "vscode" {
+		t.Errorf("resolveRemoteUser = %q, want %q (config wins)", got, "vscode")
+	}
+}
+
+func TestResolveRemoteUser_DefaultsToRoot(t *testing.T) {
+	eng := &Engine{driver: &mockDriver{}, logger: slog.Default()}
+	cfg := &config.DevContainerConfig{}
+	cc := containerContext{workspaceID: "test", containerID: "abc"}
+
+	got := eng.resolveRemoteUser(context.Background(), cc, cfg, "")
+	if got != "root" {
+		t.Errorf("resolveRemoteUser = %q, want root", got)
+	}
+}
+
+func TestUserFromConfigUser(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"plain user", "node", "node"},
+		{"user:group", "node:nodejs", "node"},
+		{"uid", "1000", "1000"},
+		{"uid:gid", "1000:1000", "1000"},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := userFromConfigUser(tt.input)
+			if got != tt.want {
+				t.Errorf("userFromConfigUser(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRemoteUserFromMetadata(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata []*config.ImageMetadata
+		want     string
+	}{
+		{
+			name:     "single remoteUser",
+			metadata: []*config.ImageMetadata{{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "node"}}},
+			want:     "node",
+		},
+		{
+			name: "last entry wins",
+			metadata: []*config.ImageMetadata{
+				{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "first"}},
+				{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "last"}},
+			},
+			want: "last",
+		},
+		{
+			name: "containerUser fallback",
+			metadata: []*config.ImageMetadata{
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "cuser"}},
+			},
+			want: "cuser",
+		},
+		{
+			name: "remoteUser preferred over containerUser",
+			metadata: []*config.ImageMetadata{
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "cuser"}},
+				{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "ruser"}},
+			},
+			want: "ruser",
+		},
+		{
+			name:     "empty metadata",
+			metadata: []*config.ImageMetadata{},
+			want:     "",
+		},
+		{
+			name:     "nil metadata",
+			metadata: nil,
+			want:     "",
+		},
+		{
+			name: "nil entries skipped",
+			metadata: []*config.ImageMetadata{
+				nil,
+				{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "valid"}},
+				nil,
+			},
+			want: "valid",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := remoteUserFromMetadata(tt.metadata)
+			if got != tt.want {
+				t.Errorf("remoteUserFromMetadata() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestContainerUserFromMetadata(t *testing.T) {
+	tests := []struct {
+		name     string
+		metadata []*config.ImageMetadata
+		want     string
+	}{
+		{
+			name:     "single containerUser",
+			metadata: []*config.ImageMetadata{{NonComposeBase: config.NonComposeBase{ContainerUser: "node"}}},
+			want:     "node",
+		},
+		{
+			name: "containerUser wins over remoteUser",
+			metadata: []*config.ImageMetadata{
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "root"}, DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "node"}},
+			},
+			want: "root",
+		},
+		{
+			name: "remoteUser not used as fallback",
+			metadata: []*config.ImageMetadata{
+				{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "node"}},
+			},
+			want: "",
+		},
+		{
+			name: "last entry wins",
+			metadata: []*config.ImageMetadata{
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "first"}},
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "last"}},
+			},
+			want: "last",
+		},
+		{
+			name:     "empty metadata",
+			metadata: []*config.ImageMetadata{},
+			want:     "",
+		},
+		{
+			name:     "nil metadata",
+			metadata: nil,
+			want:     "",
+		},
+		{
+			name: "nil entries skipped",
+			metadata: []*config.ImageMetadata{
+				nil,
+				{NonComposeBase: config.NonComposeBase{ContainerUser: "valid"}},
+				nil,
+			},
+			want: "valid",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := containerUserFromMetadata(tt.metadata)
+			if got != tt.want {
+				t.Errorf("containerUserFromMetadata() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolveContainerUser_FromConfig(t *testing.T) {
 	tests := []struct {
 		name          string

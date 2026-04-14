@@ -13,7 +13,31 @@ import (
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
-func TestSingleBackend_PluginUser_ReturnsEmpty(t *testing.T) {
+func TestSingleBackend_PluginUser_ConfigWinsOverFallbacks(t *testing.T) {
+	cfg := &config.DevContainerConfig{}
+	cfg.RemoteUser = "vscode"
+
+	b := &singleBackend{cfg: cfg}
+
+	// Config should take priority over fallbacks.
+	got := b.pluginUser(context.Background(), "fallback-user")
+	if got != "vscode" {
+		t.Errorf("pluginUser() = %q, want vscode (config wins)", got)
+	}
+}
+
+func TestSingleBackend_PluginUser_FirstNonEmptyFallback(t *testing.T) {
+	cfg := &config.DevContainerConfig{} // no remoteUser or containerUser
+
+	b := &singleBackend{cfg: cfg}
+
+	got := b.pluginUser(context.Background(), "", "node", "root")
+	if got != "node" {
+		t.Errorf("pluginUser() = %q, want node (first non-empty fallback)", got)
+	}
+}
+
+func TestSingleBackend_PluginUser_NoConfigNoFallbacks(t *testing.T) {
 	b := &singleBackend{}
 	if got := b.pluginUser(context.Background()); got != "" {
 		t.Errorf("pluginUser() = %q, want empty", got)

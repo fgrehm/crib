@@ -15,9 +15,8 @@ func TestComposeBackend_CanResumeFromStored_ReturnsTrue(t *testing.T) {
 	}
 }
 
-func TestComposeBackend_PluginUser_Delegates(t *testing.T) {
-	// When config has remoteUser set, resolveComposeUser returns ""
-	// (the config user is used as fallback by dispatchPlugins).
+func TestComposeBackend_PluginUser_ConfigWins(t *testing.T) {
+	// When config has remoteUser set, pluginUser returns it directly.
 	eng := &Engine{logger: slog.Default()}
 
 	cfg := &config.DevContainerConfig{}
@@ -29,10 +28,9 @@ func TestComposeBackend_PluginUser_Delegates(t *testing.T) {
 		inv: composeInvocation{files: []string{}},
 	}
 
-	user := b.pluginUser(context.Background())
-	// resolveComposeUser returns "" when config already has remoteUser.
-	if user != "" {
-		t.Errorf("pluginUser() = %q, want empty (config has remoteUser)", user)
+	user := b.pluginUser(context.Background(), "fallback-user")
+	if user != "vscode" {
+		t.Errorf("pluginUser() = %q, want vscode (from config)", user)
 	}
 }
 
@@ -59,11 +57,11 @@ func TestComposeBackend_BuildImage_SkipsWhenNoFeatures(t *testing.T) {
 	}
 }
 
-func TestComposeBackend_PluginUser_NoConfigUser_ReturnsEmpty(t *testing.T) {
+func TestComposeBackend_PluginUser_Fallbacks(t *testing.T) {
 	eng := &Engine{logger: slog.Default()}
 
-	// No remoteUser or containerUser. resolveComposeUser will try to inspect
-	// the compose service but with no files, it returns "".
+	// No remoteUser or containerUser. resolveComposeUser returns ""
+	// because there are no compose files to inspect. Fallbacks are used.
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
 
@@ -73,9 +71,16 @@ func TestComposeBackend_PluginUser_NoConfigUser_ReturnsEmpty(t *testing.T) {
 		inv: composeInvocation{files: []string{}},
 	}
 
-	user := b.pluginUser(context.Background())
+	// First non-empty fallback is used.
+	user := b.pluginUser(context.Background(), "", "node", "root")
+	if user != "node" {
+		t.Errorf("pluginUser() = %q, want node (first non-empty fallback)", user)
+	}
+
+	// No config and no fallbacks.
+	user = b.pluginUser(context.Background())
 	if user != "" {
-		t.Errorf("pluginUser() = %q, want empty", user)
+		t.Errorf("pluginUser() = %q, want empty (no config or fallbacks)", user)
 	}
 }
 

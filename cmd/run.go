@@ -64,6 +64,9 @@ Use -- to separate crib flags from the container command:
 		result, _ := store.LoadResult(ws.ID)
 
 		user, _ := cmd.Flags().GetString("user")
+		if user == "" {
+			user = liveRemoteUser(ws)
+		}
 		if user == "" && result != nil {
 			user = result.RemoteUser
 		}

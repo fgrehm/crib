@@ -11,14 +11,20 @@ import (
 
 // finalizeOpts configures the finalize method.
 type finalizeOpts struct {
-	cc              containerContext
-	imageName       string                          // original (not snapshot) for result
-	hasEntrypoints  bool                            // feature entrypoints baked into image
-	pluginResp      *plugin.PreContainerRunResponse // may be nil
-	storedResult    *workspace.Result               // non-nil for snapshot/stored resume
-	fromSnapshot    bool                            // true = restore env + resume hooks
-	skipVolumeChown bool                            // true for restart (volumes exist)
-	imageMetadata   []*config.ImageMetadata         // feature metadata for hook merging (nil = no features)
+	cc                      containerContext
+	imageName               string                          // original (not snapshot) for result
+	hasEntrypoints          bool                            // feature entrypoints baked into image
+	pluginResp              *plugin.PreContainerRunResponse // may be nil
+	storedResult            *workspace.Result               // non-nil for snapshot/stored resume
+	fromSnapshot            bool                            // true = restore env + resume hooks
+	skipVolumeChown         bool                            // true for restart (volumes exist)
+	shouldMergeFeatureHooks bool                            // true when imageMetadata carries fresh feature
+	// lifecycle hooks that must be merged and stored.
+	// Set on first creation (build or image inspection) so
+	// hooks are persisted for restart/resume. False on
+	// resume paths that restore stored hooks.
+	imageMetadata []*config.ImageMetadata // metadata for user inference and hook merging
+	imageUser     string                  // Config.User from image inspect (Dockerfile USER fallback)
 }
 
 // finalize runs post-creation/post-restart steps: plugin file copies, volume
@@ -38,6 +44,15 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 
 		if !opts.skipVolumeChown {
 			remoteUser := configRemoteUser(cfg)
+			if remoteUser == "" {
+				// devcontainer.metadata remoteUser/containerUser takes priority
+				// over raw image Config.User -- the label is the spec mechanism
+				// for images to declare their intended dev user.
+				remoteUser = remoteUserFromMetadata(opts.imageMetadata)
+			}
+			if remoteUser == "" {
+				remoteUser = opts.imageUser
+			}
 			if remoteUser != "" && remoteUser != "root" {
 				volCC := cc
 				volCC.remoteUser = remoteUser
@@ -48,7 +63,16 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 
 	// 2. Resolve remote user (skip if already set, e.g. from restartSimple).
 	if cc.remoteUser == "" {
-		cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg)
+		// devcontainer.metadata remoteUser/containerUser takes priority over
+		// raw image Config.User: the label is the spec mechanism for images to
+		// declare their intended dev user (e.g. node image sets remoteUser=node
+		// even though Config.User may be root). Fall back to Config.User only
+		// when metadata doesn't specify a user.
+		fallbackUser := remoteUserFromMetadata(opts.imageMetadata)
+		if fallbackUser == "" {
+			fallbackUser = opts.imageUser
+		}
+		cc.remoteUser = e.resolveRemoteUser(ctx, cc, cfg, fallbackUser)
 	}
 
 	// 3. Build result (shared across both paths).
@@ -103,9 +127,14 @@ func (e *Engine) finalizeFreshPath(ctx context.Context, ws *workspace.Workspace,
 	envb.AddPluginResponse(opts.pluginResp)
 
 	// Merge feature hooks with user hooks once (used for both storage and dispatch).
+	// On first creation (shouldMergeFeatureHooks=true), merge from imageMetadata
+	// and store the result so the restart/resume path can dispatch stored hooks
+	// without re-resolving features. On resume (shouldMergeFeatureHooks=false),
+	// use stored feature hooks to avoid overwriting them with label-only metadata
+	// that lacks feature lifecycle hooks.
 	var hooks *hookSet
 	switch {
-	case len(opts.imageMetadata) > 0:
+	case opts.shouldMergeFeatureHooks && len(opts.imageMetadata) > 0:
 		merged := config.MergeConfiguration(cfg, opts.imageMetadata)
 		hooks = hookSetFromMerged(merged)
 		// Store feature-only hooks so the resume/restart path can dispatch them

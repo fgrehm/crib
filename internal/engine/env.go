@@ -2,8 +2,9 @@ package engine
 
 import (
 	"maps"
-	"os"
 	"strings"
+
+	"github.com/fgrehm/crib/internal/config"
 )
 
 // parseEnvLines parses the output of the `env` command into a map.
@@ -23,13 +24,7 @@ func parseEnvLines(output string) map[string]string {
 
 // envMap returns the current process environment as a map.
 func envMap() map[string]string {
-	env := make(map[string]string)
-	for _, e := range os.Environ() {
-		if k, v, ok := strings.Cut(e, "="); ok {
-			env[k] = v
-		}
-	}
-	return env
+	return config.EnvMap()
 }
 
 // probedEnvSkip lists probed environment variables to exclude from the

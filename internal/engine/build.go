@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,7 +20,8 @@ import (
 type buildResult struct {
 	imageName      string
 	imageMetadata  []*config.ImageMetadata
-	hasEntrypoints bool // true if any feature declared an entrypoint
+	imageUser      string // Config.User from image inspect (Dockerfile USER)
+	hasEntrypoints bool   // true if any feature declared an entrypoint
 }
 
 // buildImage handles image building for the single container path.
@@ -46,15 +48,49 @@ func (e *Engine) buildImage(ctx context.Context, ws *workspace.Workspace, cfg *c
 // buildFromImage handles the image-based devcontainer path.
 // If features are specified, generates a Dockerfile that extends the base image.
 func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, features []*feature.FeatureSet, containerUser string) (*buildResult, error) {
+	// Inspect image for metadata label and Config.User.
+	// Fail open: image may not be pulled yet; the build below will pull it.
+	var imageUser string
+	var labelMetadata []*config.ImageMetadata
+	baseImageInspected := false
+	if details, err := e.driver.InspectImage(ctx, cfg.Image); err == nil && details != nil {
+		imageUser = userFromConfigUser(details.Config.User)
+		labelMetadata = parseImageMetadataLabel(details.Config.Labels)
+		baseImageInspected = true
+	}
+
 	if len(features) == 0 {
 		// No features, no build needed. Just use the image directly.
-		return &buildResult{imageName: cfg.Image}, nil
+		return &buildResult{
+			imageName:     cfg.Image,
+			imageMetadata: labelMetadata,
+			imageUser:     imageUser,
+		}, nil
+	}
+
+	// Override containerUser from image when config didn't set containerUser
+	// explicitly. containerUser and remoteUser are independent properties per
+	// the spec; infer containerUser from metadata/Config.User even when
+	// cfg.RemoteUser is set. Prefer metadata over Config.User: images like
+	// mcr.microsoft.com/devcontainers/* set Config.User to root but carry
+	// a devcontainer.metadata label with containerUser or remoteUser.
+	if cfg.ContainerUser == "" {
+		if cu := containerUserFromMetadata(labelMetadata); cu != "" {
+			containerUser = cu
+		} else if imageUser != "" {
+			containerUser = imageUser
+		}
 	}
 
 	// Generate a Dockerfile that installs features on top of the base image.
 	remoteUser := cfg.RemoteUser
 	if remoteUser == "" {
-		remoteUser = containerUser
+		ru := remoteUserFromMetadata(labelMetadata)
+		if ru != "" {
+			remoteUser = ru
+		} else {
+			remoteUser = containerUser
+		}
 	}
 
 	featureContent, featurePrefix := feature.GenerateDockerfile(features, containerUser, remoteUser, e.buildCacheMounts)
@@ -63,7 +99,47 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	featurePrefix = strings.ReplaceAll(featurePrefix, "=placeholder", "="+cfg.Image)
 	dockerfileContent := featurePrefix + "\n" + featureContent
 
-	return e.doBuild(ctx, ws, cfg, dockerfileContent, features, containerUser, remoteUser)
+	result, err := e.doBuild(ctx, ws, cfg, dockerfileContent, features, containerUser, remoteUser)
+	if err != nil {
+		return nil, err
+	}
+	// Inspect the built image for the final Config.User and metadata label.
+	// Features may add a USER instruction, so we use result.imageName rather
+	// than the pre-build base image inspection.
+	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil && details != nil {
+		result.imageUser = userFromConfigUser(details.Config.User)
+		// Replace pre-build labelMetadata with the built image's label when
+		// present. Feature overlay Dockerfiles don't inherit labels from the
+		// base image (each stage starts fresh), so absence of the label in the
+		// built image is expected -- retain the pre-build base image metadata
+		// so remoteUser inference remains correct for images that carry it
+		// (e.g. mcr.microsoft.com/devcontainers/*).
+		if _, labelPresent := details.Config.Labels["devcontainer.metadata"]; labelPresent {
+			labelMetadata = parseImageMetadataLabel(details.Config.Labels)
+		}
+	} else {
+		result.imageUser = imageUser // fall back to pre-build inspection
+	}
+
+	// If the base image wasn't locally available before the build, re-inspect
+	// it now that doBuild has pulled it. The built image doesn't inherit the
+	// base image's devcontainer.metadata label (each Dockerfile stage starts
+	// fresh), so this is the only way to recover remoteUser/containerUser from
+	// images like mcr.microsoft.com/devcontainers/* on first pull.
+	if !baseImageInspected && labelMetadata == nil {
+		if details, inspErr := e.driver.InspectImage(ctx, cfg.Image); inspErr == nil && details != nil {
+			labelMetadata = parseImageMetadataLabel(details.Config.Labels)
+			if result.imageUser == "" {
+				result.imageUser = userFromConfigUser(details.Config.User)
+			}
+		}
+	}
+
+	// Prepend label metadata before feature metadata (label = lower priority than features).
+	if len(labelMetadata) > 0 {
+		result.imageMetadata = append(labelMetadata, result.imageMetadata...)
+	}
+	return result, nil
 }
 
 // buildFromDockerfile handles the Dockerfile-based devcontainer path.
@@ -96,12 +172,19 @@ func (e *Engine) buildFromDockerfile(ctx context.Context, ws *workspace.Workspac
 			buildTarget = cfg.Build.Target
 		}
 
-		// Determine the container user from the Dockerfile if not set.
-		if containerUser == "" {
-			containerUser = df.FindUserStatement(nil, nil, buildTarget)
-		}
-		if remoteUser == "" {
-			remoteUser = containerUser
+		// Determine the container user from the Dockerfile USER when config
+		// didn't set containerUser explicitly. containerUser and remoteUser are
+		// independent per the spec, so infer containerUser even when
+		// cfg.RemoteUser is set. Only fall remoteUser through to the Dockerfile
+		// USER when config also didn't set remoteUser (it already defaults to
+		// containerUser when empty, but this keeps the intent explicit).
+		if cfg.ContainerUser == "" {
+			if dfUser := df.FindUserStatement(nil, nil, buildTarget); dfUser != "" {
+				containerUser = dfUser
+				if cfg.RemoteUser == "" {
+					remoteUser = dfUser
+				}
+			}
 		}
 
 		// Ensure the final stage has a name for feature overlay.
@@ -125,7 +208,19 @@ func (e *Engine) buildFromDockerfile(ctx context.Context, ws *workspace.Workspac
 		dockerfileContent = featurePrefix + "\n" + dockerfileContent + "\n" + featureContent
 	}
 
-	return e.doBuild(ctx, ws, cfg, dockerfileContent, features, containerUser, remoteUser)
+	result, err := e.doBuild(ctx, ws, cfg, dockerfileContent, features, containerUser, remoteUser)
+	if err != nil {
+		return nil, err
+	}
+
+	// Inspect the built image for Config.User and metadata label.
+	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil && details != nil {
+		result.imageUser = userFromConfigUser(details.Config.User)
+		if labelMeta := parseImageMetadataLabel(details.Config.Labels); len(labelMeta) > 0 {
+			result.imageMetadata = append(labelMeta, result.imageMetadata...)
+		}
+	}
+	return result, nil
 }
 
 // doBuild writes the final Dockerfile and invokes the driver to build.
@@ -283,8 +378,8 @@ func (e *Engine) resolveComposeContainerUser(ctx context.Context, cfg *config.De
 		return serviceUser
 	}
 	if baseImage != "" {
-		if details, err := e.driver.InspectImage(ctx, baseImage); err == nil && details.Config.User != "" {
-			return details.Config.User
+		if details, err := e.driver.InspectImage(ctx, baseImage); err == nil && details != nil && details.Config.User != "" {
+			return userFromConfigUser(details.Config.User)
 		}
 	}
 	return "root"
@@ -378,6 +473,80 @@ func (e *Engine) cleanupPreviousBuildImage(ctx context.Context, wsID, newImageNa
 	if err := e.driver.RemoveImage(ctx, oldImage); err != nil {
 		e.logger.Debug("failed to remove previous build image", "image", oldImage, "error", err)
 	}
+}
+
+// parseImageMetadataLabel parses the devcontainer.metadata label from image
+// labels. The label value is either a JSON array of ImageMetadata objects or a
+// single object. Returns nil on missing label, empty label, or parse error.
+func parseImageMetadataLabel(labels map[string]string) []*config.ImageMetadata {
+	raw, ok := labels["devcontainer.metadata"]
+	if !ok || raw == "" {
+		return nil
+	}
+	// Try array first (standard format).
+	var arr []*config.ImageMetadata
+	if err := json.Unmarshal([]byte(raw), &arr); err == nil {
+		// Filter out null entries that JSON unmarshaling may produce.
+		out := arr[:0]
+		for _, m := range arr {
+			if m != nil {
+				out = append(out, m)
+			}
+		}
+		if len(out) == 0 {
+			return nil
+		}
+		return out
+	}
+	// Fall back to single object.
+	var single config.ImageMetadata
+	if err := json.Unmarshal([]byte(raw), &single); err == nil {
+		return []*config.ImageMetadata{&single}
+	}
+	return nil
+}
+
+// userFromConfigUser extracts the user portion from an image Config.User value.
+// Docker/OCI images may set Config.User as "user", "uid", "user:group", or
+// "uid:gid". Only the user/uid portion is meaningful for exec --user and chown.
+func userFromConfigUser(configUser string) string {
+	if before, _, ok := strings.Cut(configUser, ":"); ok {
+		return before
+	}
+	return configUser
+}
+
+// remoteUserFromMetadata returns the remoteUser from the highest-priority
+// metadata entry that declares one, or the containerUser as fallback.
+// Metadata is stored [label..., feature...] where features have higher
+// priority; iterating in reverse (last entry first) matches the
+// "last entry wins" semantics of config.MergeConfiguration.
+func remoteUserFromMetadata(metadata []*config.ImageMetadata) string {
+	for i := len(metadata) - 1; i >= 0; i-- {
+		if metadata[i] != nil && metadata[i].RemoteUser != "" {
+			return metadata[i].RemoteUser
+		}
+	}
+	for i := len(metadata) - 1; i >= 0; i-- {
+		if metadata[i] != nil && metadata[i].ContainerUser != "" {
+			return metadata[i].ContainerUser
+		}
+	}
+	return ""
+}
+
+// containerUserFromMetadata returns the containerUser from the highest-priority
+// metadata entry that declares one. Returns "" when no entry sets containerUser.
+// Does NOT fall back to remoteUser: the spec relationship is one-way
+// (remoteUser defaults to containerUser, never the reverse). Callers should
+// fall back to imageUser/Dockerfile USER when this returns "".
+func containerUserFromMetadata(metadata []*config.ImageMetadata) string {
+	for i := len(metadata) - 1; i >= 0; i-- {
+		if metadata[i] != nil && metadata[i].ContainerUser != "" {
+			return metadata[i].ContainerUser
+		}
+	}
+	return ""
 }
 
 // featureToMetadata converts a FeatureSet to an ImageMetadata entry.

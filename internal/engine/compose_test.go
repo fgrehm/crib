@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -438,30 +437,6 @@ func TestGenerateComposeOverride_NoBuildSection(t *testing.T) {
 	// Container labels should still be present.
 	if !strings.Contains(content, "crib.workspace") {
 		t.Errorf("expected container label, got:\n%s", content)
-	}
-}
-
-func TestResolveComposeUser_ConfigUserTakesPrecedence(t *testing.T) {
-	eng := &Engine{
-		logger: slog.Default(),
-		driver: &mockDriver{},
-	}
-
-	cfg := &config.DevContainerConfig{}
-	cfg.RemoteUser = "devuser"
-
-	// When config already specifies a user, resolveComposeUser returns empty
-	// (meaning: don't override, let dispatchPlugins use cfg fields).
-	user := eng.resolveComposeUser(context.Background(), cfg, nil)
-	if user != "" {
-		t.Errorf("expected empty user when config has remoteUser, got %q", user)
-	}
-
-	cfg.RemoteUser = ""
-	cfg.ContainerUser = "devuser"
-	user = eng.resolveComposeUser(context.Background(), cfg, nil)
-	if user != "" {
-		t.Errorf("expected empty user when config has containerUser, got %q", user)
 	}
 }
 

@@ -59,8 +59,11 @@ Use -- to separate crib flags from the container command:
 		// Inject remoteEnv variables (before user-specified --env so user flags take precedence).
 		result, _ := store.LoadResult(ws.ID)
 
-		// Determine user: explicit --user flag takes precedence, then remoteUser from config.
+		// Determine user: explicit --user flag, then live config, then stored result.
 		user, _ := cmd.Flags().GetString("user")
+		if user == "" {
+			user = liveRemoteUser(ws)
+		}
 		if user == "" && result != nil {
 			user = result.RemoteUser
 		}

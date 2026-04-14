@@ -261,8 +261,13 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 		storedHasEntrypoints = stored.HasFeatureEntrypoints
 	}
 
-	// Dispatch plugins.
-	pluginUser := b.pluginUser(ctx)
+	// Dispatch plugins. Backend handles config-vs-fallback precedence.
+	var pluginUser string
+	if storedResult != nil {
+		pluginUser = b.pluginUser(ctx, storedResult.RemoteUser)
+	} else {
+		pluginUser = b.pluginUser(ctx)
+	}
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, storedImageName, workspaceFolder, pluginUser)
 	if err != nil {
 		e.logger.Warn("plugin dispatch failed for existing container", "error", err)
@@ -273,6 +278,14 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 		workspaceID:     ws.ID,
 		containerID:     container.ID,
 		workspaceFolder: workspaceFolder,
+	}
+	// Pre-set remoteUser from stored result only when config doesn't have
+	// an explicit user. This allows live config changes to take effect.
+	// Without this guard, metadata-only remoteUser (e.g. node image with
+	// devcontainer.metadata label) would be lost on resume because finalize
+	// falls through to whoami which returns the container process user (root).
+	if storedResult != nil && storedResult.RemoteUser != "" && configRemoteUser(cfg) == "" {
+		cc.remoteUser = storedResult.RemoteUser
 	}
 
 	if !container.State.IsRunning() {
@@ -287,12 +300,13 @@ func (e *Engine) upExisting(ctx context.Context, ws *workspace.Workspace, cfg *c
 	}
 
 	return e.finalize(ctx, ws, cfg, finalizeOpts{
-		cc:             cc,
-		imageName:      storedImageName,
-		hasEntrypoints: storedHasEntrypoints,
-		pluginResp:     pluginResp,
-		storedResult:   storedResult,
-		fromSnapshot:   storedResult != nil,
+		cc:                      cc,
+		imageName:               storedImageName,
+		hasEntrypoints:          storedHasEntrypoints,
+		pluginResp:              pluginResp,
+		storedResult:            storedResult,
+		fromSnapshot:            storedResult != nil,
+		shouldMergeFeatureHooks: false,
 	})
 }
 
@@ -318,8 +332,10 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 		return nil, err
 	}
 
-	// Dispatch plugins.
-	pluginUser := b.pluginUser(ctx)
+	// Dispatch plugins. Backend handles config-vs-fallback precedence.
+	pluginUser := b.pluginUser(ctx,
+		remoteUserFromMetadata(buildRes.imageMetadata),
+		buildRes.imageUser)
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, buildRes.imageName, workspaceFolder, pluginUser)
 	if err != nil {
 		return nil, err
@@ -335,17 +351,30 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 		return nil, err
 	}
 
+	// Late inspect: if the initial inspect in buildFromImage failed (image
+	// wasn't pulled yet), the runtime pulled it during createContainer. Re-
+	// inspect to capture devcontainer.metadata and Config.User so finalize
+	// can infer remoteUser correctly on first run.
+	if buildRes.imageMetadata == nil && buildRes.imageUser == "" && buildRes.imageName != "" {
+		if details, inspErr := e.driver.InspectImage(ctx, buildRes.imageName); inspErr == nil && details != nil {
+			buildRes.imageUser = userFromConfigUser(details.Config.User)
+			buildRes.imageMetadata = parseImageMetadataLabel(details.Config.Labels)
+		}
+	}
+
 	cc := containerContext{
 		workspaceID:     ws.ID,
 		containerID:     containerID,
 		workspaceFolder: workspaceFolder,
 	}
 	return e.finalize(ctx, ws, cfg, finalizeOpts{
-		cc:             cc,
-		imageName:      buildRes.imageName,
-		hasEntrypoints: buildRes.hasEntrypoints,
-		pluginResp:     pluginResp,
-		imageMetadata:  buildRes.imageMetadata,
+		cc:                      cc,
+		imageName:               buildRes.imageName,
+		hasEntrypoints:          buildRes.hasEntrypoints,
+		pluginResp:              pluginResp,
+		imageMetadata:           buildRes.imageMetadata,
+		imageUser:               buildRes.imageUser,
+		shouldMergeFeatureHooks: true,
 	})
 }
 
@@ -353,8 +382,8 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 func (e *Engine) upFromImage(ctx context.Context, ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, b containerBackend, imageName string, storedResult *workspace.Result, isSnapshot bool) (*UpResult, error) {
 	e.logger.Debug("up from image", "image", imageName, "snapshot", isSnapshot)
 
-	// Dispatch plugins.
-	pluginUser := b.pluginUser(ctx)
+	// Dispatch plugins. Backend handles config-vs-fallback precedence.
+	pluginUser := b.pluginUser(ctx, storedResult.RemoteUser)
 	pluginResp, err := e.dispatchPlugins(ctx, ws, cfg, imageName, workspaceFolder, pluginUser)
 	if err != nil {
 		return nil, err
@@ -372,22 +401,30 @@ func (e *Engine) upFromImage(ctx context.Context, ws *workspace.Workspace, cfg *
 		return nil, err
 	}
 
+	// Pre-set remoteUser from stored result only when config doesn't have
+	// an explicit user. This allows live config changes to take effect.
+	remoteUser := ""
+	if configRemoteUser(cfg) == "" && storedResult.RemoteUser != "" {
+		remoteUser = storedResult.RemoteUser
+	}
 	cc := containerContext{
 		workspaceID:     ws.ID,
 		containerID:     containerID,
 		workspaceFolder: workspaceFolder,
+		remoteUser:      remoteUser,
 	}
 
 	// Use the original image name (not snapshot) for the result.
 	resultImageName := storedResult.ImageName
 
 	return e.finalize(ctx, ws, cfg, finalizeOpts{
-		cc:             cc,
-		imageName:      resultImageName,
-		hasEntrypoints: hasEntrypoints,
-		pluginResp:     pluginResp,
-		storedResult:   storedResult,
-		fromSnapshot:   isSnapshot,
+		cc:                      cc,
+		imageName:               resultImageName,
+		hasEntrypoints:          hasEntrypoints,
+		pluginResp:              pluginResp,
+		storedResult:            storedResult,
+		fromSnapshot:            isSnapshot,
+		shouldMergeFeatureHooks: false,
 	})
 }
 
@@ -717,11 +754,15 @@ func configRemoteUser(cfg *config.DevContainerConfig) string {
 	return cfg.ContainerUser
 }
 
-// resolveRemoteUser determines the remote user for a container, using the
-// config's remoteUser/containerUser with fallback to detecting the container's
-// default user via whoami.
-func (e *Engine) resolveRemoteUser(ctx context.Context, cc containerContext, cfg *config.DevContainerConfig) string {
+// resolveRemoteUser determines the remote user for a container. Precedence:
+// config (remoteUser/containerUser) > fallbackUser (metadata/image-derived) > whoami > "root".
+// The fallbackUser is typically derived from devcontainer.metadata or image Config.User
+// when the devcontainer.json does not explicitly set user fields.
+func (e *Engine) resolveRemoteUser(ctx context.Context, cc containerContext, cfg *config.DevContainerConfig, fallbackUser string) string {
 	remoteUser := configRemoteUser(cfg)
+	if remoteUser == "" && fallbackUser != "" {
+		remoteUser = fallbackUser
+	}
 	if remoteUser == "" {
 		remoteUser = e.detectContainerUser(ctx, cc)
 	}
