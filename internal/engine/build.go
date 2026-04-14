@@ -514,18 +514,14 @@ func remoteUserFromMetadata(metadata []*config.ImageMetadata) string {
 }
 
 // containerUserFromMetadata returns the containerUser from the highest-priority
-// metadata entry that declares one. Falls back to remoteUser per the
-// devcontainers spec (remoteUser defaults to containerUser, so if only
-// remoteUser is set, it implies the containerUser as well).
+// metadata entry that declares one. Returns "" when no entry sets containerUser.
+// Does NOT fall back to remoteUser: the spec relationship is one-way
+// (remoteUser defaults to containerUser, never the reverse). Callers should
+// fall back to imageUser/Dockerfile USER when this returns "".
 func containerUserFromMetadata(metadata []*config.ImageMetadata) string {
 	for i := len(metadata) - 1; i >= 0; i-- {
 		if metadata[i] != nil && metadata[i].ContainerUser != "" {
 			return metadata[i].ContainerUser
-		}
-	}
-	for i := len(metadata) - 1; i >= 0; i-- {
-		if metadata[i] != nil && metadata[i].RemoteUser != "" {
-			return metadata[i].RemoteUser
 		}
 	}
 	return ""

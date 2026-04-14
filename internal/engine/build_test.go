@@ -471,11 +471,11 @@ func TestContainerUserFromMetadata(t *testing.T) {
 			want: "root",
 		},
 		{
-			name: "remoteUser as fallback",
+			name: "remoteUser not used as fallback",
 			metadata: []*config.ImageMetadata{
 				{DevContainerConfigBase: config.DevContainerConfigBase{RemoteUser: "node"}},
 			},
-			want: "node",
+			want: "",
 		},
 		{
 			name: "last entry wins",
