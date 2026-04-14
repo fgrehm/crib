@@ -11,7 +11,7 @@ Please include:
 - Steps to reproduce
 - The potential impact
 
-You should receive an initial response within 7 days. Please do not open a
+You should receive an initial response within a few days. Please do not open a
 public issue for security vulnerabilities.
 
 ## Supported Versions
