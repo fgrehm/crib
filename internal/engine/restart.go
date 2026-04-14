@@ -230,9 +230,19 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 		return nil, err
 	}
 
+	// Pre-set remoteUser from stored result only when config doesn't have an
+	// explicit user. This guards against inspection failures (image pruned,
+	// transient runtime error) causing finalize to fall back to "root" and
+	// skip volume chown for a previously-inferred non-root user.
+	// Mirrors the same guard in restartSimple.
+	remoteUser := ""
+	if configRemoteUser(cfg) == "" && storedResult.RemoteUser != "" {
+		remoteUser = storedResult.RemoteUser
+	}
 	cc := containerContext{
 		workspaceID:     ws.ID,
 		containerID:     containerID,
+		remoteUser:      remoteUser,
 		workspaceFolder: workspaceFolder,
 	}
 
