@@ -9,9 +9,10 @@ import (
 )
 
 // liveRemoteUser reads remoteUser/containerUser from the current
-// devcontainer.json for the given workspace. Returns "" on parse failure or
-// missing config. Used by shell, exec, and run to ensure edits to remoteUser
-// take effect without requiring a rebuild.
+// devcontainer.json for the given workspace. Returns "" on parse failure,
+// missing config, or when neither field is set. Callers fall back to the
+// stored result.json value when this returns "". Used by shell, exec, and run
+// to ensure edits to remoteUser take effect without requiring a rebuild.
 func liveRemoteUser(ws *workspace.Workspace) string {
 	cfgPath := filepath.Join(ws.Source, ws.DevContainerPath)
 	cfg, err := config.Parse(cfgPath)

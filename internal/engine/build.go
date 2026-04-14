@@ -66,14 +66,13 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 		}, nil
 	}
 
-	// Override containerUser from image if config didn't set either user field.
-	// Prefer metadata label users over Config.User: images like
-	// mcr.microsoft.com/devcontainers/* set Config.User to root but
-	// the devcontainer.metadata label specifies remoteUser (e.g. "node").
-	// Resolve containerUser and remoteUser separately from metadata per
-	// the spec: containerUser and remoteUser are independent properties
-	// that each follow "last value wins" merge semantics.
-	if cfg.ContainerUser == "" && cfg.RemoteUser == "" {
+	// Override containerUser from image when config didn't set containerUser
+	// explicitly. containerUser and remoteUser are independent properties per
+	// the spec; infer containerUser from metadata/Config.User even when
+	// cfg.RemoteUser is set. Prefer metadata over Config.User: images like
+	// mcr.microsoft.com/devcontainers/* set Config.User to root but carry
+	// a devcontainer.metadata label with containerUser or remoteUser.
+	if cfg.ContainerUser == "" {
 		if cu := containerUserFromMetadata(labelMetadata); cu != "" {
 			containerUser = cu
 		} else if imageUser != "" {
@@ -107,13 +106,14 @@ func (e *Engine) buildFromImage(ctx context.Context, ws *workspace.Workspace, cf
 	// than the pre-build base image inspection.
 	if details, inspErr := e.driver.InspectImage(ctx, result.imageName); inspErr == nil && details != nil {
 		result.imageUser = userFromConfigUser(details.Config.User)
-		// Replace pre-build labelMetadata with the built image's label.
-		// If the label is absent from the built image, clear it so pre-build
-		// metadata from the base image doesn't leak into the result.
+		// Replace pre-build labelMetadata with the built image's label when
+		// present. Feature overlay Dockerfiles don't inherit labels from the
+		// base image (each stage starts fresh), so absence of the label in the
+		// built image is expected -- retain the pre-build base image metadata
+		// so remoteUser inference remains correct for images that carry it
+		// (e.g. mcr.microsoft.com/devcontainers/*).
 		if _, labelPresent := details.Config.Labels["devcontainer.metadata"]; labelPresent {
 			labelMetadata = parseImageMetadataLabel(details.Config.Labels)
-		} else {
-			labelMetadata = nil
 		}
 	} else {
 		result.imageUser = imageUser // fall back to pre-build inspection
@@ -155,13 +155,18 @@ func (e *Engine) buildFromDockerfile(ctx context.Context, ws *workspace.Workspac
 			buildTarget = cfg.Build.Target
 		}
 
-		// Determine the container user from the Dockerfile if config didn't set
-		// either user field. resolveContainerUser defaults to "root" when both
-		// are empty, so check the config fields directly here.
-		if cfg.ContainerUser == "" && cfg.RemoteUser == "" {
+		// Determine the container user from the Dockerfile USER when config
+		// didn't set containerUser explicitly. containerUser and remoteUser are
+		// independent per the spec, so infer containerUser even when
+		// cfg.RemoteUser is set. Only fall remoteUser through to the Dockerfile
+		// USER when config also didn't set remoteUser (it already defaults to
+		// containerUser when empty, but this keeps the intent explicit).
+		if cfg.ContainerUser == "" {
 			if dfUser := df.FindUserStatement(nil, nil, buildTarget); dfUser != "" {
 				containerUser = dfUser
-				remoteUser = dfUser
+				if cfg.RemoteUser == "" {
+					remoteUser = dfUser
+				}
 			}
 		}
 
