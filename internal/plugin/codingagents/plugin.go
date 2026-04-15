@@ -11,13 +11,15 @@ import (
 )
 
 // Plugin provides coding-agent credential sharing. Currently supports
-// Claude Code by staging ~/.claude/.credentials.json and a minimal
-// ~/.claude.json, then requesting they be copied into the container.
+// Claude Code and pi by staging credentials and injecting them into the
+// container.
+//
+// Claude Code: ~/.claude/.credentials.json and ~/.claude.json
+// pi: ~/.pi/agent/auth.json
 //
 // When configured with "credentials": "workspace" in devcontainer.json
-// customizations, the plugin instead bind-mounts a persistent directory
-// for ~/.claude/ so credentials created inside the container survive
-// rebuilds. The user authenticates inside the container on first use.
+// customizations, the plugin instead bind-mounts persistent directories
+// so credentials created inside the container survive rebuilds.
 type Plugin struct {
 	plugin.BasePlugin
 	homeDir string // overridable for testing; defaults to os.UserHomeDir()
@@ -31,16 +33,37 @@ func New() *Plugin {
 // Name returns the plugin identifier.
 func (p *Plugin) Name() string { return "coding-agents" }
 
-// PreContainerRun checks the credentials mode from devcontainer.json
-// customizations and either copies host credentials into the container
-// ("host" mode, default) or bind-mounts a persistent directory for
-// in-container authentication ("workspace" mode).
+// PreContainerRun dispatches credential handling for Claude Code and pi.
+// Both agents share the single `credentials` customization ("host" default,
+// or "workspace"). pi is only active when `~/.pi/agent/auth.json` exists on
+// the host; otherwise crib produces no pi artifacts regardless of mode.
 func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunRequest) (*plugin.PreContainerRunResponse, error) {
 	mode := getCredentialsMode(req.Customizations)
+
+	var resp *plugin.PreContainerRunResponse
+	var err error
 	if mode == "workspace" {
-		return p.workspaceMode(req)
+		resp, err = p.workspaceMode(req)
+	} else {
+		resp, err = p.hostMode(req)
 	}
-	return p.hostMode(req)
+	if err != nil {
+		return nil, err
+	}
+
+	piResp, err := p.handlePi(req, mode)
+	if err != nil {
+		return nil, err
+	}
+	if piResp != nil {
+		if resp == nil {
+			resp = &plugin.PreContainerRunResponse{}
+		}
+		resp.Mounts = append(resp.Mounts, piResp.Mounts...)
+		resp.Copies = append(resp.Copies, piResp.Copies...)
+	}
+
+	return resp, nil
 }
 
 // hostMode is the default behavior: copy host ~/.claude/.credentials.json
@@ -161,4 +184,83 @@ func getCredentialsMode(customizations map[string]any) string {
 		return "workspace"
 	}
 	return "host"
+}
+
+// handlePi routes pi credential handling based on the shared credentials mode.
+// pi is only active when `~/.pi/agent/auth.json` exists on the host, which is
+// the user-visible opt-in gesture. In host mode the auth file is copied into
+// the container; in workspace mode a persistent state directory is
+// bind-mounted over `~/.pi/agent/` so credentials created inside the
+// container survive rebuilds.
+func (p *Plugin) handlePi(req *plugin.PreContainerRunRequest, mode string) (*plugin.PreContainerRunResponse, error) {
+	home := p.homeDir
+	if home == "" {
+		var err error
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return nil, fmt.Errorf("getting home directory: %w", err)
+		}
+	}
+
+	authSrc := filepath.Join(home, ".pi", "agent", "auth.json")
+	if _, err := os.Stat(authSrc); os.IsNotExist(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("checking pi auth: %w", err)
+	}
+
+	if mode == "workspace" {
+		return p.piWorkspaceMode(req)
+	}
+	return p.piHostMode(req, authSrc)
+}
+
+// piHostMode stages pi credentials from authSrc and copies them into the container.
+func (p *Plugin) piHostMode(req *plugin.PreContainerRunRequest, authSrc string) (*plugin.PreContainerRunResponse, error) {
+	pluginDir := filepath.Join(req.WorkspaceDir, "plugins", "coding-agents", "pi")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating plugin dir: %w", err)
+	}
+
+	// Stage auth file.
+	authDst := filepath.Join(pluginDir, "auth.json")
+	if err := plugin.CopyFile(authSrc, authDst, 0o600); err != nil {
+		return nil, fmt.Errorf("staging pi auth: %w", err)
+	}
+
+	remoteHome := plugin.InferRemoteHome(req.RemoteUser)
+	owner := plugin.InferOwner(req.RemoteUser)
+
+	return &plugin.PreContainerRunResponse{
+		Copies: []plugin.FileCopy{
+			{
+				Source: authDst,
+				Target: filepath.Join(remoteHome, ".pi", "agent", "auth.json"),
+				Mode:   "0600",
+				User:   owner,
+			},
+		},
+	}, nil
+}
+
+// piWorkspaceMode bind-mounts a persistent directory for pi so credentials
+// created inside the container survive rebuilds. User can authenticate inside
+// the container and credentials persist across rebuilds.
+func (p *Plugin) piWorkspaceMode(req *plugin.PreContainerRunRequest) (*plugin.PreContainerRunResponse, error) {
+	stateDir := filepath.Join(req.WorkspaceDir, "plugins", "coding-agents", "pi-state")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating pi state dir: %w", err)
+	}
+
+	remoteHome := plugin.InferRemoteHome(req.RemoteUser)
+
+	return &plugin.PreContainerRunResponse{
+		Mounts: []config.Mount{
+			{
+				Type:   "bind",
+				Source: stateDir,
+				Target: filepath.Join(remoteHome, ".pi", "agent"),
+			},
+		},
+	}, nil
 }
