@@ -91,3 +91,41 @@ func TestLoadCribRC_DotfilesDisableWithRepository(t *testing.T) {
 		t.Errorf("Repository = %q, want git@github.com:user/dots", rc.Dotfiles.Repository)
 	}
 }
+
+func TestLoadCribRC_PluginsDisable(t *testing.T) {
+	rc := setupCribRC(t, "plugins.disable = ssh, dotfiles\n")
+	if len(rc.PluginsDisable) != 2 {
+		t.Fatalf("expected 2 plugins, got %v", rc.PluginsDisable)
+	}
+	if rc.PluginsDisable[0] != "ssh" || rc.PluginsDisable[1] != "dotfiles" {
+		t.Errorf("PluginsDisable = %v, want [ssh dotfiles]", rc.PluginsDisable)
+	}
+}
+
+func TestLoadCribRC_PluginsDisableSingle(t *testing.T) {
+	rc := setupCribRC(t, "plugins.disable = ssh\n")
+	if len(rc.PluginsDisable) != 1 || rc.PluginsDisable[0] != "ssh" {
+		t.Errorf("PluginsDisable = %v, want [ssh]", rc.PluginsDisable)
+	}
+}
+
+func TestLoadCribRC_PluginsDisableEmpty(t *testing.T) {
+	rc := setupCribRC(t, "plugins.disable =\n")
+	if len(rc.PluginsDisable) != 0 {
+		t.Errorf("PluginsDisable = %v, want empty", rc.PluginsDisable)
+	}
+}
+
+func TestLoadCribRC_PluginsKillSwitch(t *testing.T) {
+	rc := setupCribRC(t, "plugins = false\n")
+	if !rc.PluginsDisableAll {
+		t.Error("expected PluginsDisableAll = true")
+	}
+}
+
+func TestLoadCribRC_PluginsKillSwitchUnknownValue_Ignored(t *testing.T) {
+	rc := setupCribRC(t, "plugins = maybe\n")
+	if rc.PluginsDisableAll {
+		t.Error("expected PluginsDisableAll = false for unknown value")
+	}
+}

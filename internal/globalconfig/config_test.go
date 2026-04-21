@@ -120,3 +120,74 @@ func TestLoadFrom_EmptyFile(t *testing.T) {
 		t.Errorf("expected empty config from empty file")
 	}
 }
+
+func TestLoadFrom_PluginsDisableList(t *testing.T) {
+	path := writeTOMLConfig(t, `
+[plugins]
+disable = ["ssh", "dotfiles"]
+`)
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	want := []string{"ssh", "dotfiles"}
+	if len(cfg.Plugins.Disable) != len(want) {
+		t.Fatalf("Disable len = %d, want %d (%v)", len(cfg.Plugins.Disable), len(want), cfg.Plugins.Disable)
+	}
+	for i, v := range want {
+		if cfg.Plugins.Disable[i] != v {
+			t.Errorf("Disable[%d] = %q, want %q", i, cfg.Plugins.Disable[i], v)
+		}
+	}
+	if cfg.Plugins.DisableAll {
+		t.Error("DisableAll = true, want false")
+	}
+}
+
+func TestLoadFrom_PluginsDisableAll(t *testing.T) {
+	path := writeTOMLConfig(t, `
+[plugins]
+disable_all = true
+`)
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if !cfg.Plugins.DisableAll {
+		t.Error("expected DisableAll = true")
+	}
+}
+
+func TestLoadFrom_PluginsEmptySection(t *testing.T) {
+	path := writeTOMLConfig(t, `
+[plugins]
+`)
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if len(cfg.Plugins.Disable) != 0 {
+		t.Errorf("expected empty Disable list, got %v", cfg.Plugins.Disable)
+	}
+	if cfg.Plugins.DisableAll {
+		t.Error("expected DisableAll = false")
+	}
+}
+
+func TestLoadFrom_PluginsMissingSection(t *testing.T) {
+	path := writeTOMLConfig(t, `
+[dotfiles]
+repository = "x"
+`)
+
+	cfg, err := LoadFrom(path)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if len(cfg.Plugins.Disable) != 0 || cfg.Plugins.DisableAll {
+		t.Errorf("expected zero-value Plugins, got %+v", cfg.Plugins)
+	}
+}

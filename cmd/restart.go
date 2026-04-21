@@ -73,3 +73,7 @@ args), restart will ask you to run 'crib rebuild' instead.`,
 		return nil
 	},
 }
+
+func init() {
+	addPluginFlags(restartCmd)
+}

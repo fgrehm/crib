@@ -63,3 +63,7 @@ var rebuildCmd = &cobra.Command{
 		return nil
 	},
 }
+
+func init() {
+	addPluginFlags(rebuildCmd)
+}

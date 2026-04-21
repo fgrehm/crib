@@ -59,4 +59,5 @@ var upCmd = &cobra.Command{
 
 func init() {
 	upCmd.Flags().BoolVar(&recreateFlag, "recreate", false, "recreate container even if one already exists")
+	addPluginFlags(upCmd)
 }
