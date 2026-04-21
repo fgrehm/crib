@@ -218,6 +218,7 @@ func (p *Plugin) handlePi(req *plugin.PreContainerRunRequest, mode string) (*plu
 	// Treat anything other than a regular file (directory, socket, etc.) as
 	// "not enabled" so we never try to CopyFile something we can't read.
 	if !info.Mode().IsRegular() {
+		slog.Warn("coding-agents: pi auth path is not a regular file, skipping pi injection", "path", authSrc)
 		return nil, nil
 	}
 	return p.piHostMode(req, authSrc)
