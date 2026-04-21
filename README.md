@@ -45,5 +45,3 @@ MIT
 ---
 
 Logo created with ChatGPT image generation, prompted by Claude.
-
-Built with [Claude Code](https://claude.ai/code) (Opus 4.6, Sonnet 4.6, Haiku 4.5).
