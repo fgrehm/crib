@@ -279,8 +279,8 @@ func TestPreContainerRun_WorkspaceMode(t *testing.T) {
 	}
 
 	// Claude workspace mode alone produces one mount (persistent ~/.claude/)
-	// and one onboarding config copy. pi is untouched unless the pi key
-	// explicitly opts in.
+	// and one onboarding config copy. pi stays dormant because there is no
+	// ~/.pi/agent/auth.json on the host.
 	if len(resp.Mounts) != 1 {
 		t.Fatalf("expected 1 mount (claude only), got %d", len(resp.Mounts))
 	}
@@ -482,6 +482,26 @@ func TestPreContainerRun_PiHostMode_CredentialsExist(t *testing.T) {
 	}
 	if piCopy.User != "vscode" {
 		t.Errorf("auth user: expected vscode, got %s", piCopy.User)
+	}
+}
+
+func TestPreContainerRun_PiHostMode_AuthPathIsDirectory(t *testing.T) {
+	// Guard: a directory (or other non-regular file) at the auth.json path
+	// should be treated as "not enabled" rather than triggering a copy error.
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".pi", "agent", "auth.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: home}
+	req := testReqWithCustomizations(wsDir, "vscode", nil)
+	resp, err := p.PreContainerRun(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp != nil {
+		t.Errorf("expected nil response when auth path is a directory, got %+v", resp)
 	}
 }
 

@@ -203,10 +203,16 @@ func (p *Plugin) handlePi(req *plugin.PreContainerRunRequest, mode string) (*plu
 	}
 
 	authSrc := filepath.Join(home, ".pi", "agent", "auth.json")
-	if _, err := os.Stat(authSrc); os.IsNotExist(err) {
+	info, err := os.Stat(authSrc)
+	if os.IsNotExist(err) {
 		return nil, nil
 	} else if err != nil {
 		return nil, fmt.Errorf("checking pi auth: %w", err)
+	}
+	// Treat anything other than a regular file (directory, socket, etc.) as
+	// "not enabled" so we never try to CopyFile something we can't read.
+	if !info.Mode().IsRegular() {
+		return nil, nil
 	}
 
 	if mode == "workspace" {
