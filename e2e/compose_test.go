@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -79,8 +80,8 @@ func hasCompose() bool {
 // lastLine returns the last non-empty line of output, handling log messages on earlier lines.
 func lastLine(out string) string {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		if line := strings.TrimSpace(lines[i]); line != "" {
+	for _, l := range slices.Backward(lines) {
+		if line := strings.TrimSpace(l); line != "" {
 			return line
 		}
 	}
