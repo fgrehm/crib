@@ -131,6 +131,15 @@ After switching to workspace mode, run `claude` inside the container and authent
 | Claude not installed on host | Workspace |
 | Credentials should stay per-project | Workspace |
 
+### pi support
+
+In addition to Claude Code, crib also supports [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) credentials. Both agents can run side-by-side in the same container and behave identically under the shared `credentials` mode:
+
+| Mode | Behavior |
+|---|---|
+| `host` (default) | If `~/.pi/agent/auth.json` exists on the host, it's copied into the container on each `crib up`. Otherwise no-op. |
+| `workspace` | `~/.crib/workspaces/{id}/plugins/coding-agents/pi-state/` is bind-mounted over `~/.pi/agent/` so credentials created inside the container survive rebuilds. No host prerequisites. |
+
 ### Credential cleanup
 
 In both modes, plugin data (including credentials) is stored on the host under `~/.crib/workspaces/{id}/plugins/coding-agents/`. Running `crib remove` deletes the workspace and all plugin data with it.

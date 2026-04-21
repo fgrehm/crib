@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cosign keyless signing for release artifacts. `checksums.txt.sigstore.json`
   is now attached to each GitHub release.
 - `SECURITY.md` with responsible disclosure instructions.
+- pi support in the coding-agents plugin. pi behaves identically to Claude
+  Code under the shared `credentials` mode: in host mode,
+  `~/.pi/agent/auth.json` is copied into the container when it exists on the
+  host; in workspace mode, a persistent state directory is bind-mounted so
+  credentials created inside the container survive rebuilds.
 
 ### Fixed
 

@@ -2,22 +2,15 @@ package codingagents
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path/filepath"
+	"log/slog"
 
-	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/plugin"
 )
 
-// Plugin provides coding-agent credential sharing. Currently supports
-// Claude Code by staging ~/.claude/.credentials.json and a minimal
-// ~/.claude.json, then requesting they be copied into the container.
-//
-// When configured with "credentials": "workspace" in devcontainer.json
-// customizations, the plugin instead bind-mounts a persistent directory
-// for ~/.claude/ so credentials created inside the container survive
-// rebuilds. The user authenticates inside the container on first use.
+// Plugin provides coding-agent credential sharing for Claude Code and pi.
+// Both agents behave identically under the shared `credentials` customization
+// ("host" default, or "workspace") and can run side-by-side in the same
+// container. Per-agent handling lives in claude.go and pi.go.
 type Plugin struct {
 	plugin.BasePlugin
 	homeDir string // overridable for testing; defaults to os.UserHomeDir()
@@ -31,116 +24,31 @@ func New() *Plugin {
 // Name returns the plugin identifier.
 func (p *Plugin) Name() string { return "coding-agents" }
 
-// PreContainerRun checks the credentials mode from devcontainer.json
-// customizations and either copies host credentials into the container
-// ("host" mode, default) or bind-mounts a persistent directory for
-// in-container authentication ("workspace" mode).
+// PreContainerRun dispatches credential handling for Claude Code and pi.
+// Claude is primary; a pi failure is logged at Warn and skipped so it can
+// never block Claude credential injection.
 func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunRequest) (*plugin.PreContainerRunResponse, error) {
 	mode := getCredentialsMode(req.Customizations)
-	if mode == "workspace" {
-		return p.workspaceMode(req)
-	}
-	return p.hostMode(req)
-}
 
-// hostMode is the default behavior: copy host ~/.claude/.credentials.json
-// and a minimal ~/.claude.json into the container.
-func (p *Plugin) hostMode(req *plugin.PreContainerRunRequest) (*plugin.PreContainerRunResponse, error) {
-	home := p.homeDir
-	if home == "" {
-		var err error
-		home, err = os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("getting home directory: %w", err)
+	resp, err := p.handleClaude(req, mode)
+	if err != nil {
+		return nil, err
+	}
+
+	// pi handling is best-effort: a pi-specific failure must not break Claude
+	// credential injection. Log at Warn and continue rather than bubbling up.
+	piResp, err := p.handlePi(req, mode)
+	if err != nil {
+		slog.Warn("coding-agents: pi credential handling failed, skipping pi injection", "error", err)
+	} else if piResp != nil {
+		if resp == nil {
+			resp = &plugin.PreContainerRunResponse{}
 		}
+		resp.Mounts = append(resp.Mounts, piResp.Mounts...)
+		resp.Copies = append(resp.Copies, piResp.Copies...)
 	}
 
-	credsSrc := filepath.Join(home, ".claude", ".credentials.json")
-	if _, err := os.Stat(credsSrc); os.IsNotExist(err) {
-		return nil, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("checking credentials: %w", err)
-	}
-
-	pluginDir := filepath.Join(req.WorkspaceDir, "plugins", "coding-agents", "claude-code")
-	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
-		return nil, fmt.Errorf("creating plugin dir: %w", err)
-	}
-
-	// Stage credentials file.
-	credsDst := filepath.Join(pluginDir, "credentials.json")
-	if err := plugin.CopyFile(credsSrc, credsDst, 0o600); err != nil {
-		return nil, fmt.Errorf("staging credentials: %w", err)
-	}
-
-	// Generate minimal config so Claude Code skips onboarding.
-	configDst := filepath.Join(pluginDir, "claude.json")
-	if err := os.WriteFile(configDst, []byte(`{"hasCompletedOnboarding":true}`), 0o644); err != nil {
-		return nil, fmt.Errorf("writing config: %w", err)
-	}
-
-	remoteHome := plugin.InferRemoteHome(req.RemoteUser)
-	owner := plugin.InferOwner(req.RemoteUser)
-
-	return &plugin.PreContainerRunResponse{
-		Copies: []plugin.FileCopy{
-			{
-				Source: credsDst,
-				Target: filepath.Join(remoteHome, ".claude", ".credentials.json"),
-				Mode:   "0600",
-				User:   owner,
-			},
-			{
-				Source:      configDst,
-				Target:      filepath.Join(remoteHome, ".claude.json"),
-				User:        owner,
-				IfNotExists: true,
-			},
-		},
-	}, nil
-}
-
-// workspaceMode bind-mounts a persistent directory for ~/.claude/ so
-// credentials created inside the container survive rebuilds. A minimal
-// ~/.claude.json is injected via FileCopy (not bind-mount) because
-// Claude Code does atomic renames on that file.
-func (p *Plugin) workspaceMode(req *plugin.PreContainerRunRequest) (*plugin.PreContainerRunResponse, error) {
-	stateDir := filepath.Join(req.WorkspaceDir, "plugins", "coding-agents", "claude-state")
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		return nil, fmt.Errorf("creating state dir: %w", err)
-	}
-
-	// Generate minimal config so Claude Code skips onboarding on first run.
-	// This is re-injected on each rebuild via FileCopy.
-	configDir := filepath.Join(req.WorkspaceDir, "plugins", "coding-agents", "claude-code")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		return nil, fmt.Errorf("creating plugin dir: %w", err)
-	}
-	configDst := filepath.Join(configDir, "claude.json")
-	if err := os.WriteFile(configDst, []byte(`{"hasCompletedOnboarding":true}`), 0o644); err != nil {
-		return nil, fmt.Errorf("writing config: %w", err)
-	}
-
-	remoteHome := plugin.InferRemoteHome(req.RemoteUser)
-	owner := plugin.InferOwner(req.RemoteUser)
-
-	return &plugin.PreContainerRunResponse{
-		Mounts: []config.Mount{
-			{
-				Type:   "bind",
-				Source: stateDir,
-				Target: filepath.Join(remoteHome, ".claude"),
-			},
-		},
-		Copies: []plugin.FileCopy{
-			{
-				Source:      configDst,
-				Target:      filepath.Join(remoteHome, ".claude.json"),
-				User:        owner,
-				IfNotExists: true,
-			},
-		},
-	}, nil
+	return resp, nil
 }
 
 // getCredentialsMode reads the credentials mode from customizations.crib.coding-agents.
