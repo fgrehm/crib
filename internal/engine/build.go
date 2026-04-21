@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/fgrehm/crib/internal/config"
@@ -522,14 +523,14 @@ func userFromConfigUser(configUser string) string {
 // priority; iterating in reverse (last entry first) matches the
 // "last entry wins" semantics of config.MergeConfiguration.
 func remoteUserFromMetadata(metadata []*config.ImageMetadata) string {
-	for i := len(metadata) - 1; i >= 0; i-- {
-		if metadata[i] != nil && metadata[i].RemoteUser != "" {
-			return metadata[i].RemoteUser
+	for _, m := range slices.Backward(metadata) {
+		if m != nil && m.RemoteUser != "" {
+			return m.RemoteUser
 		}
 	}
-	for i := len(metadata) - 1; i >= 0; i-- {
-		if metadata[i] != nil && metadata[i].ContainerUser != "" {
-			return metadata[i].ContainerUser
+	for _, m := range slices.Backward(metadata) {
+		if m != nil && m.ContainerUser != "" {
+			return m.ContainerUser
 		}
 	}
 	return ""
