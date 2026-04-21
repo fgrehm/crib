@@ -280,22 +280,31 @@ func TestPreContainerRun_WorkspaceMode(t *testing.T) {
 		t.Fatal("expected non-nil response")
 	}
 
-	// Claude workspace mode alone produces one mount (persistent ~/.claude/)
-	// and one onboarding config copy. pi stays dormant because there is no
-	// ~/.pi/agent/auth.json on the host.
-	if len(resp.Mounts) != 1 {
-		t.Fatalf("expected 1 mount (claude only), got %d", len(resp.Mounts))
+	// Workspace mode produces two mounts (Claude state + pi state) plus one
+	// Claude onboarding config copy. Both agents are always mounted in
+	// workspace mode regardless of host state, matching Claude's semantics.
+	if len(resp.Mounts) != 2 {
+		t.Fatalf("expected 2 mounts (claude + pi), got %d", len(resp.Mounts))
 	}
-	mount := resp.Mounts[0]
+	var claudeMount *config.Mount
+	for i := range resp.Mounts {
+		if strings.HasSuffix(resp.Mounts[i].Target, "/.claude") {
+			claudeMount = &resp.Mounts[i]
+			break
+		}
+	}
+	if claudeMount == nil {
+		t.Fatal("expected a claude mount among responses")
+	}
 	expectedSource := filepath.Join(wsDir, "plugins", "coding-agents", "claude-state")
-	if mount.Source != expectedSource {
-		t.Errorf("mount source: expected %s, got %s", expectedSource, mount.Source)
+	if claudeMount.Source != expectedSource {
+		t.Errorf("claude mount source: expected %s, got %s", expectedSource, claudeMount.Source)
 	}
-	if mount.Target != "/home/vscode/.claude" {
-		t.Errorf("mount target: expected /home/vscode/.claude, got %s", mount.Target)
+	if claudeMount.Target != "/home/vscode/.claude" {
+		t.Errorf("claude mount target: expected /home/vscode/.claude, got %s", claudeMount.Target)
 	}
-	if mount.Type != "bind" {
-		t.Errorf("mount type: expected bind, got %s", mount.Type)
+	if claudeMount.Type != "bind" {
+		t.Errorf("claude mount type: expected bind, got %s", claudeMount.Type)
 	}
 
 	if len(resp.Copies) != 1 {
@@ -601,11 +610,10 @@ func TestPreContainerRun_PiHostMode_WithClaudeCredentials(t *testing.T) {
 }
 
 func TestPreContainerRun_PiWorkspaceMode(t *testing.T) {
-	home := t.TempDir()
-	setupPiAuth(t, home)
-
+	// Workspace mode is unconditional for pi, matching Claude. No host
+	// ~/.pi/ dir is required.
 	wsDir := t.TempDir()
-	p := &Plugin{homeDir: home}
+	p := &Plugin{homeDir: t.TempDir()}
 	req := testReqWithCustomizations(wsDir, "vscode", map[string]any{
 		"coding-agents": map[string]any{
 			"credentials": "workspace",
@@ -647,34 +655,9 @@ func TestPreContainerRun_PiWorkspaceMode(t *testing.T) {
 	}
 }
 
-// TestPreContainerRun_ClaudeWorkspaceMode_NoPiArtifacts verifies that a user
-// who only opts Claude into workspace mode does not get a stray pi-state
-// directory or bind mount. This regression would otherwise let processes in
-// the container write files into the workspace state dir.
-func TestPreContainerRun_ClaudeWorkspaceMode_NoPiArtifacts(t *testing.T) {
-	wsDir := t.TempDir()
-	p := &Plugin{homeDir: t.TempDir()} // no host pi auth
-	req := testReqWithCustomizations(wsDir, "vscode", map[string]any{
-		"coding-agents": map[string]any{
-			"credentials": "workspace",
-		},
-	})
-
-	if _, err := p.PreContainerRun(context.Background(), req); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := os.Stat(filepath.Join(wsDir, "plugins", "coding-agents", "pi-state")); !os.IsNotExist(err) {
-		t.Errorf("expected pi-state dir to NOT exist, stat err: %v", err)
-	}
-}
-
 func TestPreContainerRun_PiWorkspaceMode_CreatesStateDir(t *testing.T) {
-	home := t.TempDir()
-	setupPiAuth(t, home)
-
 	wsDir := t.TempDir()
-	p := &Plugin{homeDir: home}
+	p := &Plugin{homeDir: t.TempDir()}
 	req := testReqWithCustomizations(wsDir, "vscode", map[string]any{
 		"coding-agents": map[string]any{
 			"credentials": "workspace",

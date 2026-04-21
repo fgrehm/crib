@@ -34,10 +34,12 @@ func New() *Plugin {
 // Name returns the plugin identifier.
 func (p *Plugin) Name() string { return "coding-agents" }
 
-// PreContainerRun dispatches credential handling for Claude Code and pi.
-// Both agents share the single `credentials` customization ("host" default,
-// or "workspace"). pi is only active when `~/.pi/agent/auth.json` exists on
-// the host; otherwise crib produces no pi artifacts regardless of mode.
+// PreContainerRun dispatches credential handling for Claude Code and pi
+// identically. Both share the single `credentials` customization ("host"
+// default, or "workspace"). In host mode each agent's host credentials are
+// copied into the container when present. In workspace mode each agent gets
+// a persistent bind-mounted state directory so credentials created inside
+// the container survive rebuilds.
 func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunRequest) (*plugin.PreContainerRunResponse, error) {
 	mode := getCredentialsMode(req.Customizations)
 
@@ -188,13 +190,15 @@ func getCredentialsMode(customizations map[string]any) string {
 	return "host"
 }
 
-// handlePi routes pi credential handling based on the shared credentials mode.
-// pi is only active when `~/.pi/agent/auth.json` exists on the host, which is
-// the user-visible opt-in gesture. In host mode the auth file is copied into
-// the container; in workspace mode a persistent state directory is
-// bind-mounted over `~/.pi/agent/` so credentials created inside the
-// container survive rebuilds.
+// handlePi mirrors Claude's behavior for pi. Workspace mode always creates
+// a persistent state directory and bind-mounts it over `~/.pi/agent/`. Host
+// mode copies `~/.pi/agent/auth.json` into the container only if the file
+// exists on the host.
 func (p *Plugin) handlePi(req *plugin.PreContainerRunRequest, mode string) (*plugin.PreContainerRunResponse, error) {
+	if mode == "workspace" {
+		return p.piWorkspaceMode(req)
+	}
+
 	home := p.homeDir
 	if home == "" {
 		var err error
@@ -215,10 +219,6 @@ func (p *Plugin) handlePi(req *plugin.PreContainerRunRequest, mode string) (*plu
 	// "not enabled" so we never try to CopyFile something we can't read.
 	if !info.Mode().IsRegular() {
 		return nil, nil
-	}
-
-	if mode == "workspace" {
-		return p.piWorkspaceMode(req)
 	}
 	return p.piHostMode(req, authSrc)
 }
