@@ -13,24 +13,15 @@ Detect project type (Ruby, Node, Go, etc.) from conventions and generate a worki
 
 ### Display actual container name when overridden via `runArgs`
 
-As of v0.8.0, `runArgs: ["--name", "my-container"]` correctly overrides crib's default container name ([#35](https://github.com/fgrehm/crib/issues/35)). However, CLI output (`crib up`, `crib status`, `crib restart`, `crib rebuild`) still displays the default `crib-{id}` name. Fixing this requires threading the actual container name through `UpResult`/`RestartResult` and updating the display sites in `cmd/`. The plugin request's `ContainerName` field should also reflect the override.
+As of v0.8.0, `runArgs: ["--name", "my-container"]` correctly overrides crib's default container name ([#35](https://github.com/fgrehm/crib/issues/35)). However, CLI output (`crib up`, `crib status`, `crib restart`, `crib rebuild`) still displays the default `crib-{id}` name. Fixing this requires threading the actual container name through `UpResult`/`RestartResult` and updating the display sites in `cmd/`. The plugin request's `ContainerName` field should also reflect the override. Targeting v0.9.0.
+
+### Global workspace config (env, mounts, run args)
+
+`~/.config/crib/config.toml` already supports `[dotfiles]` (v0.8.0). The remaining scope is a `[workspace]` section with `env`, `mount`, and `run_args` applied to every `crib up`. Targeting v0.9.0.
 
 ## Considering
 
 ### Features
-
-#### Global user config (mounts, env vars)
-
-Global config (`~/.config/crib/config.toml`, respects `$XDG_CONFIG_HOME`) is partially implemented: the `[dotfiles]` section is supported as of v0.8.0. The remaining scope is user-level mounts and environment variables applied to every `crib up`, as an escape hatch for simple "bind this path" use cases that don't need plugin logic.
-
-Motivating examples:
-
-- Mount `~/.mem/` (read-write) so [dotmem](https://github.com/fgrehm/dotmem) memory is available inside containers and across all workspace projects
-- Mount the [cartage](https://github.com/fgrehm/cartage) socket so notifications and `xdg-open` forwarding work without per-project config
-
-Open questions: full scope of supported fields (just mounts? env vars? both?), merge semantics with per-project devcontainer.json.
-
-Prior art: [devstep](https://github.com/fgrehm/devstep) had `~/devstep.yml` (global) merged with per-project `devstep.yml`, supporting `volumes`, `environment`, `links`, and more.
 
 #### Ephemeral environments
 
