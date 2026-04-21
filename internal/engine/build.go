@@ -542,9 +542,9 @@ func remoteUserFromMetadata(metadata []*config.ImageMetadata) string {
 // (remoteUser defaults to containerUser, never the reverse). Callers should
 // fall back to imageUser/Dockerfile USER when this returns "".
 func containerUserFromMetadata(metadata []*config.ImageMetadata) string {
-	for i := len(metadata) - 1; i >= 0; i-- {
-		if metadata[i] != nil && metadata[i].ContainerUser != "" {
-			return metadata[i].ContainerUser
+	for _, m := range slices.Backward(metadata) {
+		if m != nil && m.ContainerUser != "" {
+			return m.ContainerUser
 		}
 	}
 	return ""

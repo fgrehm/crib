@@ -92,11 +92,11 @@ func GenerateDockerfile(features []*FeatureSet, containerUser, remoteUser string
 		// Later features wrap earlier ones (outermost runs first).
 		// Generate: exec /last.sh /prev.sh ... /first.sh "$@"
 		var chain strings.Builder
-		for i := len(entrypoints) - 1; i >= 0; i-- {
+		for _, ep := range slices.Backward(entrypoints) {
 			if chain.Len() > 0 {
 				chain.WriteByte(' ')
 			}
-			chain.WriteString(entrypoints[i])
+			chain.WriteString(ep)
 		}
 		script := fmt.Sprintf("#!/bin/sh\\nexec %s \"$@\"\\n", chain.String())
 		fmt.Fprintf(&b, "RUN printf '%s' > /usr/local/share/crib-entrypoint.sh && chmod +x /usr/local/share/crib-entrypoint.sh\n", script)
