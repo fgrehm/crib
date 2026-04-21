@@ -39,7 +39,7 @@ type containerBackend interface {
 	// createContainer creates and starts a new container from the given image.
 	// Single: build RunOptions, merge pluginResp, RunContainer.
 	// Compose: generate override, compose build, compose up.
-	createContainer(ctx context.Context, opts createOpts) (string, error)
+	createContainer(ctx context.Context, opts createOpts) (createContainerResult, error)
 
 	// deleteExisting removes all containers for the workspace.
 	// Single: driver.DeleteContainer. Compose: composeDown.
@@ -64,6 +64,16 @@ type createOpts struct {
 	metadata       []*config.ImageMetadata // nil when creating from stored/snapshot
 	pluginResp     *plugin.PreContainerRunResponse
 	skipBuild      bool // true when resuming from stored result (images exist)
+}
+
+// createContainerResult is returned by backend.createContainer. ContainerID is
+// required; ContainerName is populated by single-container backends when the
+// name is known at create time (may be the default crib-<ws-id> or the
+// runArgs --name override). Compose backends leave it empty — display sites
+// fall back to the default.
+type createContainerResult struct {
+	ContainerID   string
+	ContainerName string
 }
 
 // Compile-time interface checks.

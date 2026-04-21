@@ -56,7 +56,7 @@ func (b *composeBackend) buildImage(ctx context.Context) (*buildResult, error) {
 	return b.e.buildComposeFeatures(ctx, b.ws, b.cfg, b.inv)
 }
 
-func (b *composeBackend) createContainer(ctx context.Context, opts createOpts) (string, error) {
+func (b *composeBackend) createContainer(ctx context.Context, opts createOpts) (createContainerResult, error) {
 	// Resolve feature metadata for the override (capabilities, entrypoints).
 	var fmeta []*config.ImageMetadata
 	if opts.metadata != nil {
@@ -68,7 +68,7 @@ func (b *composeBackend) createContainer(ctx context.Context, opts createOpts) (
 
 	overridePath, err := b.e.generateComposeOverride(b.ws, b.cfg, b.workspaceFolder, b.inv.files, opts.imageName, opts.pluginResp, fmeta...)
 	if err != nil {
-		return "", fmt.Errorf("generating compose override: %w", err)
+		return createContainerResult{}, fmt.Errorf("generating compose override: %w", err)
 	}
 
 	allFiles := append(b.inv.files[:len(b.inv.files):len(b.inv.files)], overridePath)
@@ -82,13 +82,13 @@ func (b *composeBackend) createContainer(ctx context.Context, opts createOpts) (
 			if len(others) > 0 {
 				b.e.reportProgress(PhaseBuild, "Building services...")
 				if err := b.e.compose.Build(ctx, b.inv.projectName, allFiles, others, b.e.stdout, b.e.stderr, b.inv.env); err != nil {
-					return "", fmt.Errorf("building compose services: %w", err)
+					return createContainerResult{}, fmt.Errorf("building compose services: %w", err)
 				}
 			}
 		} else {
 			b.e.reportProgress(PhaseBuild, "Building services...")
 			if err := b.e.compose.Build(ctx, b.inv.projectName, allFiles, nil, b.e.stdout, b.e.stderr, b.inv.env); err != nil {
-				return "", fmt.Errorf("building compose services: %w", err)
+				return createContainerResult{}, fmt.Errorf("building compose services: %w", err)
 			}
 		}
 	}
@@ -96,10 +96,14 @@ func (b *composeBackend) createContainer(ctx context.Context, opts createOpts) (
 	var stderrBuf bytes.Buffer
 	b.e.reportProgress(PhaseCreate, "Starting services...")
 	if err := b.e.compose.Up(ctx, b.inv.projectName, allFiles, services, b.e.composeStdout(), b.e.composeStderrTee(&stderrBuf), b.inv.env); err != nil {
-		return "", fmt.Errorf("starting compose services: %w", err)
+		return createContainerResult{}, fmt.Errorf("starting compose services: %w", err)
 	}
 
-	return b.findRunningContainer(ctx, "after up", stderrBuf.String())
+	containerID, err := b.findRunningContainer(ctx, "after up", stderrBuf.String())
+	if err != nil {
+		return createContainerResult{}, err
+	}
+	return createContainerResult{ContainerID: containerID}, nil
 }
 
 func (b *composeBackend) deleteExisting(ctx context.Context) error {

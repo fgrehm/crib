@@ -44,10 +44,10 @@ func (b *singleBackend) buildImage(ctx context.Context) (*buildResult, error) {
 	return b.e.buildImage(ctx, b.ws, b.cfg)
 }
 
-func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (string, error) {
+func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (createContainerResult, error) {
 	runOpts, err := b.e.buildRunOptions(b.cfg, opts.imageName, b.ws.Source, b.workspaceFolder, opts.hasEntrypoints)
 	if err != nil {
-		return "", err
+		return createContainerResult{}, err
 	}
 	if b.e.store.IsExplicitHome() {
 		runOpts.Labels[ocidriver.LabelHome] = b.e.store.BaseDir()
@@ -71,19 +71,20 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (s
 	}
 
 	b.e.reportProgress(PhaseCreate, "Creating container...")
-	if err := b.e.driver.RunContainer(ctx, b.ws.ID, runOpts); err != nil {
-		return "", fmt.Errorf("creating container: %w", err)
+	name, err := b.e.driver.RunContainer(ctx, b.ws.ID, runOpts)
+	if err != nil {
+		return createContainerResult{}, fmt.Errorf("creating container: %w", err)
 	}
 
 	container, err := b.e.driver.FindContainer(ctx, b.ws.ID)
 	if err != nil {
-		return "", fmt.Errorf("finding new container: %w", err)
+		return createContainerResult{}, fmt.Errorf("finding new container: %w", err)
 	}
 	if container == nil {
-		return "", fmt.Errorf("container not found after creation")
+		return createContainerResult{}, fmt.Errorf("container not found after creation")
 	}
 
-	return container.ID, nil
+	return createContainerResult{ContainerID: container.ID, ContainerName: name}, nil
 }
 
 func (b *singleBackend) deleteExisting(ctx context.Context) error {

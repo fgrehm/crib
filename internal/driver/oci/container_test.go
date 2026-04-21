@@ -32,7 +32,7 @@ func TestBuildRunArgs_Minimal(t *testing.T) {
 		Image: "ubuntu:22.04",
 	}
 
-	args := d.buildRunArgs("myproject", opts)
+	_, args := d.buildRunArgs("myproject", opts)
 	got := strings.Join(args, " ")
 
 	assertContains(t, got, "run -d --name crib-myproject")
@@ -64,7 +64,7 @@ func TestBuildRunArgs_AllOptions(t *testing.T) {
 		},
 	}
 
-	args := d.buildRunArgs("test-ws", opts)
+	_, args := d.buildRunArgs("test-ws", opts)
 	got := strings.Join(args, " ")
 
 	assertContains(t, got, "--name crib-test-ws")
@@ -94,7 +94,7 @@ func TestBuildRunArgs_WorkspaceLabelAlwaysPresent(t *testing.T) {
 		Image: "alpine",
 	}
 
-	args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts)
 	found := false
 	for i, a := range args {
 		if a == "--label" && i+1 < len(args) && args[i+1] == "crib.workspace=ws1" {
@@ -114,7 +114,7 @@ func TestBuildRunArgs_NoOptionalFlags(t *testing.T) {
 		Image: "alpine",
 	}
 
-	args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts)
 	got := strings.Join(args, " ")
 
 	// These flags should NOT be present with empty options.
@@ -136,7 +136,7 @@ func TestBuildRunArgs_RootlessPodmanInjectsUserns(t *testing.T) {
 		Image: "alpine",
 	}
 
-	args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts)
 	got := strings.Join(args, " ")
 
 	assertContains(t, got, "--userns=keep-id")
@@ -153,7 +153,7 @@ func TestBuildRunArgs_RootPodmanSkipsUserns(t *testing.T) {
 		Image: "alpine",
 	}
 
-	args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts)
 	got := strings.Join(args, " ")
 
 	if strings.Contains(got, "--userns") {
@@ -172,7 +172,7 @@ func TestBuildRunArgs_DockerSkipsUserns(t *testing.T) {
 		Image: "alpine",
 	}
 
-	args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts)
 	got := strings.Join(args, " ")
 
 	if strings.Contains(got, "--userns") {
@@ -192,7 +192,7 @@ func TestBuildRunArgs_UserUsernsOverrideSkipsAutoInject(t *testing.T) {
 		ExtraArgs: []string{"--userns=host"},
 	}
 
-	args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts)
 
 	// Should have the user-specified --userns=host but NOT --userns=keep-id.
 	got := strings.Join(args, " ")
@@ -212,7 +212,7 @@ func TestBuildRunArgs_Ports(t *testing.T) {
 		Ports: []string{"8080:8080", "9090:3000"},
 	}
 
-	args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts)
 	got := strings.Join(args, " ")
 
 	assertContains(t, got, "--publish 8080:8080")
@@ -239,7 +239,7 @@ func TestBuildRunArgs_ExtraArgsPassthrough(t *testing.T) {
 		ExtraArgs: []string{"--network=host", "--gpus", "all"},
 	}
 
-	args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts)
 	got := strings.Join(args, " ")
 
 	assertContains(t, got, "--network=host")
@@ -266,9 +266,12 @@ func TestBuildRunArgs_UserNameOverridesDefault(t *testing.T) {
 		ExtraArgs: []string{"--network=host", "--name", "my-container", "--gpus", "all"},
 	}
 
-	args := d.buildRunArgs("ws1", opts)
+	name, args := d.buildRunArgs("ws1", opts)
 	got := strings.Join(args, " ")
 
+	if name != "my-container" {
+		t.Errorf("expected returned name %q, got %q", "my-container", name)
+	}
 	// User-specified name wins over crib's default.
 	assertContains(t, got, "--name my-container")
 	if strings.Contains(got, "crib-ws1") {
@@ -289,12 +292,27 @@ func TestBuildRunArgs_UserNameEqualsForm(t *testing.T) {
 		ExtraArgs: []string{"--name=my-container"},
 	}
 
-	args := d.buildRunArgs("ws1", opts)
+	name, args := d.buildRunArgs("ws1", opts)
 	got := strings.Join(args, " ")
 
+	if name != "my-container" {
+		t.Errorf("expected returned name %q, got %q", "my-container", name)
+	}
 	assertContains(t, got, "--name my-container")
 	if strings.Count(got, "--name") != 1 {
 		t.Errorf("expected exactly one --name flag, got: %s", got)
+	}
+}
+
+func TestBuildRunArgs_DefaultName(t *testing.T) {
+	d := newTestDockerDriver()
+
+	opts := &driver.RunOptions{Image: "alpine"}
+
+	name, _ := d.buildRunArgs("ws1", opts)
+
+	if name != "crib-ws1" {
+		t.Errorf("expected default name %q, got %q", "crib-ws1", name)
 	}
 }
 

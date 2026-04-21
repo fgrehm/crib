@@ -121,15 +121,15 @@ func TestSingleBackend_CreateContainer_MergesPluginResponse(t *testing.T) {
 		RunArgs: []string{"--network=host"},
 	}
 
-	containerID, err := b.createContainer(context.Background(), createOpts{
+	created, err := b.createContainer(context.Background(), createOpts{
 		imageName:  "ubuntu:22.04",
 		pluginResp: pluginResp,
 	})
 	if err != nil {
 		t.Fatalf("createContainer: %v", err)
 	}
-	if containerID != "new-container" {
-		t.Errorf("containerID = %q, want new-container", containerID)
+	if created.ContainerID != "new-container" {
+		t.Errorf("containerID = %q, want new-container", created.ContainerID)
 	}
 
 	// Verify RunContainer received plugin-injected options.
@@ -314,14 +314,14 @@ func TestSingleBackend_CreateContainer_FeatureEntrypoints(t *testing.T) {
 		workspaceFolder: "/workspaces/project",
 	}
 
-	containerID, err := b.createContainer(context.Background(), createOpts{
+	created, err := b.createContainer(context.Background(), createOpts{
 		imageName:      "ubuntu:22.04",
 		hasEntrypoints: true,
 	})
 	if err != nil {
 		t.Fatalf("createContainer: %v", err)
 	}
-	if containerID == "" {
+	if created.ContainerID == "" {
 		t.Fatal("expected non-empty container ID")
 	}
 
@@ -391,7 +391,7 @@ func TestSingleBackend_CreateContainer_FindsNewContainer(t *testing.T) {
 		workspaceFolder: "/workspaces/project",
 	}
 
-	containerID, err := b.createContainer(context.Background(), createOpts{
+	created, err := b.createContainer(context.Background(), createOpts{
 		imageName: "alpine:3.20",
 	})
 	if err != nil {
@@ -399,9 +399,98 @@ func TestSingleBackend_CreateContainer_FindsNewContainer(t *testing.T) {
 	}
 
 	// restartMockDriver returns "new-container" after RunContainer.
-	if containerID != "new-container" {
-		t.Errorf("containerID = %q, want new-container", containerID)
+	if created.ContainerID != "new-container" {
+		t.Errorf("containerID = %q, want new-container", created.ContainerID)
 	}
+}
+
+// TestSingleBackend_CreateContainer_PlumbsContainerName verifies that the
+// container name chosen by the driver (default or runArgs --name override)
+// is surfaced in the createContainerResult so display sites can render it.
+func TestSingleBackend_CreateContainer_PlumbsContainerName(t *testing.T) {
+	tests := []struct {
+		name     string
+		wsID     string
+		runArgs  []string
+		wantName string
+	}{
+		{
+			name:     "default name",
+			wsID:     "ws-name-default",
+			runArgs:  nil,
+			wantName: "crib-ws-name-default",
+		},
+		{
+			name:     "runArgs --name override",
+			wsID:     "ws-name-override",
+			runArgs:  []string{"--name", "custom-name"},
+			wantName: "custom-name",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			store := workspace.NewStoreAt(t.TempDir())
+			ws := &workspace.Workspace{ID: tc.wsID, Source: "/home/user/project"}
+			if err := store.Save(ws); err != nil {
+				t.Fatal(err)
+			}
+
+			mockDrv := &nameAwareMockDriver{snapshotUpMockDriver: &snapshotUpMockDriver{containerID: "new-container"}}
+			eng := &Engine{
+				driver:   mockDrv,
+				store:    store,
+				logger:   slog.Default(),
+				stdout:   io.Discard,
+				stderr:   io.Discard,
+				progress: func(ProgressEvent) {},
+			}
+
+			cfg := &config.DevContainerConfig{
+				ImageContainer: config.ImageContainer{Image: "alpine:3.20"},
+				NonComposeBase: config.NonComposeBase{RunArgs: tc.runArgs},
+			}
+
+			b := &singleBackend{
+				e:               eng,
+				ws:              ws,
+				cfg:             cfg,
+				workspaceFolder: "/workspaces/project",
+			}
+
+			created, err := b.createContainer(context.Background(), createOpts{imageName: "alpine:3.20"})
+			if err != nil {
+				t.Fatalf("createContainer: %v", err)
+			}
+			if created.ContainerName != tc.wantName {
+				t.Errorf("ContainerName = %q, want %q", created.ContainerName, tc.wantName)
+			}
+		})
+	}
+}
+
+// nameAwareMockDriver extracts --name from RunOptions.ExtraArgs and returns it
+// from RunContainer, mirroring the real OCI driver's behavior so tests can
+// verify end-to-end plumbing of runArgs --name overrides. The real driver's
+// extractName logic is covered by TestBuildRunArgs_UserNameOverridesDefault
+// in the driver package.
+type nameAwareMockDriver struct {
+	*snapshotUpMockDriver
+}
+
+func (m *nameAwareMockDriver) RunContainer(ctx context.Context, wsID string, opts *driver.RunOptions) (string, error) {
+	if _, err := m.snapshotUpMockDriver.RunContainer(ctx, wsID, opts); err != nil {
+		return "", err
+	}
+	for i, a := range opts.ExtraArgs {
+		if a == "--name" && i+1 < len(opts.ExtraArgs) {
+			return opts.ExtraArgs[i+1], nil
+		}
+		if strings.HasPrefix(a, "--name=") {
+			return a[len("--name="):], nil
+		}
+	}
+	return "crib-" + wsID, nil
 }
 
 // restartMockDriver has a quirk: the first FindContainer returns "old-container".

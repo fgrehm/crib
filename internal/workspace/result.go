@@ -13,6 +13,12 @@ type Result struct {
 	// ContainerID is the Docker/Podman container ID.
 	ContainerID string `json:"containerID"`
 
+	// ContainerName is the container name chosen by the driver. May be the
+	// default crib-<ws-id> or the runArgs --name override. Empty for compose
+	// backends and for workspaces created before this field was introduced;
+	// callers should fall back to crib-<ws-id> when it's empty.
+	ContainerName string `json:"containerName,omitempty"`
+
 	// ImageName is the name of the built/pulled image.
 	ImageName string `json:"imageName"`
 
