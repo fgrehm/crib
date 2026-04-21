@@ -271,6 +271,46 @@ func TestParseBytes(t *testing.T) {
 	}
 }
 
+func TestValidate_RunArgsWithCompose(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    string
+		wantErr bool
+	}{
+		{
+			name:    "runArgs + dockerComposeFile rejected",
+			data:    `{"dockerComposeFile": "docker-compose.yml", "service": "app", "runArgs": ["--name", "foo"]}`,
+			wantErr: true,
+		},
+		{
+			name:    "dockerComposeFile without runArgs allowed",
+			data:    `{"dockerComposeFile": "docker-compose.yml", "service": "app"}`,
+			wantErr: false,
+		},
+		{
+			name:    "runArgs with image allowed",
+			data:    `{"image": "alpine:3.18", "runArgs": ["--name", "foo"]}`,
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseBytes([]byte(tc.data))
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), "runArgs is not supported with dockerComposeFile") {
+					t.Errorf("unexpected error message: %v", err)
+				}
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
 // --- Test helpers ---
 
 func testdataPath(name string) string {

@@ -87,7 +87,26 @@ func ParseBytes(data []byte) (*DevContainerConfig, error) {
 
 	replaceLegacy(&config)
 
+	if err := Validate(&config); err != nil {
+		return nil, err
+	}
+
 	return &config, nil
+}
+
+// Validate checks semantic constraints on a parsed config that can't be
+// expressed in the JSON schema. Called by ParseBytes after unmarshaling.
+func Validate(cfg *DevContainerConfig) error {
+	// runArgs applies to image/Dockerfile configs only. Per the devcontainer
+	// spec (https://containers.dev/implementors/json_reference/), compose
+	// workspaces set container runtime options in the compose YAML itself.
+	// Passing runArgs alongside dockerComposeFile silently no-ops today,
+	// which is confusing. Reject it.
+	if len(cfg.DockerComposeFile) > 0 && len(cfg.RunArgs) > 0 {
+		return fmt.Errorf("runArgs is not supported with dockerComposeFile; " +
+			"set container options in the compose file instead")
+	}
+	return nil
 }
 
 // replaceLegacy migrates deprecated fields to their modern equivalents.
