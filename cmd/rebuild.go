@@ -51,7 +51,7 @@ var rebuildCmd = &cobra.Command{
 		}
 
 		u.Success("Workspace ready")
-		u.Keyval("container", "crib-"+ws.ID)
+		u.Keyval("container", displayContainerName(result.ContainerName, ws.ID))
 		u.Keyval("workspace", result.WorkspaceFolder)
 		if result.RemoteUser != "" {
 			u.Keyval("user", result.RemoteUser)
