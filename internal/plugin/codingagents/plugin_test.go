@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/plugin/plugintest"
 )
@@ -579,7 +580,17 @@ func TestPreContainerRun_PiWorkspaceMode(t *testing.T) {
 		t.Fatalf("expected 2 mounts, got %d", len(resp.Mounts))
 	}
 
-	piMount := resp.Mounts[1]
+	// Locate the pi mount by target suffix rather than relying on ordering.
+	var piMount *config.Mount
+	for i := range resp.Mounts {
+		if strings.HasSuffix(resp.Mounts[i].Target, "/.pi/agent") {
+			piMount = &resp.Mounts[i]
+			break
+		}
+	}
+	if piMount == nil {
+		t.Fatal("expected a pi mount among responses")
+	}
 	expectedSource := filepath.Join(wsDir, "plugins", "coding-agents", "pi-state")
 	if piMount.Source != expectedSource {
 		t.Errorf("pi mount source: expected %s, got %s", expectedSource, piMount.Source)
