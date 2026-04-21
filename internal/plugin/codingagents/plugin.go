@@ -3,6 +3,7 @@ package codingagents
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -51,11 +52,12 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 		return nil, err
 	}
 
+	// pi handling is best-effort: a pi-specific failure must not break Claude
+	// credential injection. Log at Warn and continue rather than bubbling up.
 	piResp, err := p.handlePi(req, mode)
 	if err != nil {
-		return nil, err
-	}
-	if piResp != nil {
+		slog.Warn("coding-agents: pi credential handling failed, skipping pi injection", "error", err)
+	} else if piResp != nil {
 		if resp == nil {
 			resp = &plugin.PreContainerRunResponse{}
 		}

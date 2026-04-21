@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -483,6 +484,49 @@ func TestPreContainerRun_PiHostMode_CredentialsExist(t *testing.T) {
 	}
 	if piCopy.User != "vscode" {
 		t.Errorf("auth user: expected vscode, got %s", piCopy.User)
+	}
+}
+
+// TestPreContainerRun_PiFailure_DoesNotBreakClaude verifies that pi is
+// best-effort: a pi-specific error must not discard Claude's response.
+// Trigger: valid Claude creds + a pi auth.json that passes stat but cannot be
+// read (mode 0000), forcing piHostMode's CopyFile to fail.
+func TestPreContainerRun_PiFailure_DoesNotBreakClaude(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file permission semantics differ on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses file permissions")
+	}
+
+	home := t.TempDir()
+	setupCredentials(t, home)
+	setupPiAuth(t, home)
+
+	authPath := filepath.Join(home, ".pi", "agent", "auth.json")
+	if err := os.Chmod(authPath, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(authPath, 0o600) })
+
+	wsDir := t.TempDir()
+	p := &Plugin{homeDir: home}
+	req := testReqWithCustomizations(wsDir, "vscode", nil)
+
+	resp, err := p.PreContainerRun(context.Background(), req)
+	if err != nil {
+		t.Fatalf("expected no error (pi failure should be logged, not returned), got %v", err)
+	}
+	if resp == nil {
+		t.Fatal("expected Claude response despite pi failure")
+	}
+	if len(resp.Copies) != 2 {
+		t.Fatalf("expected 2 Claude copies, got %d: %+v", len(resp.Copies), resp.Copies)
+	}
+	for _, c := range resp.Copies {
+		if strings.Contains(c.Target, "/.pi/") {
+			t.Errorf("expected no pi copies after pi failure, got %+v", c)
+		}
 	}
 }
 
