@@ -30,7 +30,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v3.10.1
+      - uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
 
       - name: Extract release notes from CHANGELOG.md
         run: |
