@@ -5,7 +5,7 @@ description: What crib's built-in plugins do and how to configure them.
 
 `crib` ships five built-in plugins that hook into the dev container lifecycle. They inject credentials, SSH config, shell history persistence, dotfiles, and shared package caches into a workspace without extra devcontainer.json boilerplate for the ones that need no configuration.
 
-Plugins run during `crib up` and `crib rebuild`. They are fail-open: if a plugin can't find something it needs (no SSH agent running, no Claude credentials on disk), it skips silently and doesn't block container creation.
+Plugins run during `crib up`, `crib rebuild`, and `crib restart`. They are fail-open: if a plugin can't find something it needs (no SSH agent running, no Claude credentials on disk), it skips that piece of setup without blocking container creation. Some cases log a warning (e.g. `SSH_AUTH_SOCK` pointing at a regular file instead of a socket) so the skip is visible.
 
 Bundled plugin names (used when disabling): `coding-agents`, `shell-history`, `ssh`, `dotfiles`, `package-cache`.
 
