@@ -309,14 +309,16 @@ func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
 		globalCfg = *gcfg
 	}
 
+	// Warn about unknown names in any disable layer before honoring the kill
+	// switch — a typo is a config mistake whether or not plugins are all off.
+	disabled := collectDisabledPlugins(globalCfg.Plugins.Disable, projectPluginsDisable, disablePluginsFlag)
+	warnUnknownDisabledPlugins(disabled)
+
 	// Kill switch: skip every plugin when any layer asks for it.
 	if globalCfg.Plugins.DisableAll || projectPluginsOff {
 		eng.SetPlugins(mgr)
 		return
 	}
-
-	disabled := collectDisabledPlugins(globalCfg.Plugins.Disable, projectPluginsDisable, disablePluginsFlag)
-	warnUnknownDisabledPlugins(disabled)
 
 	if !disabled["coding-agents"] {
 		mgr.Register(codingagents.New())
