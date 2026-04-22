@@ -57,12 +57,6 @@ type Result struct {
 	// invisible to devcontainer.json config comparison.
 	ComposeFilesHash string `json:"composeFilesHash,omitempty"`
 
-	// ComposeProjectName is the resolved compose project name (COMPOSE_PROJECT_NAME
-	// override or the default crib-<ws-id>) at the time of up/rebuild. Stored so
-	// cleanup paths can find compose-built images even if env vars change between
-	// up and remove. Empty for non-compose workspaces.
-	ComposeProjectName string `json:"composeProjectName,omitempty"`
-
 	// Feature lifecycle hooks, stored so the resume/restart path can dispatch
 	// them without re-resolving features from OCI registries. These are the
 	// hooks declared in devcontainer-feature.json files, NOT the user's hooks
