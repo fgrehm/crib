@@ -88,6 +88,14 @@ var rootCmd = &cobra.Command{
 			},
 		}))
 
+		// Reset .cribrc-derived globals so stale values from a previous
+		// rootCmd execution in the same process do not leak into this run
+		// (matters for tests that reuse the command tree).
+		cacheProviders = nil
+		projectDotfiles = dotfilesRC{}
+		projectPluginsDisable = nil
+		projectPluginsOff = false
+
 		// Apply .cribrc defaults for flags not explicitly set by the user.
 		rc, rcErr := loadCribRC()
 		if rcErr != nil {
@@ -298,7 +306,7 @@ func resolveDotfilesPlugin(gcfg globalconfig.DotfilesConfig, rc dotfilesRC) (glo
 // `disable = [...]` or `disable_all = true`), `.cribrc`
 // (`plugins.disable = ssh, ...` or `plugins = false`), or the
 // `--disable-plugin` flag on the current command.
-func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
+func setupPlugins(cmd *cobra.Command, eng *engine.Engine, d *oci.OCIDriver) {
 	eng.SetRuntime(d.Runtime().String())
 	mgr := plugin.NewManager(logger)
 
@@ -311,7 +319,7 @@ func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
 
 	// Warn about unknown names in any disable layer before honoring the kill
 	// switch — a typo is a config mistake whether or not plugins are all off.
-	disabled := collectDisabledPlugins(globalCfg.Plugins.Disable, projectPluginsDisable, disablePluginsFlag)
+	disabled := collectDisabledPlugins(globalCfg.Plugins.Disable, projectPluginsDisable, disabledPluginsForCommand(cmd))
 	warnUnknownDisabledPlugins(disabled)
 
 	// Kill switch: skip every plugin when any layer asks for it.
