@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"bytes"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/globalconfig"
@@ -170,6 +173,143 @@ func TestResolveDotfilesPlugin(t *testing.T) {
 			}
 			if tt.wantInstall != "" && cfg.InstallCommand != tt.wantInstall {
 				t.Errorf("InstallCommand = %q, want %q", cfg.InstallCommand, tt.wantInstall)
+			}
+		})
+	}
+}
+
+func TestCollectDisabledPlugins(t *testing.T) {
+	tests := []struct {
+		name   string
+		layers [][]string
+		want   map[string]bool
+	}{
+		{
+			name:   "no layers",
+			layers: nil,
+			want:   map[string]bool{},
+		},
+		{
+			name:   "single layer",
+			layers: [][]string{{"ssh"}},
+			want:   map[string]bool{"ssh": true},
+		},
+		{
+			name: "merges across global, cribrc, and flag",
+			layers: [][]string{
+				{"ssh"},           // global
+				{"dotfiles"},      // .cribrc
+				{"package-cache"}, // --disable-plugin
+			},
+			want: map[string]bool{"ssh": true, "dotfiles": true, "package-cache": true},
+		},
+		{
+			name:   "dedupes across layers",
+			layers: [][]string{{"ssh", "dotfiles"}, {"ssh"}},
+			want:   map[string]bool{"ssh": true, "dotfiles": true},
+		},
+		{
+			name:   "trims whitespace and filters empty entries",
+			layers: [][]string{{"  ssh  ", "", "  "}, {"dotfiles"}},
+			want:   map[string]bool{"ssh": true, "dotfiles": true},
+		},
+		{
+			name:   "nil layer entries are tolerated",
+			layers: [][]string{nil, {"ssh"}, nil},
+			want:   map[string]bool{"ssh": true},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := collectDisabledPlugins(tt.layers...)
+			if len(got) != len(tt.want) {
+				t.Fatalf("len = %d, want %d (got %v)", len(got), len(tt.want), got)
+			}
+			for k, v := range tt.want {
+				if got[k] != v {
+					t.Errorf("key %q = %v, want %v", k, got[k], v)
+				}
+			}
+		})
+	}
+}
+
+func TestIsKnownPlugin(t *testing.T) {
+	for _, name := range []string{"coding-agents", "shell-history", "ssh", "dotfiles", "package-cache"} {
+		if !isKnownPlugin(name) {
+			t.Errorf("isKnownPlugin(%q) = false, want true", name)
+		}
+	}
+	for _, name := range []string{"", "sssh", "unknown", "SSH"} {
+		if isKnownPlugin(name) {
+			t.Errorf("isKnownPlugin(%q) = true, want false", name)
+		}
+	}
+}
+
+// captureLogger installs a slog logger that writes to buf and returns a
+// restore func. Tests patch the package-level logger so warn calls in
+// cmd/root.go are observable.
+func captureLogger(t *testing.T, buf *bytes.Buffer) func() {
+	t.Helper()
+	orig := logger
+	logger = slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	return func() { logger = orig }
+}
+
+func TestWarnUnknownDisabledPlugins(t *testing.T) {
+	tests := []struct {
+		name       string
+		disabled   map[string]bool
+		wantNames  []string // names that should appear in a warning line
+		wantSilent []string // names that should NOT produce warnings
+	}{
+		{
+			name:       "all known names",
+			disabled:   map[string]bool{"ssh": true, "dotfiles": true},
+			wantSilent: []string{"ssh", "dotfiles"},
+		},
+		{
+			name:      "unknown name warns",
+			disabled:  map[string]bool{"sssh": true},
+			wantNames: []string{"sssh"},
+		},
+		{
+			name:       "mixed: only unknowns warn",
+			disabled:   map[string]bool{"ssh": true, "typo": true, "dotfiles": true},
+			wantNames:  []string{"typo"},
+			wantSilent: []string{"ssh", "dotfiles"},
+		},
+		{
+			name:     "empty set never warns",
+			disabled: map[string]bool{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			defer captureLogger(t, &buf)()
+
+			warnUnknownDisabledPlugins(tt.disabled)
+
+			out := buf.String()
+			for _, n := range tt.wantNames {
+				if !strings.Contains(out, "unknown plugin in disable list") {
+					t.Errorf("expected warning message, got %q", out)
+				}
+				if !strings.Contains(out, "name="+n) {
+					t.Errorf("expected warning to include name=%s, got %q", n, out)
+				}
+			}
+			for _, n := range tt.wantSilent {
+				if strings.Contains(out, "name="+n+" ") || strings.HasSuffix(strings.TrimRight(out, "\n"), "name="+n) {
+					t.Errorf("did not expect warning for known name %q, got %q", n, out)
+				}
+			}
+			if len(tt.wantNames) == 0 && strings.Contains(out, "unknown plugin in disable list") {
+				t.Errorf("did not expect any warning, got %q", out)
 			}
 		})
 	}
