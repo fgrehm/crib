@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -1548,5 +1549,81 @@ func TestIntegrationCfgRemoteUserWinsOverImage(t *testing.T) {
 				t.Errorf("RemoteUser = %q, want %q", result.RemoteUser, tt.wantRemoteUser)
 			}
 		})
+	}
+}
+
+// TestIntegrationUpRunArgsNameOverride verifies the runArgs --name override
+// flow end-to-end: the container is created with the user's chosen name, the
+// name is returned on UpResult, and persisted on workspace.Result so later
+// display/status sites can render it.
+func TestIntegrationUpRunArgsNameOverride(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, store := newTestEngine(t)
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	const wsID = "test-engine-runargs-name"
+	const customName = "test-engine-runargs-name-custom"
+
+	configContent := `{
+		"image": "alpine:3.20",
+		"overrideCommand": true,
+		"runArgs": ["--name", "` + customName + `"]
+	}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	// Defensive pre-cleanup by both the default and custom name.
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	_ = d.DeleteContainer(ctx, wsID, customName)
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		_ = d.DeleteContainer(ctx, wsID, customName)
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	if result.ContainerName != customName {
+		t.Errorf("UpResult.ContainerName = %q, want %q", result.ContainerName, customName)
+	}
+
+	// Verify a container exists under the custom name using the runtime CLI.
+	if out, err := exec.Command(d.Runtime().String(), "inspect", "--format={{.Name}}", customName).Output(); err != nil {
+		t.Fatalf("inspect %s: %v", customName, err)
+	} else if !strings.Contains(string(out), customName) {
+		t.Errorf("inspect output %q did not reference custom name %q", string(out), customName)
+	}
+
+	// Workspace result should persist the custom name.
+	stored, err := store.LoadResult(wsID)
+	if err != nil {
+		t.Fatalf("LoadResult: %v", err)
+	}
+	if stored == nil {
+		t.Fatal("no stored result")
+	}
+	if stored.ContainerName != customName {
+		t.Errorf("stored ContainerName = %q, want %q", stored.ContainerName, customName)
 	}
 }
