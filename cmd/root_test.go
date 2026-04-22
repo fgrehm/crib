@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fgrehm/crib/internal/globalconfig"
+	"github.com/spf13/cobra"
 )
 
 func TestVersionString_Dev(t *testing.T) {
@@ -232,6 +233,47 @@ func TestCollectDisabledPlugins(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestResetPerExecutionFlags(t *testing.T) {
+	root := &cobra.Command{Use: "test"}
+	sub := &cobra.Command{Use: "up", RunE: func(*cobra.Command, []string) error { return nil }}
+	addPluginFlags(sub)
+	root.AddCommand(sub)
+
+	// First "run": --disable-plugin ssh provided.
+	root.SetArgs([]string{"up", "--disable-plugin", "ssh"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("first execute: %v", err)
+	}
+	got := disabledPluginsForCommand(sub)
+	if len(got) != 1 || got[0] != "ssh" {
+		t.Fatalf("first run: got %v, want [ssh]", got)
+	}
+
+	// Reset before the next parse, then "run" without the flag.
+	resetPerExecutionFlags(root)
+	root.SetArgs([]string{"up"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("second execute: %v", err)
+	}
+	if got := disabledPluginsForCommand(sub); len(got) != 0 {
+		t.Errorf("second run: got %v, want empty (stale value leaked)", got)
+	}
+	if f := sub.Flags().Lookup("disable-plugin"); f.Changed {
+		t.Errorf("second run: flag Changed=true after reset")
+	}
+
+	// Third "run": flag provided again, should not accumulate with the first run.
+	resetPerExecutionFlags(root)
+	root.SetArgs([]string{"up", "--disable-plugin", "dotfiles"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("third execute: %v", err)
+	}
+	got = disabledPluginsForCommand(sub)
+	if len(got) != 1 || got[0] != "dotfiles" {
+		t.Errorf("third run: got %v, want [dotfiles] only", got)
 	}
 }
 

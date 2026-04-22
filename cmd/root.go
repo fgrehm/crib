@@ -179,6 +179,7 @@ func Execute() int {
 			return a
 		},
 	}))
+	resetPerExecutionFlags(rootCmd)
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		u := newUI()
 		u.Error(err.Error())
