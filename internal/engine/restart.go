@@ -15,6 +15,11 @@ type RestartResult struct {
 	// ContainerID is the container ID.
 	ContainerID string
 
+	// ContainerName is the name of the running container. Empty when the
+	// backend does not expose a single name (e.g. compose); callers should
+	// fall back to the default crib-<ws-id> in that case.
+	ContainerName string
+
 	// WorkspaceFolder is the path inside the container where the project is mounted.
 	WorkspaceFolder string
 
@@ -149,6 +154,7 @@ func (e *Engine) restartSimple(ctx context.Context, ws *workspace.Workspace, cfg
 	cc := containerContext{
 		workspaceID:     ws.ID,
 		containerID:     newID,
+		containerName:   storedResult.ContainerName,
 		remoteUser:      remoteUser,
 		workspaceFolder: workspaceFolder,
 	}
@@ -219,7 +225,7 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 		return nil, err
 	}
 
-	containerID, err := b.createContainer(ctx, createOpts{
+	created, err := b.createContainer(ctx, createOpts{
 		imageName:      imgResult.imageName,
 		hasEntrypoints: imgResult.hasEntrypoints,
 		metadata:       metadata,
@@ -241,7 +247,8 @@ func (e *Engine) restartRecreate(ctx context.Context, ws *workspace.Workspace, c
 	}
 	cc := containerContext{
 		workspaceID:     ws.ID,
-		containerID:     containerID,
+		containerID:     created.ContainerID,
+		containerName:   created.ContainerName,
 		remoteUser:      remoteUser,
 		workspaceFolder: workspaceFolder,
 	}

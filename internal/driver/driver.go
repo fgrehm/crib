@@ -18,7 +18,9 @@ type Driver interface {
 	FindContainer(ctx context.Context, workspaceID string) (*ContainerDetails, error)
 
 	// RunContainer creates and starts a container with the given options.
-	RunContainer(ctx context.Context, workspaceID string, options *RunOptions) error
+	// Returns the container name chosen by the driver (either the default
+	// crib-<ws-id> or a user override from runArgs --name).
+	RunContainer(ctx context.Context, workspaceID string, options *RunOptions) (string, error)
 
 	// StartContainer starts a stopped container.
 	StartContainer(ctx context.Context, workspaceID, containerID string) error

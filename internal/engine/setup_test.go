@@ -35,8 +35,8 @@ func (m *mockDriver) FindContainer(ctx context.Context, workspaceID string) (*dr
 	return nil, nil
 }
 
-func (m *mockDriver) RunContainer(ctx context.Context, workspaceID string, options *driver.RunOptions) error {
-	return nil
+func (m *mockDriver) RunContainer(ctx context.Context, workspaceID string, options *driver.RunOptions) (string, error) {
+	return "crib-" + workspaceID, nil
 }
 
 func (m *mockDriver) StartContainer(ctx context.Context, workspaceID, containerID string) error {

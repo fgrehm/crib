@@ -39,7 +39,7 @@ func TestIntegrationContainerLifecycle(t *testing.T) {
 	})
 
 	// Run a container.
-	err := d.RunContainer(ctx, wsID, &driver.RunOptions{
+	_, err := d.RunContainer(ctx, wsID, &driver.RunOptions{
 		Image:      "alpine:3.20",
 		Entrypoint: "/bin/sh",
 		Cmd:        []string{"-c", "sleep infinity"},
@@ -172,7 +172,7 @@ func TestIntegrationExec(t *testing.T) {
 	})
 
 	// Run a container.
-	err := d.RunContainer(ctx, wsID, &driver.RunOptions{
+	_, err := d.RunContainer(ctx, wsID, &driver.RunOptions{
 		Image:      "alpine:3.20",
 		Entrypoint: "/bin/sh",
 		Cmd:        []string{"-c", "sleep infinity"},
@@ -228,7 +228,7 @@ func TestIntegrationContainerLogs(t *testing.T) {
 	})
 
 	// Run a container that prints something.
-	err := d.RunContainer(ctx, wsID, &driver.RunOptions{
+	_, err := d.RunContainer(ctx, wsID, &driver.RunOptions{
 		Image:      "alpine:3.20",
 		Entrypoint: "/bin/sh",
 		Cmd:        []string{"-c", "echo container-started && sleep infinity"},
@@ -273,7 +273,7 @@ func TestIntegrationRunContainerWithMounts(t *testing.T) {
 		t.Fatalf("writing test file: %v", err)
 	}
 
-	err := d.RunContainer(ctx, wsID, &driver.RunOptions{
+	_, err := d.RunContainer(ctx, wsID, &driver.RunOptions{
 		Image:      "alpine:3.20",
 		Entrypoint: "/bin/sh",
 		Cmd:        []string{"-c", "sleep infinity"},

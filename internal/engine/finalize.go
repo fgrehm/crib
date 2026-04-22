@@ -78,6 +78,7 @@ func (e *Engine) finalize(ctx context.Context, ws *workspace.Workspace, cfg *con
 	// 3. Build result (shared across both paths).
 	result := &UpResult{
 		ContainerID:           cc.containerID,
+		ContainerName:         cc.containerName,
 		ImageName:             opts.imageName,
 		WorkspaceFolder:       cc.workspaceFolder,
 		RemoteUser:            cc.remoteUser,
@@ -251,6 +252,7 @@ func prependStoredHooks(stored []workspace.LifecycleHook, existing []config.Life
 func toRestartResult(up *UpResult) *RestartResult {
 	return &RestartResult{
 		ContainerID:     up.ContainerID,
+		ContainerName:   up.ContainerName,
 		WorkspaceFolder: up.WorkspaceFolder,
 		RemoteUser:      up.RemoteUser,
 		Ports:           up.Ports,

@@ -37,6 +37,17 @@ func noArgs(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// displayContainerName returns the container name for CLI output. Prefers the
+// recorded name (which reflects runArgs --name overrides); falls back to the
+// default for compose backends and workspaces created before ContainerName was
+// persisted.
+func displayContainerName(recorded, wsID string) string {
+	if recorded != "" {
+		return recorded
+	}
+	return "crib-" + wsID
+}
+
 var (
 	debugFlag       bool
 	verboseFlag     bool

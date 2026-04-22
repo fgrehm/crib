@@ -52,17 +52,20 @@ func (d *OCIDriver) FindContainer(ctx context.Context, workspaceID string) (*dri
 
 // RunContainer creates and starts a new container for the workspace.
 // The workspace label is injected automatically.
-func (d *OCIDriver) RunContainer(ctx context.Context, workspaceID string, options *driver.RunOptions) error {
-	args := d.buildRunArgs(workspaceID, options)
+// Returns the chosen container name (default crib-<ws-id> or the runArgs
+// --name override).
+func (d *OCIDriver) RunContainer(ctx context.Context, workspaceID string, options *driver.RunOptions) (string, error) {
+	name, args := d.buildRunArgs(workspaceID, options)
 	_, err := d.helper.Output(ctx, args...)
 	if err != nil {
-		return fmt.Errorf("running container for workspace %s: %w", workspaceID, err)
+		return "", fmt.Errorf("running container for workspace %s: %w", workspaceID, err)
 	}
-	return nil
+	return name, nil
 }
 
-// buildRunArgs constructs the `docker run` argument list.
-func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) []string {
+// buildRunArgs constructs the `docker run` argument list and returns the
+// container name chosen for the run.
+func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) (string, []string) {
 	// Allow runArgs to override the container name. If --name is present in
 	// ExtraArgs, always strip it to avoid duplicate flags; use the value as
 	// the container name when non-empty.
@@ -72,7 +75,6 @@ func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) []
 		extraArgs = rest
 		if userName != "" {
 			name = userName
-			d.logger.Warn("runArgs overrides container name, CLI output may still show the default", "name", userName)
 		} else {
 			d.logger.Warn("runArgs specifies --name without a value, using default container name", "name", name)
 		}
@@ -146,7 +148,7 @@ func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) []
 	// Command.
 	args = append(args, opts.Cmd...)
 
-	return args
+	return name, args
 }
 
 // StartContainer starts a stopped container.

@@ -11,9 +11,9 @@ Items move between sections as priorities shift.
 
 Detect project type (Ruby, Node, Go, etc.) from conventions and generate a working devcontainer config without the user writing one. See the [RFC](https://github.com/fgrehm/crib/blob/main/docs/rfcs/init.md) for the full design.
 
-### Display actual container name when overridden via `runArgs`
+### Remove compose-built images on `crib remove`
 
-As of v0.8.0, `runArgs: ["--name", "my-container"]` correctly overrides crib's default container name ([#35](https://github.com/fgrehm/crib/issues/35)). However, CLI output (`crib up`, `crib status`, `crib restart`, `crib rebuild`) still displays the default `crib-{id}` name. Fixing this requires threading the actual container name through `UpResult`/`RestartResult` and updating the display sites in `cmd/`. The plugin request's `ContainerName` field should also reflect the override. Targeting v0.9.0.
+`crib remove` currently only deletes images tagged with `crib.workspace=<id>`. Compose-built images don't carry that label, so every `build:` service in a compose workspace leaks an image after remove. Targeted fix: inject `crib.workspace=<id>` as a build label via a generated compose override file, so every built image picks it up and the existing `ListImages` scan handles cleanup. Works identically on docker-compose and podman-compose (a label-based scan via `com.docker.compose.project` was tried and rejected because podman-compose doesn't set that label on built images). Targeting a follow-up release.
 
 ### Global workspace config (env, mounts, run args)
 

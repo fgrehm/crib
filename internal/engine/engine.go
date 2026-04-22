@@ -26,6 +26,7 @@ import (
 type containerContext struct {
 	workspaceID     string
 	containerID     string
+	containerName   string
 	remoteUser      string
 	workspaceFolder string
 }
@@ -178,6 +179,11 @@ type UpOptions struct {
 type UpResult struct {
 	// ContainerID is the container ID.
 	ContainerID string
+
+	// ContainerName is the name of the running container. Empty when the
+	// backend does not expose a single name (e.g. compose); callers should
+	// fall back to the default crib-<ws-id> in that case.
+	ContainerName string
 
 	// ImageName is the name of the built image (for compose feature images).
 	ImageName string
@@ -341,7 +347,7 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 		return nil, err
 	}
 
-	containerID, err := b.createContainer(ctx, createOpts{
+	created, err := b.createContainer(ctx, createOpts{
 		imageName:      buildRes.imageName,
 		hasEntrypoints: buildRes.hasEntrypoints,
 		metadata:       buildRes.imageMetadata,
@@ -364,7 +370,8 @@ func (e *Engine) upCreate(ctx context.Context, ws *workspace.Workspace, cfg *con
 
 	cc := containerContext{
 		workspaceID:     ws.ID,
-		containerID:     containerID,
+		containerID:     created.ContainerID,
+		containerName:   created.ContainerName,
 		workspaceFolder: workspaceFolder,
 	}
 	return e.finalize(ctx, ws, cfg, finalizeOpts{
@@ -391,7 +398,7 @@ func (e *Engine) upFromImage(ctx context.Context, ws *workspace.Workspace, cfg *
 
 	hasEntrypoints := storedResult.HasFeatureEntrypoints
 
-	containerID, err := b.createContainer(ctx, createOpts{
+	created, err := b.createContainer(ctx, createOpts{
 		imageName:      imageName,
 		hasEntrypoints: hasEntrypoints,
 		pluginResp:     pluginResp,
@@ -409,7 +416,8 @@ func (e *Engine) upFromImage(ctx context.Context, ws *workspace.Workspace, cfg *
 	}
 	cc := containerContext{
 		workspaceID:     ws.ID,
-		containerID:     containerID,
+		containerID:     created.ContainerID,
+		containerName:   created.ContainerName,
 		workspaceFolder: workspaceFolder,
 		remoteUser:      remoteUser,
 	}
@@ -447,6 +455,7 @@ func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerCon
 
 	mergedJSON, _ := json.Marshal(cfg)
 	wsResult.ContainerID = result.ContainerID
+	wsResult.ContainerName = result.ContainerName
 	wsResult.ImageName = result.ImageName
 	wsResult.MergedConfig = mergedJSON
 	wsResult.WorkspaceFolder = result.WorkspaceFolder
@@ -551,25 +560,27 @@ func (e *Engine) PreviewRemove(ctx context.Context, ws *workspace.Workspace) *Re
 		preview.ContainerID = container.ID
 	}
 
-	if result, err := e.store.LoadResult(ws.ID); err == nil && result != nil {
-		if result.SnapshotImage != "" {
-			preview.Images = append(preview.Images, result.SnapshotImage)
+	seen := make(map[string]bool)
+	addImage := func(ref string) {
+		if ref == "" || seen[ref] {
+			return
 		}
+		seen[ref] = true
+		preview.Images = append(preview.Images, ref)
+	}
+
+	result, _ := e.store.LoadResult(ws.ID)
+	if result != nil {
+		addImage(result.SnapshotImage)
 		if result.ImageName != "" && strings.HasPrefix(result.ImageName, "crib-") {
-			preview.Images = append(preview.Images, result.ImageName)
+			addImage(result.ImageName)
 		}
 	}
 
 	label := ocidriver.WorkspaceLabel(ws.ID)
 	if images, err := e.driver.ListImages(ctx, label); err == nil {
-		seen := make(map[string]bool)
-		for _, img := range preview.Images {
-			seen[img] = true
-		}
 		for _, img := range images {
-			if !seen[img.Reference] {
-				preview.Images = append(preview.Images, img.Reference)
-			}
+			addImage(img.Reference)
 		}
 	}
 

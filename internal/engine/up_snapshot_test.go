@@ -49,12 +49,12 @@ func (m *snapshotUpMockDriver) FindContainer(_ context.Context, _ string) (*driv
 	return nil, nil
 }
 
-func (m *snapshotUpMockDriver) RunContainer(_ context.Context, _ string, opts *driver.RunOptions) error {
+func (m *snapshotUpMockDriver) RunContainer(_ context.Context, wsID string, opts *driver.RunOptions) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.runCalls = append(m.runCalls, opts)
 	m.containerUp = true
-	return nil
+	return "crib-" + wsID, nil
 }
 
 func (m *snapshotUpMockDriver) DeleteContainer(_ context.Context, _, _ string) error { return nil }

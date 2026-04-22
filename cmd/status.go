@@ -41,7 +41,11 @@ var statusCmd = &cobra.Command{
 			return nil
 		}
 
-		fmt.Printf("%-12s%s\n", "container", "crib-"+ws.ID)
+		var containerName string
+		if stored, _ := store.LoadResult(ws.ID); stored != nil {
+			containerName = stored.ContainerName
+		}
+		fmt.Printf("%-12s%s\n", "container", displayContainerName(containerName, ws.ID))
 		fmt.Printf("%-12s%s\n", "status", u.StatusColor(result.Container.State.Status))
 
 		if ports := formatPorts(result.Container.Ports); ports != "" {
