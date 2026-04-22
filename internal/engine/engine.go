@@ -455,9 +455,7 @@ func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerCon
 
 	mergedJSON, _ := json.Marshal(cfg)
 	wsResult.ContainerID = result.ContainerID
-	if result.ContainerName != "" {
-		wsResult.ContainerName = result.ContainerName
-	}
+	wsResult.ContainerName = result.ContainerName
 	wsResult.ImageName = result.ImageName
 	wsResult.MergedConfig = mergedJSON
 	wsResult.WorkspaceFolder = result.WorkspaceFolder
