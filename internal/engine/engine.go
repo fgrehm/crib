@@ -562,24 +562,35 @@ func (e *Engine) PreviewRemove(ctx context.Context, ws *workspace.Workspace) *Re
 		preview.ContainerID = container.ID
 	}
 
-	if result, err := e.store.LoadResult(ws.ID); err == nil && result != nil {
-		if result.SnapshotImage != "" {
-			preview.Images = append(preview.Images, result.SnapshotImage)
+	seen := make(map[string]bool)
+	addImage := func(ref string) {
+		if ref == "" || seen[ref] {
+			return
 		}
+		seen[ref] = true
+		preview.Images = append(preview.Images, ref)
+	}
+
+	result, _ := e.store.LoadResult(ws.ID)
+	if result != nil {
+		addImage(result.SnapshotImage)
 		if result.ImageName != "" && strings.HasPrefix(result.ImageName, "crib-") {
-			preview.Images = append(preview.Images, result.ImageName)
+			addImage(result.ImageName)
 		}
 	}
 
 	label := ocidriver.WorkspaceLabel(ws.ID)
 	if images, err := e.driver.ListImages(ctx, label); err == nil {
-		seen := make(map[string]bool)
-		for _, img := range preview.Images {
-			seen[img] = true
-		}
 		for _, img := range images {
-			if !seen[img.Reference] {
-				preview.Images = append(preview.Images, img.Reference)
+			addImage(img.Reference)
+		}
+	}
+
+	if storedComposeConfig(result) != nil {
+		projectLabel := "com.docker.compose.project=" + compose.ProjectName(ws.ID)
+		if images, err := e.driver.ListImages(ctx, projectLabel); err == nil {
+			for _, img := range images {
+				addImage(img.Reference)
 			}
 		}
 	}
@@ -670,10 +681,22 @@ func (e *Engine) cleanupWorkspaceImages(ctx context.Context, wsID string) {
 		}
 	}
 
-	// Also target the stored build image in case it predates labeling.
+	// Also target the stored build image in case it predates labeling, plus
+	// any compose-built images belonging to this workspace's project.
 	if result, err := e.store.LoadResult(wsID); err == nil && result != nil {
 		if result.ImageName != "" && strings.HasPrefix(result.ImageName, "crib-") {
 			seen[result.ImageName] = true
+		}
+		if storedComposeConfig(result) != nil {
+			// Compose labels built images with com.docker.compose.project.
+			// Pulled images (e.g. postgres:16) don't carry this label, so
+			// filtering by it targets only images compose built for us.
+			projectLabel := "com.docker.compose.project=" + compose.ProjectName(wsID)
+			if images, err := e.driver.ListImages(ctx, projectLabel); err == nil {
+				for _, img := range images {
+					seen[img.Reference] = true
+				}
+			}
 		}
 	}
 

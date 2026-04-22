@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 
+	"github.com/fgrehm/crib/internal/compose"
 	ocidriver "github.com/fgrehm/crib/internal/driver/oci"
 )
 
@@ -43,6 +44,20 @@ func (e *Engine) PruneImages(ctx context.Context, opts PruneOptions) (*PruneResu
 	images, err := e.driver.ListImages(ctx, label)
 	if err != nil {
 		return nil, err
+	}
+
+	// Also scan compose-built images for the targeted workspace. These carry
+	// com.docker.compose.project=<project> but not crib.workspace, so the
+	// crib.workspace filter above misses them. For global prune we skip this
+	// scan to avoid incorrectly targeting unrelated compose projects.
+	if opts.WorkspaceID != "" {
+		projectLabel := "com.docker.compose.project=" + compose.ProjectName(opts.WorkspaceID)
+		if composeImages, err := e.driver.ListImages(ctx, projectLabel); err == nil {
+			for _, img := range composeImages {
+				img.WorkspaceID = opts.WorkspaceID
+				images = append(images, img)
+			}
+		}
 	}
 
 	// Build a set of active images per workspace.
