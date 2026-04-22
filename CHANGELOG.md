@@ -21,6 +21,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   host; in workspace mode, a persistent state directory is bind-mounted so
   credentials created inside the container survive rebuilds.
 
+### Changed
+
+- `crib up`, `crib rebuild`, `crib restart`, and `crib status` now display the
+  actual container name, including user overrides via `runArgs: ["--name",
+  "foo"]`, instead of always showing the default `crib-<ws-id>`. Resolves the
+  stale display surfaced by [#35](https://github.com/fgrehm/crib/issues/35).
+  The chosen name is persisted on `workspace.Result.ContainerName`; empty for
+  compose backends and workspaces created before this change, with fallback to
+  the default.
+- Config parsing now rejects `runArgs` alongside `dockerComposeFile`. Per the
+  devcontainer spec, `runArgs` applies to image/Dockerfile configs only;
+  compose workspaces set container runtime options in the compose YAML.
+
 ### Fixed
 
 #### Spec-compliant `remoteUser` / `containerUser` resolution
