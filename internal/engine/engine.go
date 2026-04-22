@@ -469,8 +469,10 @@ func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerCon
 		cd := configDir(ws)
 		composeFiles := resolveComposeFiles(cd, cfg.DockerComposeFile)
 		wsResult.ComposeFilesHash = computeComposeFilesHash(composeFiles)
+		wsResult.ComposeProjectName = compose.ProjectName(ws.ID)
 	} else {
 		wsResult.ComposeFilesHash = ""
+		wsResult.ComposeProjectName = ""
 	}
 
 	if err := e.store.SaveResult(ws.ID, wsResult); err != nil {
@@ -587,7 +589,11 @@ func (e *Engine) PreviewRemove(ctx context.Context, ws *workspace.Workspace) *Re
 	}
 
 	if storedComposeConfig(result) != nil {
-		projectLabel := "com.docker.compose.project=" + compose.ProjectName(ws.ID)
+		projectName := result.ComposeProjectName
+		if projectName == "" {
+			projectName = compose.ProjectName(ws.ID)
+		}
+		projectLabel := "com.docker.compose.project=" + projectName
 		if images, err := e.driver.ListImages(ctx, projectLabel); err == nil {
 			for _, img := range images {
 				addImage(img.Reference)
@@ -691,7 +697,13 @@ func (e *Engine) cleanupWorkspaceImages(ctx context.Context, wsID string) {
 			// Compose labels built images with com.docker.compose.project.
 			// Pulled images (e.g. postgres:16) don't carry this label, so
 			// filtering by it targets only images compose built for us.
-			projectLabel := "com.docker.compose.project=" + compose.ProjectName(wsID)
+			// Prefer the persisted project name (captured at up/rebuild)
+			// over recomputing from env, which can drift between sessions.
+			projectName := result.ComposeProjectName
+			if projectName == "" {
+				projectName = compose.ProjectName(wsID)
+			}
+			projectLabel := "com.docker.compose.project=" + projectName
 			if images, err := e.driver.ListImages(ctx, projectLabel); err == nil {
 				for _, img := range images {
 					seen[img.Reference] = true

@@ -574,6 +574,61 @@ func TestCleanupWorkspaceImages_ComposeBuiltImages(t *testing.T) {
 	}
 }
 
+// TestCleanupWorkspaceImages_HonorsStoredComposeProjectName verifies that
+// cleanup uses the project name persisted at up time rather than recomputing
+// from COMPOSE_PROJECT_NAME, so env drift between up and remove doesn't leak
+// images.
+func TestCleanupWorkspaceImages_HonorsStoredComposeProjectName(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{
+		ID:               "compose-ws",
+		Source:           t.TempDir(),
+		DevContainerPath: ".devcontainer/devcontainer.json",
+	}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveResult(ws.ID, &workspace.Result{
+		MergedConfig:       []byte(`{"dockerComposeFile":["docker-compose.yml"],"service":"app"}`),
+		ComposeProjectName: "my-custom-project",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	md := &composeImageMockDriver{
+		byLabel: map[string][]driver.ImageInfo{
+			"com.docker.compose.project=my-custom-project": {
+				{Reference: "my-custom-project-app", ID: "sha256:app"},
+			},
+		},
+	}
+	eng := &Engine{
+		driver: md,
+		store:  store,
+		logger: slog.Default(),
+		stdout: io.Discard,
+		stderr: io.Discard,
+	}
+
+	eng.cleanupWorkspaceImages(context.Background(), ws.ID)
+
+	foundCustomLookup := false
+	for _, label := range md.queriedLabels {
+		if label == "com.docker.compose.project=my-custom-project" {
+			foundCustomLookup = true
+		}
+		if label == "com.docker.compose.project=crib-compose-ws" {
+			t.Errorf("unexpected lookup by default project name; stored name was ignored")
+		}
+	}
+	if !foundCustomLookup {
+		t.Errorf("expected lookup by stored project name, got queries: %v", md.queriedLabels)
+	}
+	if len(md.removedImages) != 1 || md.removedImages[0] != "my-custom-project-app" {
+		t.Errorf("expected removal of my-custom-project-app, got %v", md.removedImages)
+	}
+}
+
 // TestCleanupWorkspaceImages_NonComposeSkipsProjectLabelLookup verifies that
 // the compose project-label lookup is not performed for non-compose workspaces.
 func TestCleanupWorkspaceImages_NonComposeSkipsProjectLabelLookup(t *testing.T) {

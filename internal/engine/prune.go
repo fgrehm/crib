@@ -51,7 +51,14 @@ func (e *Engine) PruneImages(ctx context.Context, opts PruneOptions) (*PruneResu
 	// crib.workspace filter above misses them. For global prune we skip this
 	// scan to avoid incorrectly targeting unrelated compose projects.
 	if opts.WorkspaceID != "" {
-		projectLabel := "com.docker.compose.project=" + compose.ProjectName(opts.WorkspaceID)
+		projectName := ""
+		if r, err := e.store.LoadResult(opts.WorkspaceID); err == nil && r != nil {
+			projectName = r.ComposeProjectName
+		}
+		if projectName == "" {
+			projectName = compose.ProjectName(opts.WorkspaceID)
+		}
+		projectLabel := "com.docker.compose.project=" + projectName
 		if composeImages, err := e.driver.ListImages(ctx, projectLabel); err == nil {
 			for _, img := range composeImages {
 				img.WorkspaceID = opts.WorkspaceID
