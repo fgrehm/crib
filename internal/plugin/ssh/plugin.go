@@ -133,7 +133,7 @@ func (p *Plugin) agentForwarding() (*config.Mount, map[string]string) {
 		return nil, nil
 	}
 	if fi.Mode().Type()&os.ModeSocket == 0 {
-		slog.Warn("ssh: SSH_AUTH_SOCK is not a socket, skipping agent forwarding",
+		slog.Warn("ssh plugin: SSH_AUTH_SOCK is not a socket, skipping agent forwarding",
 			"path", sock, "mode", fi.Mode().String())
 		return nil, nil
 	}
