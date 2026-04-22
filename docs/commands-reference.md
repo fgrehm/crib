@@ -7,6 +7,14 @@ description: Detailed usage, flags, and examples for every crib command.
 
 Build the container image (if needed) and start the workspace. On first run, this builds the image, creates the container, syncs UID/GID, probes the user environment, and runs all [lifecycle hooks](/crib/guides/lifecycle-hooks/). On subsequent runs, it starts the existing container and runs only the resume hooks (`postStartCommand`, `postAttachCommand`).
 
+```bash
+crib up                                    # standard run
+crib up --disable-plugin ssh               # skip a bundled plugin for this run
+crib up --disable-plugin ssh,dotfiles      # repeatable or comma-separated
+```
+
+See [Disabling plugins](/crib/guides/plugins/#disabling-plugins) for per-project and global alternatives.
+
 ## `crib down`
 
 Stop and remove the workspace container. This clears lifecycle hook markers, so the next `crib up` runs all hooks from scratch. Use this when you want a clean restart.
@@ -48,11 +56,11 @@ Both `run` and `exec` inherit the probed environment (`remoteEnv`) from `crib up
 
 ## `crib restart`
 
-Restart the workspace, detecting what changed since the last `crib up`. See [Smart Restart](/crib/guides/smart-restart/) for details on how change detection works.
+Restart the workspace, detecting what changed since the last `crib up`. See [Smart Restart](/crib/guides/smart-restart/) for details on how change detection works. Accepts `--disable-plugin` like `crib up`.
 
 ## `crib rebuild`
 
-Full rebuild: runs `down` followed by `up`. Use this when the image needs to be rebuilt (changed Dockerfile, base image, or features). Clears any snapshot image so the build starts from scratch.
+Full rebuild: runs `down` followed by `up`. Use this when the image needs to be rebuilt (changed Dockerfile, base image, or features). Clears any snapshot image so the build starts from scratch. Accepts `--disable-plugin` like `crib up`.
 
 ## `crib logs`
 

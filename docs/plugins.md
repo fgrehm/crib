@@ -7,6 +7,47 @@ description: What crib's built-in plugins do and how to configure them.
 
 Plugins run during `crib up` and `crib rebuild`. They are fail-open: if a plugin can't find something it needs (no SSH agent running, no Claude credentials on disk), it skips silently and doesn't block container creation.
 
+Bundled plugin names (used when disabling): `coding-agents`, `shell-history`, `ssh`, `dotfiles`, `package-cache`.
+
+---
+
+## Disabling plugins
+
+Plugins can be skipped at three levels. Any layer asking for a plugin to be disabled wins, they combine additively.
+
+**Per-command** (one-off, `crib up`, `crib rebuild`, `crib restart`):
+
+```bash
+crib up --disable-plugin ssh
+crib up --disable-plugin ssh --disable-plugin dotfiles
+crib up --disable-plugin ssh,dotfiles     # comma-separated also works
+```
+
+**Per-project** (`.cribrc` in the project root):
+
+```ini
+# Skip specific plugins for this project:
+plugins.disable = ssh, dotfiles
+
+# Or disable every bundled plugin:
+plugins = false
+```
+
+**Globally** (`~/.config/crib/config.toml`, or `$XDG_CONFIG_HOME/crib/config.toml`):
+
+```toml
+[plugins]
+disable = ["ssh", "dotfiles"]
+# Or kill switch:
+# disable_all = true
+```
+
+Unknown plugin names in any disable list produce a warning at startup and are otherwise ignored, so typos don't silently do nothing.
+
+:::tip[When to disable the SSH plugin]
+On macOS with Colima, virtiofs exposes the SSH agent socket as a regular file. The plugin detects this and logs a warning instead of bind-mounting it (the runtime would crash). If you don't need agent forwarding at all on that setup, disable the plugin with `--disable-plugin ssh` or the equivalent `.cribrc` / global config entry.
+:::
+
 ---
 
 ## Shell history
