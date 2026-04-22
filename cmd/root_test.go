@@ -327,6 +327,11 @@ func TestWarnUnknownDisabledPlugins(t *testing.T) {
 			name:     "empty set never warns",
 			disabled: map[string]bool{},
 		},
+		{
+			name:      "multiple unknowns log in sorted order",
+			disabled:  map[string]bool{"zebra": true, "alpha": true, "mike": true},
+			wantNames: []string{"alpha", "mike", "zebra"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -337,13 +342,20 @@ func TestWarnUnknownDisabledPlugins(t *testing.T) {
 			warnUnknownDisabledPlugins(tt.disabled)
 
 			out := buf.String()
+			prevIdx := -1
 			for _, n := range tt.wantNames {
 				if !strings.Contains(out, "unknown plugin in disable list") {
 					t.Errorf("expected warning message, got %q", out)
 				}
-				if !strings.Contains(out, "name="+n) {
+				idx := strings.Index(out, "name="+n)
+				if idx == -1 {
 					t.Errorf("expected warning to include name=%s, got %q", n, out)
+					continue
 				}
+				if idx < prevIdx {
+					t.Errorf("expected names in sorted order; %q appeared before expected predecessor in %q", n, out)
+				}
+				prevIdx = idx
 			}
 			for _, n := range tt.wantSilent {
 				if strings.Contains(out, "name="+n+" ") || strings.HasSuffix(strings.TrimRight(out, "\n"), "name="+n) {

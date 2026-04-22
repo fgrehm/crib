@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -369,12 +370,18 @@ func collectDisabledPlugins(layers ...[]string) map[string]bool {
 }
 
 // warnUnknownDisabledPlugins logs a warning for names that do not match any
-// bundled plugin. Typos shouldn't silently disable nothing.
+// bundled plugin. Typos shouldn't silently disable nothing. Names are sorted
+// so log output is stable across runs.
 func warnUnknownDisabledPlugins(disabled map[string]bool) {
+	unknown := make([]string, 0, len(disabled))
 	for name := range disabled {
 		if !isKnownPlugin(name) {
-			logger.Warn("unknown plugin in disable list", "name", name, "known", knownPlugins)
+			unknown = append(unknown, name)
 		}
+	}
+	slices.Sort(unknown)
+	for _, name := range unknown {
+		logger.Warn("unknown plugin in disable list", "name", name, "known", knownPlugins)
 	}
 }
 
