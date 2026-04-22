@@ -117,15 +117,24 @@ func (p *Plugin) PreContainerRun(_ context.Context, req *plugin.PreContainerRunR
 }
 
 // agentForwarding binds the host's SSH agent socket into the container.
-// Returns nil if SSH_AUTH_SOCK is unset or the socket doesn't exist.
+// Returns nil if SSH_AUTH_SOCK is unset, the path doesn't exist, or the
+// path points to something other than a Unix socket. The socket-type
+// check is defense-in-depth: some filesystems (e.g. virtiofs on macOS +
+// Colima) expose the socket as a regular file that cannot be bind-mounted
+// as one, and attempting to mount it crashes the container runtime.
 func (p *Plugin) agentForwarding() (*config.Mount, map[string]string) {
 	sock := p.getenv("SSH_AUTH_SOCK")
 	if sock == "" {
 		return nil, nil
 	}
 
-	// Verify socket exists.
-	if _, err := os.Stat(sock); err != nil {
+	fi, err := os.Stat(sock)
+	if err != nil {
+		return nil, nil
+	}
+	if fi.Mode().Type()&os.ModeSocket == 0 {
+		slog.Warn("ssh plugin: SSH_AUTH_SOCK is not a socket, skipping agent forwarding",
+			"path", sock, "mode", fi.Mode().String())
 		return nil, nil
 	}
 

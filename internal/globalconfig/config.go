@@ -11,6 +11,7 @@ import (
 // Config holds user-level crib settings from ~/.config/crib/config.toml.
 type Config struct {
 	Dotfiles DotfilesConfig `toml:"dotfiles"`
+	Plugins  PluginsConfig  `toml:"plugins"`
 }
 
 // DotfilesConfig configures dotfiles repository cloning and installation.
@@ -18,6 +19,14 @@ type DotfilesConfig struct {
 	Repository     string `toml:"repository"`
 	TargetPath     string `toml:"targetPath"`
 	InstallCommand string `toml:"installCommand"`
+}
+
+// PluginsConfig disables bundled plugins globally. Disable lists specific
+// plugins by name; DisableAll is a kill switch that skips plugin registration
+// entirely.
+type PluginsConfig struct {
+	Disable    []string `toml:"disable"`
+	DisableAll bool     `toml:"disable_all"`
 }
 
 // Load reads the global config from the default path.

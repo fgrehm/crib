@@ -107,6 +107,37 @@ func TestPreContainerRun_AgentForwarding_NoSocket(t *testing.T) {
 	}
 }
 
+// TestPreContainerRun_AgentForwarding_NotASocket covers the macOS + Colima
+// case where SSH_AUTH_SOCK points at a regular file (virtiofs materialises
+// the socket as a file we cannot bind-mount as a socket). The plugin should
+// skip agent forwarding instead of wiring in a mount that breaks the runtime.
+func TestPreContainerRun_AgentForwarding_NotASocket(t *testing.T) {
+	fakeSock := filepath.Join(t.TempDir(), "agent.sock")
+	if err := os.WriteFile(fakeSock, []byte("not a socket"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	home := t.TempDir()
+	p := &Plugin{
+		homeDir: home,
+		getenvFunc: func(key string) string {
+			if key == "SSH_AUTH_SOCK" {
+				return fakeSock
+			}
+			return ""
+		},
+		gitConfigCmd: func(string) string { return "" },
+	}
+
+	resp, err := p.PreContainerRun(context.Background(), plugintest.TestReq(t.TempDir(), "vscode"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp != nil {
+		t.Errorf("expected nil response when SSH_AUTH_SOCK is a regular file, got %+v", resp)
+	}
+}
+
 // --- SSH config tests ---
 
 func TestPreContainerRun_SSHConfig(t *testing.T) {

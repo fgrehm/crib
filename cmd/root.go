@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -49,13 +50,15 @@ func displayContainerName(recorded, wsID string) string {
 }
 
 var (
-	debugFlag       bool
-	verboseFlag     bool
-	configDirFlag   string
-	dirFlag         string
-	logger          *slog.Logger
-	cacheProviders  []string   // loaded from .cribrc cache key
-	projectDotfiles dotfilesRC // loaded from .cribrc dotfiles keys
+	debugFlag             bool
+	verboseFlag           bool
+	configDirFlag         string
+	dirFlag               string
+	logger                *slog.Logger
+	cacheProviders        []string   // loaded from .cribrc cache key
+	projectDotfiles       dotfilesRC // loaded from .cribrc dotfiles keys
+	projectPluginsDisable []string   // loaded from .cribrc plugins.disable
+	projectPluginsOff     bool       // loaded from .cribrc plugins = false
 )
 
 // version variables injected at build time via ldflags.
@@ -86,6 +89,14 @@ var rootCmd = &cobra.Command{
 			},
 		}))
 
+		// Reset .cribrc-derived globals so stale values from a previous
+		// rootCmd execution in the same process do not leak into this run
+		// (matters for tests that reuse the command tree).
+		cacheProviders = nil
+		projectDotfiles = dotfilesRC{}
+		projectPluginsDisable = nil
+		projectPluginsOff = false
+
 		// Apply .cribrc defaults for flags not explicitly set by the user.
 		rc, rcErr := loadCribRC()
 		if rcErr != nil {
@@ -101,6 +112,8 @@ var rootCmd = &cobra.Command{
 				logger.Debug("loaded cache providers from .cribrc", "providers", rc.Cache)
 			}
 			projectDotfiles = rc.Dotfiles
+			projectPluginsDisable = rc.PluginsDisable
+			projectPluginsOff = rc.PluginsDisableAll
 		}
 
 		return nil
@@ -167,6 +180,7 @@ func Execute() int {
 			return a
 		},
 	}))
+	resetPerExecutionFlags(rootCmd)
 	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		u := newUI()
 		u.Error(err.Error())
@@ -289,22 +303,48 @@ func resolveDotfilesPlugin(gcfg globalconfig.DotfilesConfig, rc dotfilesRC) (glo
 
 // setupPlugins creates a plugin manager with bundled plugins and attaches it
 // to the engine. Called from commands that create containers (up, rebuild, restart).
-func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
+//
+// Plugins can be disabled via the global config (`[plugins]` with
+// `disable = [...]` or `disable_all = true`), `.cribrc`
+// (`plugins.disable = ssh, ...` or `plugins = false`), or the
+// `--disable-plugin` flag on the current command.
+func setupPlugins(cmd *cobra.Command, eng *engine.Engine, d *oci.OCIDriver) {
 	eng.SetRuntime(d.Runtime().String())
 	mgr := plugin.NewManager(logger)
-	mgr.Register(codingagents.New())
-	mgr.Register(shellhistory.New())
-	mgr.Register(pluginssh.New())
-	var globalDotfiles globalconfig.DotfilesConfig
+
+	var globalCfg globalconfig.Config
 	if gcfg, err := globalconfig.Load(); err != nil {
 		logger.Warn("failed to load global config", "error", err)
-	} else {
-		globalDotfiles = gcfg.Dotfiles
+	} else if gcfg != nil {
+		globalCfg = *gcfg
 	}
-	if cfg, ok := resolveDotfilesPlugin(globalDotfiles, projectDotfiles); ok {
-		mgr.Register(dotfiles.New(cfg))
+
+	// Warn about unknown names in any disable layer before honoring the kill
+	// switch — a typo is a config mistake whether or not plugins are all off.
+	disabled := collectDisabledPlugins(globalCfg.Plugins.Disable, projectPluginsDisable, disabledPluginsForCommand(cmd))
+	warnUnknownDisabledPlugins(disabled)
+
+	// Kill switch: skip every plugin when any layer asks for it.
+	if globalCfg.Plugins.DisableAll || projectPluginsOff {
+		eng.SetPlugins(mgr)
+		return
 	}
-	if len(cacheProviders) > 0 {
+
+	if !disabled["coding-agents"] {
+		mgr.Register(codingagents.New())
+	}
+	if !disabled["shell-history"] {
+		mgr.Register(shellhistory.New())
+	}
+	if !disabled["ssh"] {
+		mgr.Register(pluginssh.New())
+	}
+	if !disabled["dotfiles"] {
+		if cfg, ok := resolveDotfilesPlugin(globalCfg.Dotfiles, projectDotfiles); ok {
+			mgr.Register(dotfiles.New(cfg))
+		}
+	}
+	if !disabled["package-cache"] && len(cacheProviders) > 0 {
 		if unknown := packagecache.ValidateProviders(cacheProviders); len(unknown) > 0 {
 			logger.Warn("unknown cache providers in .cribrc", "unknown", unknown, "supported", packagecache.SupportedProviders())
 		}
@@ -312,6 +352,37 @@ func setupPlugins(eng *engine.Engine, d *oci.OCIDriver) {
 		eng.SetBuildCacheMounts(packagecache.BuildCacheMounts(cacheProviders))
 	}
 	eng.SetPlugins(mgr)
+}
+
+// collectDisabledPlugins merges disable entries from every layer into a set.
+// Trimmed, empty-filtered.
+func collectDisabledPlugins(layers ...[]string) map[string]bool {
+	out := map[string]bool{}
+	for _, layer := range layers {
+		for _, name := range layer {
+			name = strings.TrimSpace(name)
+			if name != "" {
+				out[name] = true
+			}
+		}
+	}
+	return out
+}
+
+// warnUnknownDisabledPlugins logs a warning for names that do not match any
+// bundled plugin. Typos shouldn't silently disable nothing. Names are sorted
+// so log output is stable across runs.
+func warnUnknownDisabledPlugins(disabled map[string]bool) {
+	unknown := make([]string, 0, len(disabled))
+	for name := range disabled {
+		if !isKnownPlugin(name) {
+			unknown = append(unknown, name)
+		}
+	}
+	slices.Sort(unknown)
+	for _, name := range unknown {
+		logger.Warn("unknown plugin in disable list", "name", name, "known", knownPlugins)
+	}
 }
 
 // appendRemoteEnv appends -e KEY=VALUE flags for each entry in result.RemoteEnv.

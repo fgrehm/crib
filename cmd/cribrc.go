@@ -17,9 +17,11 @@ type dotfilesRC struct {
 
 // cribRC holds values loaded from a .cribrc file.
 type cribRC struct {
-	Config   string   // devcontainer config directory (same as --config / -C)
-	Cache    []string // package cache providers (e.g. "npm", "pip", "go")
-	Dotfiles dotfilesRC
+	Config            string     // devcontainer config directory (same as --config / -C)
+	Cache             []string   // package cache providers (e.g. "npm", "pip", "go")
+	Dotfiles          dotfilesRC // dotfiles plugin overrides (dotfiles.* keys + kill switch)
+	PluginsDisable    []string   // plugin names to skip (e.g. "ssh", "dotfiles")
+	PluginsDisableAll bool       // kill switch: "plugins = false" disables every plugin
 }
 
 // loadCribRC reads a .cribrc file from cwd. Returns nil, nil if not found.
@@ -71,6 +73,17 @@ func loadCribRC() (*cribRC, error) {
 			rc.Dotfiles.TargetPath = val
 		case "dotfiles.installCommand":
 			rc.Dotfiles.InstallCommand = val
+		case "plugins":
+			if val == "false" {
+				rc.PluginsDisableAll = true
+			}
+		case "plugins.disable":
+			for p := range strings.SplitSeq(val, ",") {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					rc.PluginsDisable = append(rc.PluginsDisable, p)
+				}
+			}
 		}
 	}
 	return rc, scanner.Err()

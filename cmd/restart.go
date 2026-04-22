@@ -31,7 +31,7 @@ args), restart will ask you to run 'crib rebuild' instead.`,
 		eng.SetOutput(os.Stdout, os.Stderr)
 		eng.SetVerbose(verboseFlag || debugFlag)
 		eng.SetProgress(func(ev engine.ProgressEvent) { u.Dim("  " + ev.Message) })
-		setupPlugins(eng, d)
+		setupPlugins(cmd, eng, d)
 
 		ws, err := currentWorkspace(store, false)
 		if err != nil {
@@ -72,4 +72,8 @@ args), restart will ask you to run 'crib rebuild' instead.`,
 
 		return nil
 	},
+}
+
+func init() {
+	addPluginFlags(restartCmd)
 }

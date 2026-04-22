@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Plugin configurability. Bundled plugins can now be disabled globally
+  (`~/.config/crib/config.toml` under `[plugins]` with `disable = ["ssh",
+  ...]` or `disable_all = true`), per-project (`.cribrc` with
+  `plugins.disable = ssh, dotfiles` or `plugins = false`), or per-command
+  (`--disable-plugin ssh` on `crib up`, `crib rebuild`, `crib restart`).
+  Unknown names in the disable list log a warning. Closes
+  [#37](https://github.com/fgrehm/crib/issues/37) (users can now skip the
+  SSH plugin on macOS + Colima where virtiofs breaks agent socket bind
+  mounts).
 - Go fuzz tests for config parsing (`ParseBytes`, `ParseMount`,
   `SubstituteString`) and Dockerfile handling (`Parse`, `RemoveSyntaxVersion`,
   `EnsureFinalStageName`). Runs in CI with a 10s per-target budget.
@@ -35,6 +44,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compose workspaces set container runtime options in the compose YAML.
 
 ### Fixed
+
+- SSH plugin now verifies that `SSH_AUTH_SOCK` points at an actual Unix
+  socket before bind-mounting it. Defense-in-depth for environments like
+  macOS + Colima, where virtiofs exposes the socket as a regular file that
+  crashes the container runtime when bind-mounted. When the path is not a
+  socket the plugin logs a warning and skips agent forwarding.
 
 #### Spec-compliant `remoteUser` / `containerUser` resolution
 
