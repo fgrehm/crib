@@ -96,6 +96,7 @@ export default defineConfig({
           label: "Reference",
           items: [
             { label: "Command Reference", slug: "reference/commands" },
+            { label: "Configuration", slug: "reference/config" },
             { label: "CHANGELOG", slug: "reference/changelog" },
           ],
         },

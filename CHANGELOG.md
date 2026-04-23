@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Global workspace configuration. New `[workspace]` section in
+  `~/.config/crib/config.toml` sets environment variables, mounts, and
+  runtime arguments applied to every container. Project-level config
+  (devcontainer.json `containerEnv`, `mounts`, `runArgs`) takes priority
+  on key conflicts. Run args are honored in single-container mode only.
 - Plugin configurability. Bundled plugins can now be disabled globally
   (`~/.config/crib/config.toml` under `[plugins]` with `disable = ["ssh",
   ...]` or `disable_all = true`), per-project (`.cribrc` with
@@ -32,6 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `.cribrc` parser migrated to TOML. The hand-rolled line-by-line parser
+  is replaced with proper TOML parsing via `internal/globalconfig`. Both
+  the TOML array syntax (`plugins.disable = ["ssh", "dotfiles"]`) and
+  the legacy comma-separated string (`plugins.disable = "ssh, dotfiles"`)
+  are accepted for list values, and the `plugins = "false"` /
+  `dotfiles = "false"` kill-switch scalars continue to work.
+- Plugin setup logic moved from `cmd/` into a new `internal/pluginsetup/`
+  package. `cmd/` keeps the cobra flag glue; pluginsetup owns the
+  disable-list merging, kill-switch handling, and bundled-plugin wiring.
 - `crib up`, `crib rebuild`, `crib restart`, and `crib status` now display the
   actual container name, including user overrides via `runArgs: ["--name",
   "foo"]`, instead of always showing the default `crib-<ws-id>`. Resolves the
