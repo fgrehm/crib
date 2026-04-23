@@ -1,21 +1,9 @@
 package cmd
 
 import (
-	"slices"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-// knownPlugins is the canonical set of bundled plugin names. Used for
-// warning on unrecognized disable entries.
-var knownPlugins = []string{
-	"coding-agents",
-	"shell-history",
-	"ssh",
-	"dotfiles",
-	"package-cache",
-}
 
 // addPluginFlags registers the --disable-plugin flag on commands that create
 // or recreate containers. The flag accepts repeated values or a
@@ -37,11 +25,6 @@ func disabledPluginsForCommand(cmd *cobra.Command) []string {
 		return nil
 	}
 	return vals
-}
-
-// isKnownPlugin reports whether name matches a bundled plugin.
-func isKnownPlugin(name string) bool {
-	return slices.Contains(knownPlugins, name)
 }
 
 // resetPerExecutionFlags clears parsed state for flags that must not leak

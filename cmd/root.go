@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -18,12 +17,7 @@ import (
 	"github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/engine"
 	"github.com/fgrehm/crib/internal/globalconfig"
-	"github.com/fgrehm/crib/internal/plugin"
-	"github.com/fgrehm/crib/internal/plugin/codingagents"
-	"github.com/fgrehm/crib/internal/plugin/dotfiles"
-	"github.com/fgrehm/crib/internal/plugin/packagecache"
-	"github.com/fgrehm/crib/internal/plugin/shellhistory"
-	pluginssh "github.com/fgrehm/crib/internal/plugin/ssh"
+	"github.com/fgrehm/crib/internal/pluginsetup"
 	"github.com/fgrehm/crib/internal/ui"
 	"github.com/fgrehm/crib/internal/workspace"
 	"github.com/spf13/cobra"
@@ -280,48 +274,12 @@ func loadProjectCribRC() (*globalconfig.CribRC, error) {
 	return globalconfig.LoadCribRC(filepath.Join(cwd, ".cribrc"))
 }
 
-// resolveDotfilesPlugin merges global config with per-project overrides and
-// returns the effective config and whether the plugin should be registered.
-func resolveDotfilesPlugin(gcfg globalconfig.DotfilesConfig, rc globalconfig.DotfilesRC) (globalconfig.DotfilesConfig, bool) {
-	if rc.Disabled {
-		return globalconfig.DotfilesConfig{}, false
-	}
-
-	// Merge: start with global, apply per-project overrides.
-	merged := gcfg
-	if rc.Repository != "" {
-		merged.Repository = rc.Repository
-	}
-	if rc.TargetPath != "" {
-		merged.TargetPath = rc.TargetPath
-	}
-	if rc.InstallCommand != "" {
-		merged.InstallCommand = rc.InstallCommand
-	}
-
-	if merged.Repository == "" {
-		return globalconfig.DotfilesConfig{}, false
-	}
-
-	// Apply ~/dotfiles default: applyDefaults only ran on the global config
-	// struct; the repo may have come from per-project.
-	if merged.TargetPath == "" {
-		merged.TargetPath = "~/dotfiles"
-	}
-
-	return merged, true
-}
-
-// setupPlugins creates a plugin manager with bundled plugins and attaches it
-// to the engine. Called from commands that create containers (up, rebuild, restart).
-//
-// Plugins can be disabled via the global config (`[plugins]` with
-// `disable = [...]` or `disable_all = true`), `.cribrc`
-// (`plugins.disable = ssh, ...` or `plugins = false`), or the
-// `--disable-plugin` flag on the current command.
+// setupPlugins builds pluginsetup.Opts from the loaded global + project
+// config and CLI flags, then wires the resulting manager and cache mounts
+// into the engine. Called from commands that create containers (up, rebuild,
+// restart).
 func setupPlugins(cmd *cobra.Command, eng *engine.Engine, d *oci.OCIDriver) {
 	eng.SetRuntime(d.Runtime().String())
-	mgr := plugin.NewManager(logger)
 
 	var globalCfg globalconfig.Config
 	if gcfg, err := globalconfig.Load(); err != nil {
@@ -330,69 +288,20 @@ func setupPlugins(cmd *cobra.Command, eng *engine.Engine, d *oci.OCIDriver) {
 		globalCfg = *gcfg
 	}
 
-	// Warn about unknown names in any disable layer before honoring the kill
-	// switch — a typo is a config mistake whether or not plugins are all off.
-	disabled := collectDisabledPlugins(globalCfg.Plugins.Disable, projectPluginsDisable, disabledPluginsForCommand(cmd))
-	warnUnknownDisabledPlugins(disabled)
+	result := pluginsetup.Configure(pluginsetup.Opts{
+		GlobalDisable:     globalCfg.Plugins.Disable,
+		GlobalDisableAll:  globalCfg.Plugins.DisableAll,
+		ProjectDisable:    projectPluginsDisable,
+		ProjectDisableAll: projectPluginsOff,
+		CLIDisable:        disabledPluginsForCommand(cmd),
+		GlobalDotfiles:    globalCfg.Dotfiles,
+		ProjectDotfiles:   projectDotfiles,
+		CacheProviders:    cacheProviders,
+	}, logger)
 
-	// Kill switch: skip every plugin when any layer asks for it.
-	if globalCfg.Plugins.DisableAll || projectPluginsOff {
-		eng.SetPlugins(mgr)
-		return
-	}
-
-	if !disabled["coding-agents"] {
-		mgr.Register(codingagents.New())
-	}
-	if !disabled["shell-history"] {
-		mgr.Register(shellhistory.New())
-	}
-	if !disabled["ssh"] {
-		mgr.Register(pluginssh.New())
-	}
-	if !disabled["dotfiles"] {
-		if cfg, ok := resolveDotfilesPlugin(globalCfg.Dotfiles, projectDotfiles); ok {
-			mgr.Register(dotfiles.New(cfg))
-		}
-	}
-	if !disabled["package-cache"] && len(cacheProviders) > 0 {
-		if unknown := packagecache.ValidateProviders(cacheProviders); len(unknown) > 0 {
-			logger.Warn("unknown cache providers in .cribrc", "unknown", unknown, "supported", packagecache.SupportedProviders())
-		}
-		mgr.Register(packagecache.New(cacheProviders))
-		eng.SetBuildCacheMounts(packagecache.BuildCacheMounts(cacheProviders))
-	}
-	eng.SetPlugins(mgr)
-}
-
-// collectDisabledPlugins merges disable entries from every layer into a set.
-// Trimmed, empty-filtered.
-func collectDisabledPlugins(layers ...[]string) map[string]bool {
-	out := map[string]bool{}
-	for _, layer := range layers {
-		for _, name := range layer {
-			name = strings.TrimSpace(name)
-			if name != "" {
-				out[name] = true
-			}
-		}
-	}
-	return out
-}
-
-// warnUnknownDisabledPlugins logs a warning for names that do not match any
-// bundled plugin. Typos shouldn't silently disable nothing. Names are sorted
-// so log output is stable across runs.
-func warnUnknownDisabledPlugins(disabled map[string]bool) {
-	unknown := make([]string, 0, len(disabled))
-	for name := range disabled {
-		if !isKnownPlugin(name) {
-			unknown = append(unknown, name)
-		}
-	}
-	slices.Sort(unknown)
-	for _, name := range unknown {
-		logger.Warn("unknown plugin in disable list", "name", name, "known", knownPlugins)
+	eng.SetPlugins(result.Manager)
+	if len(result.BuildCacheMounts) > 0 {
+		eng.SetBuildCacheMounts(result.BuildCacheMounts)
 	}
 }
 
