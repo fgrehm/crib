@@ -2,16 +2,19 @@ package globalconfig
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
 // Config holds user-level crib settings from ~/.config/crib/config.toml.
 type Config struct {
-	Dotfiles DotfilesConfig `toml:"dotfiles"`
-	Plugins  PluginsConfig  `toml:"plugins"`
+	Dotfiles  DotfilesConfig  `toml:"dotfiles"`
+	Plugins   PluginsConfig   `toml:"plugins"`
+	Workspace WorkspaceConfig `toml:"workspace"`
 }
 
 // DotfilesConfig configures dotfiles repository cloning and installation.
@@ -27,6 +30,141 @@ type DotfilesConfig struct {
 type PluginsConfig struct {
 	Disable    []string `toml:"disable"`
 	DisableAll bool     `toml:"disable_all"`
+}
+
+// WorkspaceConfig is applied to every container on top of project-level
+// configuration. Project values win on key conflicts.
+type WorkspaceConfig struct {
+	Env     map[string]string `toml:"env"`
+	Mounts  []string          `toml:"mount"`
+	RunArgs []string          `toml:"run_args"`
+}
+
+// CribRC holds values loaded from a per-project .cribrc file.
+type CribRC struct {
+	// Config sets the devcontainer config directory (equivalent to -C/--config).
+	Config string `toml:"config"`
+
+	// Cache lists package cache providers. Accepts a TOML array or a
+	// comma-separated string for backward compatibility with the pre-TOML
+	// .cribrc format.
+	Cache StringList `toml:"cache"`
+
+	// Dotfiles overrides global dotfiles settings and carries the kill switch.
+	Dotfiles DotfilesRC `toml:"dotfiles"`
+
+	// Plugins disables bundled plugins for the current project.
+	Plugins PluginsRC `toml:"plugins"`
+
+	// Workspace is the per-project workspace section (env, mounts, run_args).
+	Workspace WorkspaceConfig `toml:"workspace"`
+}
+
+// DotfilesRC mirrors DotfilesConfig but also honors a `dotfiles = "false"`
+// kill switch handled in UnmarshalTOML.
+type DotfilesRC struct {
+	Disabled       bool
+	Repository     string `toml:"repository"`
+	TargetPath     string `toml:"targetPath"`
+	InstallCommand string `toml:"installCommand"`
+}
+
+// PluginsRC mirrors PluginsConfig but also honors a `plugins = "false"`
+// kill switch handled in UnmarshalTOML.
+type PluginsRC struct {
+	DisableAll bool
+	Disable    StringList `toml:"disable"`
+}
+
+// StringList accepts either a TOML array of strings or a single
+// comma-separated string. It trims each entry and drops empties. The
+// comma-separated form exists for backward compatibility with the pre-TOML
+// .cribrc format (e.g. `plugins.disable = ssh, dotfiles`).
+type StringList []string
+
+// UnmarshalTOML implements toml.Unmarshaler.
+func (s *StringList) UnmarshalTOML(v any) error {
+	switch val := v.(type) {
+	case string:
+		*s = splitCSV(val)
+		return nil
+	case []any:
+		out := make([]string, 0, len(val))
+		for _, item := range val {
+			str, ok := item.(string)
+			if !ok {
+				return fmt.Errorf("expected string in list, got %T", item)
+			}
+			str = strings.TrimSpace(str)
+			if str != "" {
+				out = append(out, str)
+			}
+		}
+		*s = out
+		return nil
+	default:
+		return fmt.Errorf("expected string or array of strings, got %T", v)
+	}
+}
+
+func splitCSV(s string) []string {
+	var out []string
+	for part := range strings.SplitSeq(s, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+// UnmarshalTOML accepts either a nested table (dotfiles.repository, etc.) or
+// the legacy scalar `dotfiles = "false"` kill switch.
+func (d *DotfilesRC) UnmarshalTOML(v any) error {
+	if s, ok := v.(string); ok {
+		if s == "false" {
+			d.Disabled = true
+		}
+		return nil
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return fmt.Errorf("dotfiles: expected table or string, got %T", v)
+	}
+	for k, raw := range m {
+		switch k {
+		case "repository":
+			d.Repository, _ = raw.(string)
+		case "targetPath":
+			d.TargetPath, _ = raw.(string)
+		case "installCommand":
+			d.InstallCommand, _ = raw.(string)
+		}
+	}
+	return nil
+}
+
+// UnmarshalTOML accepts either a nested table (plugins.disable, etc.) or the
+// legacy scalar `plugins = "false"` kill switch.
+func (p *PluginsRC) UnmarshalTOML(v any) error {
+	if s, ok := v.(string); ok {
+		if s == "false" {
+			p.DisableAll = true
+		}
+		return nil
+	}
+	m, ok := v.(map[string]any)
+	if !ok {
+		return fmt.Errorf("plugins: expected table or string, got %T", v)
+	}
+	if raw, ok := m["disable"]; ok {
+		var list StringList
+		if err := list.UnmarshalTOML(raw); err != nil {
+			return fmt.Errorf("plugins.disable: %w", err)
+		}
+		p.Disable = list
+	}
+	return nil
 }
 
 // Load reads the global config from the default path.
@@ -48,6 +186,20 @@ func LoadFrom(path string) (*Config, error) {
 	}
 	cfg.applyDefaults()
 	return &cfg, nil
+}
+
+// LoadCribRC reads a .cribrc file at the given path. Returns a zero CribRC
+// (not an error) if the file does not exist.
+func LoadCribRC(path string) (*CribRC, error) {
+	var rc CribRC
+	_, err := toml.DecodeFile(path, &rc)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return &rc, nil
+		}
+		return nil, err
+	}
+	return &rc, nil
 }
 
 // DefaultPath returns the config file location, respecting XDG_CONFIG_HOME.

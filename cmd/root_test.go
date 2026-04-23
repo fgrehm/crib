@@ -80,7 +80,7 @@ func TestResolveDotfilesPlugin(t *testing.T) {
 	tests := []struct {
 		name           string
 		gcfg           globalconfig.DotfilesConfig
-		rc             dotfilesRC
+		rc             globalconfig.DotfilesRC
 		wantRun        bool
 		wantRepo       string
 		wantTargetPath string
@@ -89,27 +89,27 @@ func TestResolveDotfilesPlugin(t *testing.T) {
 		{
 			name:     "global set, no project override → runs",
 			gcfg:     globalSet,
-			rc:       dotfilesRC{},
+			rc:       globalconfig.DotfilesRC{},
 			wantRun:  true,
 			wantRepo: "https://github.com/user/dotfiles",
 		},
 		{
 			name:    "global set, project disabled → does not run",
 			gcfg:    globalSet,
-			rc:      dotfilesRC{Disabled: true},
+			rc:      globalconfig.DotfilesRC{Disabled: true},
 			wantRun: false,
 		},
 		{
 			name:     "global set, project repo override → runs with override",
 			gcfg:     globalSet,
-			rc:       dotfilesRC{Repository: "https://github.com/user/other"},
+			rc:       globalconfig.DotfilesRC{Repository: "https://github.com/user/other"},
 			wantRun:  true,
 			wantRepo: "https://github.com/user/other",
 		},
 		{
 			name:           "global set, project targetPath override → merged",
 			gcfg:           globalSet,
-			rc:             dotfilesRC{TargetPath: "~/custom"},
+			rc:             globalconfig.DotfilesRC{TargetPath: "~/custom"},
 			wantRun:        true,
 			wantRepo:       "https://github.com/user/dotfiles",
 			wantTargetPath: "~/custom",
@@ -117,7 +117,7 @@ func TestResolveDotfilesPlugin(t *testing.T) {
 		{
 			name:        "global set, project installCommand override → merged",
 			gcfg:        globalSet,
-			rc:          dotfilesRC{InstallCommand: "make install"},
+			rc:          globalconfig.DotfilesRC{InstallCommand: "make install"},
 			wantRun:     true,
 			wantRepo:    "https://github.com/user/dotfiles",
 			wantInstall: "make install",
@@ -125,14 +125,14 @@ func TestResolveDotfilesPlugin(t *testing.T) {
 		{
 			name:     "no global repo, project repo → runs with project settings",
 			gcfg:     globalEmpty,
-			rc:       dotfilesRC{Repository: "https://github.com/user/dots"},
+			rc:       globalconfig.DotfilesRC{Repository: "https://github.com/user/dots"},
 			wantRun:  true,
 			wantRepo: "https://github.com/user/dots",
 		},
 		{
 			name:           "no global repo, project repo, no targetPath → default applied",
 			gcfg:           globalEmpty,
-			rc:             dotfilesRC{Repository: "https://github.com/user/dots"},
+			rc:             globalconfig.DotfilesRC{Repository: "https://github.com/user/dots"},
 			wantRun:        true,
 			wantRepo:       "https://github.com/user/dots",
 			wantTargetPath: "~/dotfiles",
@@ -140,19 +140,19 @@ func TestResolveDotfilesPlugin(t *testing.T) {
 		{
 			name:    "no global repo, no project override → does not run",
 			gcfg:    globalEmpty,
-			rc:      dotfilesRC{},
+			rc:      globalconfig.DotfilesRC{},
 			wantRun: false,
 		},
 		{
 			name:    "no global repo, project disabled → does not run",
 			gcfg:    globalEmpty,
-			rc:      dotfilesRC{Disabled: true},
+			rc:      globalconfig.DotfilesRC{Disabled: true},
 			wantRun: false,
 		},
 		{
 			name:    "no global repo, project targetPath only → does not run",
 			gcfg:    globalEmpty,
-			rc:      dotfilesRC{TargetPath: "~/custom"},
+			rc:      globalconfig.DotfilesRC{TargetPath: "~/custom"},
 			wantRun: false,
 		},
 	}

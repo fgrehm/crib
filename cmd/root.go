@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
@@ -55,10 +56,10 @@ var (
 	configDirFlag         string
 	dirFlag               string
 	logger                *slog.Logger
-	cacheProviders        []string   // loaded from .cribrc cache key
-	projectDotfiles       dotfilesRC // loaded from .cribrc dotfiles keys
-	projectPluginsDisable []string   // loaded from .cribrc plugins.disable
-	projectPluginsOff     bool       // loaded from .cribrc plugins = false
+	cacheProviders        []string                // loaded from .cribrc cache key
+	projectDotfiles       globalconfig.DotfilesRC // loaded from .cribrc [dotfiles] section
+	projectPluginsDisable []string                // loaded from .cribrc plugins.disable
+	projectPluginsOff     bool                    // loaded from .cribrc plugins = "false"
 )
 
 // version variables injected at build time via ldflags.
@@ -93,12 +94,12 @@ var rootCmd = &cobra.Command{
 		// rootCmd execution in the same process do not leak into this run
 		// (matters for tests that reuse the command tree).
 		cacheProviders = nil
-		projectDotfiles = dotfilesRC{}
+		projectDotfiles = globalconfig.DotfilesRC{}
 		projectPluginsDisable = nil
 		projectPluginsOff = false
 
 		// Apply .cribrc defaults for flags not explicitly set by the user.
-		rc, rcErr := loadCribRC()
+		rc, rcErr := loadProjectCribRC()
 		if rcErr != nil {
 			logger.Debug("could not load .cribrc", "error", rcErr)
 		}
@@ -112,8 +113,8 @@ var rootCmd = &cobra.Command{
 				logger.Debug("loaded cache providers from .cribrc", "providers", rc.Cache)
 			}
 			projectDotfiles = rc.Dotfiles
-			projectPluginsDisable = rc.PluginsDisable
-			projectPluginsOff = rc.PluginsDisableAll
+			projectPluginsDisable = rc.Plugins.Disable
+			projectPluginsOff = rc.Plugins.DisableAll
 		}
 
 		return nil
@@ -269,9 +270,19 @@ func composePortsToDriver(ports []compose.PortBinding) []driver.PortBinding {
 	return result
 }
 
+// loadProjectCribRC loads .cribrc from the current working directory. Returns
+// nil when no .cribrc is present or cwd cannot be resolved.
+func loadProjectCribRC() (*globalconfig.CribRC, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	return globalconfig.LoadCribRC(filepath.Join(cwd, ".cribrc"))
+}
+
 // resolveDotfilesPlugin merges global config with per-project overrides and
 // returns the effective config and whether the plugin should be registered.
-func resolveDotfilesPlugin(gcfg globalconfig.DotfilesConfig, rc dotfilesRC) (globalconfig.DotfilesConfig, bool) {
+func resolveDotfilesPlugin(gcfg globalconfig.DotfilesConfig, rc globalconfig.DotfilesRC) (globalconfig.DotfilesConfig, bool) {
 	if rc.Disabled {
 		return globalconfig.DotfilesConfig{}, false
 	}
