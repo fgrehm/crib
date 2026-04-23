@@ -230,7 +230,7 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	svc.CapAdd = featOv.CapAdd
 	svc.SecurityOpt = featOv.SecurityOpt
 
-	svc.Environment = buildOverrideEnv(cfg, featOv, pluginResp, e.globalWorkspace.Env)
+	svc.Environment = buildOverrideEnv(cfg, featOv, pluginResp, e.globalWS.Env)
 
 	// Load existing volume targets from the user's compose files so we
 	// don't produce duplicate mount destinations in the override. Compose
@@ -238,7 +238,7 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	// when the override uses long-form (compose-go's output format).
 	composeEnv := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
 	existingTargets := e.existingVolumeTargets(composeFiles, serviceName, composeEnv)
-	globalMounts, err := parseGlobalMounts(e.globalWorkspace.Mounts)
+	globalMounts, err := parseGlobalMounts(e.globalWS.Mounts)
 	if err != nil {
 		return "", err
 	}
@@ -284,22 +284,22 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 // buildOverrideEnv merges environment variables from config, features, and
 // plugins into a single MappingWithEquals for the compose override. Global
 // workspace env is applied first (lowest priority) so project-level
-// ContainerEnv wins on key conflicts.
+// ContainerEnv wins on key conflicts. Each loop takes an explicit per-
+// iteration copy before taking its address so the map values don't alias the
+// loop variable (safe on Go 1.22+, but explicit beats implicit).
 func buildOverrideEnv(cfg *config.DevContainerConfig, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse, globalEnv map[string]string) composetypes.MappingWithEquals {
 	env := composetypes.MappingWithEquals{}
-	for k, v := range globalEnv {
-		env[k] = &v
-	}
-	for k, v := range cfg.ContainerEnv {
-		env[k] = &v
-	}
-	for k, v := range featOv.Env {
-		env[k] = &v
-	}
-	if pluginResp != nil {
-		for k, v := range pluginResp.Env {
-			env[k] = &v
+	addAll := func(src map[string]string) {
+		for k, v := range src {
+			val := v
+			env[k] = &val
 		}
+	}
+	addAll(globalEnv)
+	addAll(cfg.ContainerEnv)
+	addAll(featOv.Env)
+	if pluginResp != nil {
+		addAll(pluginResp.Env)
 	}
 	if len(env) == 0 {
 		return nil
@@ -317,7 +317,7 @@ func parseGlobalMounts(specs []string) ([]config.Mount, error) {
 	for _, spec := range specs {
 		m, err := config.ParseMount(spec)
 		if err != nil {
-			return nil, fmt.Errorf("global mount %q: %w", spec, err)
+			return nil, fmt.Errorf("global workspace mount %q from config: %w", spec, err)
 		}
 		mounts = append(mounts, m)
 	}

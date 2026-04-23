@@ -556,10 +556,9 @@ func TestSingleBackend_CreateContainer_GlobalWorkspaceEnv(t *testing.T) {
 		stderr:   io.Discard,
 		progress: func(ProgressEvent) {},
 	}
-	eng.SetGlobalWorkspace(
-		map[string]string{"GLOBAL_ONLY": "yes", "CONFLICT": "global-loser"},
-		nil, nil,
-	)
+	eng.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Env: map[string]string{"GLOBAL_ONLY": "yes", "CONFLICT": "global-loser"},
+	})
 
 	cfg := &config.DevContainerConfig{}
 	cfg.Image = "alpine:3.20"
@@ -619,11 +618,10 @@ func TestSingleBackend_CreateContainer_GlobalWorkspaceMountsAndRunArgs(t *testin
 		stderr:   io.Discard,
 		progress: func(ProgressEvent) {},
 	}
-	eng.SetGlobalWorkspace(
-		nil,
-		[]string{"type=bind,source=/host/mem,target=/container/mem"},
-		[]string{"--cap-add", "SYS_PTRACE"},
-	)
+	eng.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Mounts:  []string{"type=bind,source=/host/mem,target=/container/mem"},
+		RunArgs: []string{"--cap-add", "SYS_PTRACE"},
+	})
 
 	cfg := &config.DevContainerConfig{}
 	cfg.Image = "alpine:3.20"
@@ -691,7 +689,9 @@ func TestSingleBackend_CreateContainer_InvalidGlobalMountFails(t *testing.T) {
 		stderr:   io.Discard,
 		progress: func(ProgressEvent) {},
 	}
-	eng.SetGlobalWorkspace(nil, []string{"type=bind,source=/missing-target"}, nil)
+	eng.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Mounts: []string{"type=bind,source=/missing-target"},
+	})
 
 	cfg := &config.DevContainerConfig{}
 	cfg.Image = "alpine:3.20"

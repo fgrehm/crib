@@ -270,7 +270,7 @@ func TestConfigure_DefaultRegistersBundledPlugins(t *testing.T) {
 	if result.Manager == nil {
 		t.Fatal("Manager is nil")
 	}
-	names := result.Manager.Names()
+	names := result.Plugins
 	// dotfiles only registers when a repo is configured; expect 3 of 4 by
 	// default (coding-agents, shell-history, ssh). package-cache requires
 	// providers.
@@ -294,7 +294,7 @@ func TestConfigure_GlobalDisableAllSkipsEverything(t *testing.T) {
 		GlobalDotfiles:   globalconfig.DotfilesConfig{Repository: "x"},
 		CacheProviders:   []string{"npm"},
 	}, discardLogger())
-	if names := result.Manager.Names(); len(names) != 0 {
+	if names := result.Plugins; len(names) != 0 {
 		t.Errorf("expected no plugins registered, got %v", names)
 	}
 	if len(result.BuildCacheMounts) != 0 {
@@ -306,7 +306,7 @@ func TestConfigure_ProjectDisableAllSkipsEverything(t *testing.T) {
 	result := Configure(Opts{
 		ProjectDisableAll: true,
 	}, discardLogger())
-	if names := result.Manager.Names(); len(names) != 0 {
+	if names := result.Plugins; len(names) != 0 {
 		t.Errorf("expected no plugins registered, got %v", names)
 	}
 }
@@ -317,7 +317,7 @@ func TestConfigure_DisableSpecific(t *testing.T) {
 		ProjectDisable: []string{"coding-agents"},
 		CLIDisable:     []string{"shell-history"},
 	}, discardLogger())
-	names := result.Manager.Names()
+	names := result.Plugins
 	for _, banned := range []string{"ssh", "coding-agents", "shell-history"} {
 		if contains(names, banned) {
 			t.Errorf("expected %q to be disabled, got %v", banned, names)
@@ -332,8 +332,8 @@ func TestConfigure_DotfilesRegisteredWhenRepoPresent(t *testing.T) {
 			TargetPath: "~/dotfiles",
 		},
 	}, discardLogger())
-	if !contains(result.Manager.Names(), "dotfiles") {
-		t.Errorf("expected dotfiles plugin, got %v", result.Manager.Names())
+	if !contains(result.Plugins, "dotfiles") {
+		t.Errorf("expected dotfiles plugin, got %v", result.Plugins)
 	}
 }
 
@@ -341,8 +341,8 @@ func TestConfigure_CacheProvidersRegisterPackageCache(t *testing.T) {
 	result := Configure(Opts{
 		CacheProviders: []string{"npm"},
 	}, discardLogger())
-	if !contains(result.Manager.Names(), "package-cache") {
-		t.Errorf("expected package-cache plugin, got %v", result.Manager.Names())
+	if !contains(result.Plugins, "package-cache") {
+		t.Errorf("expected package-cache plugin, got %v", result.Plugins)
 	}
 	if len(result.BuildCacheMounts) == 0 {
 		t.Error("expected build cache mounts when package-cache is registered")

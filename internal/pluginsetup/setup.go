@@ -67,6 +67,11 @@ type Result struct {
 	// Manager is the configured plugin manager, ready to attach to the engine.
 	Manager *plugin.Manager
 
+	// Plugins lists the names of plugins Configure registered on Manager, in
+	// registration order. Exposed so callers (and tests) can introspect the
+	// effective plugin set without reaching into Manager internals.
+	Plugins []string
+
 	// BuildCacheMounts lists BuildKit cache mount targets for feature builds
 	// (derived from the package-cache plugin when registered).
 	BuildCacheMounts []string
@@ -80,6 +85,11 @@ func Configure(opts Opts, logger *slog.Logger) *Result {
 	mgr := plugin.NewManager(logger)
 	result := &Result{Manager: mgr}
 
+	register := func(p plugin.Plugin) {
+		mgr.Register(p)
+		result.Plugins = append(result.Plugins, p.Name())
+	}
+
 	disabled := CollectDisabled(opts.GlobalDisable, opts.ProjectDisable, opts.CLIDisable)
 	WarnUnknown(disabled, logger)
 
@@ -88,24 +98,24 @@ func Configure(opts Opts, logger *slog.Logger) *Result {
 	}
 
 	if !disabled["coding-agents"] {
-		mgr.Register(codingagents.New())
+		register(codingagents.New())
 	}
 	if !disabled["shell-history"] {
-		mgr.Register(shellhistory.New())
+		register(shellhistory.New())
 	}
 	if !disabled["ssh"] {
-		mgr.Register(pluginssh.New())
+		register(pluginssh.New())
 	}
 	if !disabled["dotfiles"] {
 		if cfg, ok := ResolveDotfiles(opts.GlobalDotfiles, opts.ProjectDotfiles); ok {
-			mgr.Register(dotfiles.New(cfg))
+			register(dotfiles.New(cfg))
 		}
 	}
 	if !disabled["package-cache"] && len(opts.CacheProviders) > 0 {
 		if unknown := packagecache.ValidateProviders(opts.CacheProviders); len(unknown) > 0 {
 			logger.Warn("unknown cache providers in .cribrc", "unknown", unknown, "supported", packagecache.SupportedProviders())
 		}
-		mgr.Register(packagecache.New(opts.CacheProviders))
+		register(packagecache.New(opts.CacheProviders))
 		result.BuildCacheMounts = packagecache.BuildCacheMounts(opts.CacheProviders)
 	}
 

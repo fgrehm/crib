@@ -1,6 +1,7 @@
 package globalconfig
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -26,10 +27,11 @@ type DotfilesConfig struct {
 
 // PluginsConfig disables bundled plugins globally. Disable lists specific
 // plugins by name; DisableAll is a kill switch that skips plugin registration
-// entirely.
+// entirely. Disable uses StringList so global config accepts the same
+// TOML-array / comma-separated-string dual format as .cribrc.
 type PluginsConfig struct {
-	Disable    []string `toml:"disable"`
-	DisableAll bool     `toml:"disable_all"`
+	Disable    StringList `toml:"disable"`
+	DisableAll bool       `toml:"disable_all"`
 }
 
 // WorkspaceConfig is applied to every container on top of project-level
@@ -60,8 +62,8 @@ type CribRC struct {
 	Workspace WorkspaceConfig `toml:"workspace"`
 }
 
-// DotfilesRC mirrors DotfilesConfig but also honors a `dotfiles = "false"`
-// kill switch handled in UnmarshalTOML.
+// DotfilesRC mirrors DotfilesConfig plus a `dotfiles = "false"` kill switch
+// handled in UnmarshalTOML.
 type DotfilesRC struct {
 	Disabled       bool
 	Repository     string `toml:"repository"`
@@ -75,6 +77,9 @@ type PluginsRC struct {
 	DisableAll bool
 	Disable    StringList `toml:"disable"`
 }
+
+// pluginsRCAlias breaks UnmarshalTOML recursion — see dotfilesRCAlias.
+type pluginsRCAlias PluginsRC
 
 // StringList accepts either a TOML array of strings or a single
 // comma-separated string. It trims each entry and drops empties. The
@@ -107,6 +112,21 @@ func (s *StringList) UnmarshalTOML(v any) error {
 	}
 }
 
+// decodeTable re-encodes a decoded TOML table as TOML bytes and decodes it
+// into dst. Used by UnmarshalTOML implementations that accept either a
+// scalar (handled inline) or a nested table (delegated here) so struct tags
+// on dst stay authoritative.
+func decodeTable(m map[string]any, dst any) error {
+	var buf bytes.Buffer
+	if err := toml.NewEncoder(&buf).Encode(m); err != nil {
+		return fmt.Errorf("re-encoding TOML table: %w", err)
+	}
+	if _, err := toml.Decode(buf.String(), dst); err != nil {
+		return fmt.Errorf("decoding TOML table: %w", err)
+	}
+	return nil
+}
+
 func splitCSV(s string) []string {
 	var out []string
 	for part := range strings.SplitSeq(s, ",") {
@@ -118,8 +138,15 @@ func splitCSV(s string) []string {
 	return out
 }
 
+// dotfilesRCAlias exists so UnmarshalTOML can delegate table decoding back
+// to the library without recursing into DotfilesRC's own UnmarshalTOML. The
+// alias inherits every struct tag, so adding a field to DotfilesRC requires
+// no change here.
+type dotfilesRCAlias DotfilesRC
+
 // UnmarshalTOML accepts either a nested table (dotfiles.repository, etc.) or
-// the legacy scalar `dotfiles = "false"` kill switch.
+// the legacy scalar `dotfiles = "false"` kill switch. Table decoding is
+// delegated to the tagged struct so field names stay in one place.
 func (d *DotfilesRC) UnmarshalTOML(v any) error {
 	if s, ok := v.(string); ok {
 		if s == "false" {
@@ -131,21 +158,17 @@ func (d *DotfilesRC) UnmarshalTOML(v any) error {
 	if !ok {
 		return fmt.Errorf("dotfiles: expected table or string, got %T", v)
 	}
-	for k, raw := range m {
-		switch k {
-		case "repository":
-			d.Repository, _ = raw.(string)
-		case "targetPath":
-			d.TargetPath, _ = raw.(string)
-		case "installCommand":
-			d.InstallCommand, _ = raw.(string)
-		}
+	var a dotfilesRCAlias
+	if err := decodeTable(m, &a); err != nil {
+		return err
 	}
+	*d = DotfilesRC(a)
 	return nil
 }
 
 // UnmarshalTOML accepts either a nested table (plugins.disable, etc.) or the
-// legacy scalar `plugins = "false"` kill switch.
+// legacy scalar `plugins = "false"` kill switch. Table decoding is delegated
+// to the tagged struct so field names stay in one place.
 func (p *PluginsRC) UnmarshalTOML(v any) error {
 	if s, ok := v.(string); ok {
 		if s == "false" {
@@ -157,13 +180,11 @@ func (p *PluginsRC) UnmarshalTOML(v any) error {
 	if !ok {
 		return fmt.Errorf("plugins: expected table or string, got %T", v)
 	}
-	if raw, ok := m["disable"]; ok {
-		var list StringList
-		if err := list.UnmarshalTOML(raw); err != nil {
-			return fmt.Errorf("plugins.disable: %w", err)
-		}
-		p.Disable = list
+	var a pluginsRCAlias
+	if err := decodeTable(m, &a); err != nil {
+		return err
 	}
+	*p = PluginsRC(a)
 	return nil
 }
 

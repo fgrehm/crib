@@ -880,11 +880,9 @@ func TestComposeFilesWithOverride_DoesNotMutateInput(t *testing.T) {
 func TestGenerateComposeOverride_GlobalWorkspaceEnv(t *testing.T) {
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
 	e := newComposeTestEngine(t, "docker", ws)
-	e.SetGlobalWorkspace(
-		map[string]string{"GLOBAL_ONLY": "global-value", "CONFLICT": "global-loser"},
-		nil,
-		nil,
-	)
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Env: map[string]string{"GLOBAL_ONLY": "global-value", "CONFLICT": "global-loser"},
+	})
 
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
@@ -914,9 +912,9 @@ func TestGenerateComposeOverride_GlobalWorkspaceEnv(t *testing.T) {
 func TestGenerateComposeOverride_GlobalWorkspaceMounts(t *testing.T) {
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
 	e := newComposeTestEngine(t, "docker", ws)
-	e.SetGlobalWorkspace(nil, []string{
-		"type=bind,source=/host/mem,target=/home/fabio/.mem",
-	}, nil)
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Mounts: []string{"type=bind,source=/host/mem,target=/home/fabio/.mem"},
+	})
 
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"
@@ -938,7 +936,9 @@ func TestGenerateComposeOverride_GlobalWorkspaceMounts(t *testing.T) {
 func TestGenerateComposeOverride_GlobalMountInvalidFails(t *testing.T) {
 	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
 	e := newComposeTestEngine(t, "docker", ws)
-	e.SetGlobalWorkspace(nil, []string{"type=bind,source=/host/bad"}, nil) // missing target
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Mounts: []string{"type=bind,source=/host/bad"}, // missing target
+	})
 
 	cfg := &config.DevContainerConfig{}
 	cfg.Service = "app"

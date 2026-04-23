@@ -44,18 +44,34 @@ func displayContainerName(recorded, wsID string) string {
 	return "crib-" + wsID
 }
 
+// runtimeConfig holds configuration derived from the global config file and
+// the project's .cribrc, populated by PersistentPreRunE. Bundled into one
+// struct so the reset-before-load sequence is a single assignment and so
+// additions don't multiply package-level globals.
+type runtimeConfig struct {
+	// Global is the fully loaded ~/.config/crib/config.toml.
+	Global globalconfig.Config
+
+	// CacheProviders is .cribrc's `cache` list.
+	CacheProviders []string
+
+	// ProjectDotfiles is .cribrc's [dotfiles] section (including the kill switch).
+	ProjectDotfiles globalconfig.DotfilesRC
+
+	// ProjectPluginsDisable is .cribrc's plugins.disable list.
+	ProjectPluginsDisable []string
+
+	// ProjectPluginsOff is true when .cribrc says `plugins = "false"`.
+	ProjectPluginsOff bool
+}
+
 var (
-	debugFlag             bool
-	verboseFlag           bool
-	configDirFlag         string
-	dirFlag               string
-	logger                *slog.Logger
-	cacheProviders        []string                     // loaded from .cribrc cache key
-	projectDotfiles       globalconfig.DotfilesRC      // loaded from .cribrc [dotfiles] section
-	projectPluginsDisable []string                     // loaded from .cribrc plugins.disable
-	projectPluginsOff     bool                         // loaded from .cribrc plugins = "false"
-	globalCfg             globalconfig.Config          // loaded once from ~/.config/crib/config.toml
-	globalWorkspaceOpts   globalconfig.WorkspaceConfig // [workspace] section of the global config
+	debugFlag     bool
+	verboseFlag   bool
+	configDirFlag string
+	dirFlag       string
+	logger        *slog.Logger
+	runtimeCfg    runtimeConfig
 )
 
 // version variables injected at build time via ldflags.
@@ -86,22 +102,16 @@ var rootCmd = &cobra.Command{
 			},
 		}))
 
-		// Reset .cribrc-derived globals so stale values from a previous
-		// rootCmd execution in the same process do not leak into this run
-		// (matters for tests that reuse the command tree).
-		cacheProviders = nil
-		projectDotfiles = globalconfig.DotfilesRC{}
-		projectPluginsDisable = nil
-		projectPluginsOff = false
-		globalCfg = globalconfig.Config{}
-		globalWorkspaceOpts = globalconfig.WorkspaceConfig{}
+		// Reset runtime config so stale values from a previous rootCmd
+		// execution in the same process do not leak into this run (matters
+		// for tests that reuse the command tree).
+		runtimeCfg = runtimeConfig{}
 
 		// Load global config ~/.config/crib/config.toml once per command.
 		if gcfg, err := globalconfig.Load(); err != nil {
 			logger.Warn("failed to load global config", "error", err)
 		} else if gcfg != nil {
-			globalCfg = *gcfg
-			globalWorkspaceOpts = gcfg.Workspace
+			runtimeCfg.Global = *gcfg
 		}
 
 		// Apply .cribrc defaults for flags not explicitly set by the user.
@@ -115,12 +125,12 @@ var rootCmd = &cobra.Command{
 				logger.Debug("loaded config dir from .cribrc", "dir", rc.Config)
 			}
 			if len(rc.Cache) > 0 {
-				cacheProviders = rc.Cache
+				runtimeCfg.CacheProviders = rc.Cache
 				logger.Debug("loaded cache providers from .cribrc", "providers", rc.Cache)
 			}
-			projectDotfiles = rc.Dotfiles
-			projectPluginsDisable = rc.Plugins.Disable
-			projectPluginsOff = rc.Plugins.DisableAll
+			runtimeCfg.ProjectDotfiles = rc.Dotfiles
+			runtimeCfg.ProjectPluginsDisable = rc.Plugins.Disable
+			runtimeCfg.ProjectPluginsOff = rc.Plugins.DisableAll
 		}
 
 		return nil
@@ -292,17 +302,21 @@ func loadProjectCribRC() (*globalconfig.CribRC, error) {
 // restart).
 func setupPlugins(cmd *cobra.Command, eng *engine.Engine, d *oci.OCIDriver) {
 	eng.SetRuntime(d.Runtime().String())
-	eng.SetGlobalWorkspace(globalWorkspaceOpts.Env, globalWorkspaceOpts.Mounts, globalWorkspaceOpts.RunArgs)
+	eng.SetGlobalWorkspace(engine.GlobalWorkspaceOptions{
+		Env:     runtimeCfg.Global.Workspace.Env,
+		Mounts:  runtimeCfg.Global.Workspace.Mounts,
+		RunArgs: runtimeCfg.Global.Workspace.RunArgs,
+	})
 
 	result := pluginsetup.Configure(pluginsetup.Opts{
-		GlobalDisable:     globalCfg.Plugins.Disable,
-		GlobalDisableAll:  globalCfg.Plugins.DisableAll,
-		ProjectDisable:    projectPluginsDisable,
-		ProjectDisableAll: projectPluginsOff,
+		GlobalDisable:     runtimeCfg.Global.Plugins.Disable,
+		GlobalDisableAll:  runtimeCfg.Global.Plugins.DisableAll,
+		ProjectDisable:    runtimeCfg.ProjectPluginsDisable,
+		ProjectDisableAll: runtimeCfg.ProjectPluginsOff,
 		CLIDisable:        disabledPluginsForCommand(cmd),
-		GlobalDotfiles:    globalCfg.Dotfiles,
-		ProjectDotfiles:   projectDotfiles,
-		CacheProviders:    cacheProviders,
+		GlobalDotfiles:    runtimeCfg.Global.Dotfiles,
+		ProjectDotfiles:   runtimeCfg.ProjectDotfiles,
+		CacheProviders:    runtimeCfg.CacheProviders,
 	}, logger)
 
 	eng.SetPlugins(result.Manager)

@@ -57,8 +57,8 @@ type Engine struct {
 	store            *workspace.Store
 	plugins          *plugin.Manager
 	runtimeName      string
-	buildCacheMounts []string        // BuildKit cache mount targets for feature builds
-	globalWorkspace  globalWorkspace // from ~/.config/crib/config.toml [workspace]
+	buildCacheMounts []string               // BuildKit cache mount targets for feature builds
+	globalWS         GlobalWorkspaceOptions // from ~/.config/crib/config.toml [workspace]
 	logger           *slog.Logger
 	stdout           io.Writer
 	stderr           io.Writer
@@ -66,11 +66,22 @@ type Engine struct {
 	progress         func(ProgressEvent)
 }
 
-// globalWorkspace holds the effective global [workspace] options applied to
-// every container. Project-level config wins on key conflicts.
-type globalWorkspace struct {
-	Env     map[string]string
-	Mounts  []string
+// GlobalWorkspaceOptions carries the [workspace] section of the user config
+// so it can be applied to every container created by the engine. Project-level
+// configuration (devcontainer.json containerEnv, mounts, runArgs) wins on key
+// conflicts via the runtime's last-flag-wins semantics; these values are
+// prepended by the backends.
+type GlobalWorkspaceOptions struct {
+	// Env is injected into the container at lower priority than the project's
+	// ContainerEnv.
+	Env map[string]string
+
+	// Mounts are docker-mount-format specs appended to the project's mounts.
+	Mounts []string
+
+	// RunArgs are extra runtime arguments. Prepended before the project's
+	// runArgs so project values win. Honored in single-container mode only;
+	// compose workspaces should set runtime options in the compose YAML.
 	RunArgs []string
 }
 
@@ -172,12 +183,8 @@ func (e *Engine) SetBuildCacheMounts(mounts []string) {
 // SetGlobalWorkspace stores global [workspace] options from the user config
 // so every subsequent Up / Restart applies them on top of project-level
 // settings. Project values win on key conflicts.
-func (e *Engine) SetGlobalWorkspace(env map[string]string, mounts []string, runArgs []string) {
-	e.globalWorkspace = globalWorkspace{
-		Env:     env,
-		Mounts:  mounts,
-		RunArgs: runArgs,
-	}
+func (e *Engine) SetGlobalWorkspace(opts GlobalWorkspaceOptions) {
+	e.globalWS = opts
 }
 
 // reportProgress sends a progress event to the callback (if set)
@@ -193,18 +200,6 @@ func (e *Engine) reportProgress(phase ProgressPhase, msg string) {
 type UpOptions struct {
 	// Recreate forces container recreation even if one already exists.
 	Recreate bool
-
-	// GlobalEnv is merged into the container environment at lower priority
-	// than the project's devcontainer.json (project values win on conflict).
-	GlobalEnv map[string]string
-
-	// GlobalMounts are mount specifications (docker mount format) appended to
-	// the project's mounts.
-	GlobalMounts []string
-
-	// GlobalRunArgs are extra container runtime arguments appended after the
-	// project's runArgs.
-	GlobalRunArgs []string
 }
 
 // UpResult holds the outcome of a successful Up operation.
@@ -237,17 +232,6 @@ type UpResult struct {
 // Up brings a devcontainer up for the given workspace.
 func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions) (*UpResult, error) {
 	e.logger.Debug("up", "workspace", ws.ID, "source", ws.Source)
-
-	// Callers may either populate UpOptions.Global* directly (typically in
-	// tests) or leave them nil and rely on a prior SetGlobalWorkspace call
-	// (the normal cmd/ flow). When both are set, UpOptions wins.
-	if opts.GlobalEnv != nil || opts.GlobalMounts != nil || opts.GlobalRunArgs != nil {
-		e.globalWorkspace = globalWorkspace{
-			Env:     opts.GlobalEnv,
-			Mounts:  opts.GlobalMounts,
-			RunArgs: opts.GlobalRunArgs,
-		}
-	}
 
 	cfg, workspaceFolder, err := e.parseAndSubstitute(ws)
 	if err != nil {

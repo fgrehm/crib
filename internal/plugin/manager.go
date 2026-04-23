@@ -28,15 +28,6 @@ func (m *Manager) Register(p Plugin) {
 	m.plugins = append(m.plugins, p)
 }
 
-// Names returns the names of registered plugins in registration order.
-func (m *Manager) Names() []string {
-	names := make([]string, 0, len(m.plugins))
-	for _, p := range m.plugins {
-		names = append(names, p.Name())
-	}
-	return names
-}
-
 // RunPreContainerRun dispatches the pre-container-run event to all registered
 // plugins and merges their responses. Mounts and RunArgs are appended in plugin
 // order. Env vars are merged with last-plugin-wins on conflicts. Plugin errors

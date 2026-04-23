@@ -59,14 +59,14 @@ func TestIntegrationGlobalWorkspaceEnv(t *testing.T) {
 		cleanupWorkspaceImages(t, d, wsID)
 	})
 
-	opts := UpOptions{
-		GlobalEnv: map[string]string{
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Env: map[string]string{
 			"GLOBAL_ONE": "global-loser",
 			"GLOBAL_TWO": "global-value",
 			"CONFLICT":   "global-loser",
 		},
-	}
-	if _, err := e.Up(ctx, ws, opts); err != nil {
+	})
+	if _, err := e.Up(ctx, ws, UpOptions{}); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
 
@@ -150,13 +150,13 @@ func TestIntegrationGlobalWorkspaceMountsAndRunArgs(t *testing.T) {
 		cleanupWorkspaceImages(t, d, wsID)
 	})
 
-	opts := UpOptions{
-		GlobalMounts: []string{
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Mounts: []string{
 			"type=bind,source=" + globalMountSrc + ",target=/global-mount,readonly",
 		},
-		GlobalRunArgs: []string{"--hostname", "crib-global-test"},
-	}
-	if _, err := e.Up(ctx, ws, opts); err != nil {
+		RunArgs: []string{"--hostname", "crib-global-test"},
+	})
+	if _, err := e.Up(ctx, ws, UpOptions{}); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
 
