@@ -230,7 +230,7 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	svc.CapAdd = featOv.CapAdd
 	svc.SecurityOpt = featOv.SecurityOpt
 
-	svc.Environment = buildOverrideEnv(cfg, featOv, pluginResp)
+	svc.Environment = buildOverrideEnv(cfg, featOv, pluginResp, e.globalWorkspace.Env)
 
 	// Load existing volume targets from the user's compose files so we
 	// don't produce duplicate mount destinations in the override. Compose
@@ -238,7 +238,11 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	// when the override uses long-form (compose-go's output format).
 	composeEnv := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
 	existingTargets := e.existingVolumeTargets(composeFiles, serviceName, composeEnv)
-	svc.Volumes = buildOverrideVolumes(ws, cfg, workspaceFolder, featOv, pluginResp, existingTargets)
+	globalMounts, err := parseGlobalMounts(e.globalWorkspace.Mounts)
+	if err != nil {
+		return "", err
+	}
+	svc.Volumes = buildOverrideVolumes(ws, cfg, workspaceFolder, featOv, pluginResp, existingTargets, globalMounts)
 
 	// Auto-inject userns_mode for rootless Podman.
 	isPodman := e.isRootlessPodman() && !composeFilesContainUserns(composeFiles)
@@ -278,9 +282,14 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 }
 
 // buildOverrideEnv merges environment variables from config, features, and
-// plugins into a single MappingWithEquals for the compose override.
-func buildOverrideEnv(cfg *config.DevContainerConfig, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse) composetypes.MappingWithEquals {
+// plugins into a single MappingWithEquals for the compose override. Global
+// workspace env is applied first (lowest priority) so project-level
+// ContainerEnv wins on key conflicts.
+func buildOverrideEnv(cfg *config.DevContainerConfig, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse, globalEnv map[string]string) composetypes.MappingWithEquals {
 	env := composetypes.MappingWithEquals{}
+	for k, v := range globalEnv {
+		env[k] = &v
+	}
 	for k, v := range cfg.ContainerEnv {
 		env[k] = &v
 	}
@@ -298,17 +307,39 @@ func buildOverrideEnv(cfg *config.DevContainerConfig, featOv featureOverrides, p
 	return env
 }
 
+// parseGlobalMounts converts the string list from globalconfig.WorkspaceConfig
+// into config.Mount values so they can be added to the compose override.
+func parseGlobalMounts(specs []string) ([]config.Mount, error) {
+	if len(specs) == 0 {
+		return nil, nil
+	}
+	mounts := make([]config.Mount, 0, len(specs))
+	for _, spec := range specs {
+		m, err := config.ParseMount(spec)
+		if err != nil {
+			return nil, fmt.Errorf("global mount %q: %w", spec, err)
+		}
+		mounts = append(mounts, m)
+	}
+	return mounts, nil
+}
+
 // buildOverrideVolumes assembles the service volume list from the workspace
-// bind mount, feature mounts, and plugin mounts. existingTargets contains
-// volume targets already defined in the user's compose files; mounts for
-// those targets are skipped to avoid "duplicate mount destination" errors
-// when compose merges the files.
-func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse, existingTargets map[string]bool) []composetypes.ServiceVolumeConfig {
+// bind mount, feature mounts, plugin mounts, and global workspace mounts.
+// existingTargets contains volume targets already defined in the user's
+// compose files; mounts for those targets are skipped to avoid "duplicate
+// mount destination" errors when compose merges the files.
+func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse, existingTargets map[string]bool, globalMounts []config.Mount) []composetypes.ServiceVolumeConfig {
 	var vols []composetypes.ServiceVolumeConfig
 	if cfg.WorkspaceMount == "" && !existingTargets[workspaceFolder] {
 		vols = append(vols, composetypes.ServiceVolumeConfig{
 			Type: "bind", Source: ws.Source, Target: workspaceFolder,
 		})
+	}
+	for _, m := range globalMounts {
+		if !existingTargets[m.Target] {
+			vols = append(vols, toComposeVolume(m))
+		}
 	}
 	for _, m := range featOv.Mounts {
 		if !existingTargets[m.Target] {

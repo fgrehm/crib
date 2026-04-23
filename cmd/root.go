@@ -50,10 +50,12 @@ var (
 	configDirFlag         string
 	dirFlag               string
 	logger                *slog.Logger
-	cacheProviders        []string                // loaded from .cribrc cache key
-	projectDotfiles       globalconfig.DotfilesRC // loaded from .cribrc [dotfiles] section
-	projectPluginsDisable []string                // loaded from .cribrc plugins.disable
-	projectPluginsOff     bool                    // loaded from .cribrc plugins = "false"
+	cacheProviders        []string                     // loaded from .cribrc cache key
+	projectDotfiles       globalconfig.DotfilesRC      // loaded from .cribrc [dotfiles] section
+	projectPluginsDisable []string                     // loaded from .cribrc plugins.disable
+	projectPluginsOff     bool                         // loaded from .cribrc plugins = "false"
+	globalCfg             globalconfig.Config          // loaded once from ~/.config/crib/config.toml
+	globalWorkspaceOpts   globalconfig.WorkspaceConfig // [workspace] section of the global config
 )
 
 // version variables injected at build time via ldflags.
@@ -91,6 +93,16 @@ var rootCmd = &cobra.Command{
 		projectDotfiles = globalconfig.DotfilesRC{}
 		projectPluginsDisable = nil
 		projectPluginsOff = false
+		globalCfg = globalconfig.Config{}
+		globalWorkspaceOpts = globalconfig.WorkspaceConfig{}
+
+		// Load global config ~/.config/crib/config.toml once per command.
+		if gcfg, err := globalconfig.Load(); err != nil {
+			logger.Warn("failed to load global config", "error", err)
+		} else if gcfg != nil {
+			globalCfg = *gcfg
+			globalWorkspaceOpts = gcfg.Workspace
+		}
 
 		// Apply .cribrc defaults for flags not explicitly set by the user.
 		rc, rcErr := loadProjectCribRC()
@@ -280,13 +292,7 @@ func loadProjectCribRC() (*globalconfig.CribRC, error) {
 // restart).
 func setupPlugins(cmd *cobra.Command, eng *engine.Engine, d *oci.OCIDriver) {
 	eng.SetRuntime(d.Runtime().String())
-
-	var globalCfg globalconfig.Config
-	if gcfg, err := globalconfig.Load(); err != nil {
-		logger.Warn("failed to load global config", "error", err)
-	} else if gcfg != nil {
-		globalCfg = *gcfg
-	}
+	eng.SetGlobalWorkspace(globalWorkspaceOpts.Env, globalWorkspaceOpts.Mounts, globalWorkspaceOpts.RunArgs)
 
 	result := pluginsetup.Configure(pluginsetup.Opts{
 		GlobalDisable:     globalCfg.Plugins.Disable,

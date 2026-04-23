@@ -38,7 +38,12 @@ var upCmd = &cobra.Command{
 		u.Dim(versionString())
 		u.Header("Starting workspace")
 
-		result, err := eng.Up(cmd.Context(), ws, engine.UpOptions{Recreate: recreateFlag})
+		result, err := eng.Up(cmd.Context(), ws, engine.UpOptions{
+			Recreate:      recreateFlag,
+			GlobalEnv:     globalWorkspaceOpts.Env,
+			GlobalMounts:  globalWorkspaceOpts.Mounts,
+			GlobalRunArgs: globalWorkspaceOpts.RunArgs,
+		})
 		if err != nil {
 			return err
 		}

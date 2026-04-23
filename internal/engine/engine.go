@@ -57,12 +57,21 @@ type Engine struct {
 	store            *workspace.Store
 	plugins          *plugin.Manager
 	runtimeName      string
-	buildCacheMounts []string // BuildKit cache mount targets for feature builds
+	buildCacheMounts []string        // BuildKit cache mount targets for feature builds
+	globalWorkspace  globalWorkspace // from ~/.config/crib/config.toml [workspace]
 	logger           *slog.Logger
 	stdout           io.Writer
 	stderr           io.Writer
 	verbose          bool
 	progress         func(ProgressEvent)
+}
+
+// globalWorkspace holds the effective global [workspace] options applied to
+// every container. Project-level config wins on key conflicts.
+type globalWorkspace struct {
+	Env     map[string]string
+	Mounts  []string
+	RunArgs []string
 }
 
 // New creates an Engine with the given dependencies.
@@ -160,6 +169,17 @@ func (e *Engine) SetBuildCacheMounts(mounts []string) {
 	e.buildCacheMounts = mounts
 }
 
+// SetGlobalWorkspace stores global [workspace] options from the user config
+// so every subsequent Up / Restart applies them on top of project-level
+// settings. Project values win on key conflicts.
+func (e *Engine) SetGlobalWorkspace(env map[string]string, mounts []string, runArgs []string) {
+	e.globalWorkspace = globalWorkspace{
+		Env:     env,
+		Mounts:  mounts,
+		RunArgs: runArgs,
+	}
+}
+
 // reportProgress sends a progress event to the callback (if set)
 // and logs the message at debug level.
 func (e *Engine) reportProgress(phase ProgressPhase, msg string) {
@@ -173,6 +193,18 @@ func (e *Engine) reportProgress(phase ProgressPhase, msg string) {
 type UpOptions struct {
 	// Recreate forces container recreation even if one already exists.
 	Recreate bool
+
+	// GlobalEnv is merged into the container environment at lower priority
+	// than the project's devcontainer.json (project values win on conflict).
+	GlobalEnv map[string]string
+
+	// GlobalMounts are mount specifications (docker mount format) appended to
+	// the project's mounts.
+	GlobalMounts []string
+
+	// GlobalRunArgs are extra container runtime arguments appended after the
+	// project's runArgs.
+	GlobalRunArgs []string
 }
 
 // UpResult holds the outcome of a successful Up operation.
@@ -205,6 +237,17 @@ type UpResult struct {
 // Up brings a devcontainer up for the given workspace.
 func (e *Engine) Up(ctx context.Context, ws *workspace.Workspace, opts UpOptions) (*UpResult, error) {
 	e.logger.Debug("up", "workspace", ws.ID, "source", ws.Source)
+
+	// Callers may either populate UpOptions.Global* directly (typically in
+	// tests) or leave them nil and rely on a prior SetGlobalWorkspace call
+	// (the normal cmd/ flow). When both are set, UpOptions wins.
+	if opts.GlobalEnv != nil || opts.GlobalMounts != nil || opts.GlobalRunArgs != nil {
+		e.globalWorkspace = globalWorkspace{
+			Env:     opts.GlobalEnv,
+			Mounts:  opts.GlobalMounts,
+			RunArgs: opts.GlobalRunArgs,
+		}
+	}
 
 	cfg, workspaceFolder, err := e.parseAndSubstitute(ws)
 	if err != nil {

@@ -45,7 +45,12 @@ var rebuildCmd = &cobra.Command{
 			u.Success("Container removed")
 		}
 
-		result, err := eng.Up(cmd.Context(), ws, engine.UpOptions{Recreate: true})
+		result, err := eng.Up(cmd.Context(), ws, engine.UpOptions{
+			Recreate:      true,
+			GlobalEnv:     globalWorkspaceOpts.Env,
+			GlobalMounts:  globalWorkspaceOpts.Mounts,
+			GlobalRunArgs: globalWorkspaceOpts.RunArgs,
+		})
 		if err != nil {
 			return err
 		}

@@ -5,10 +5,39 @@ import (
 	"fmt"
 
 	"github.com/fgrehm/crib/internal/config"
+	"github.com/fgrehm/crib/internal/driver"
 	ocidriver "github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/plugin"
 	"github.com/fgrehm/crib/internal/workspace"
 )
+
+// prependGlobalEnv prepends KEY=VALUE entries from env into runOpts.Env so
+// project-level ContainerEnv (added before this call) overrides globals on
+// duplicate keys. The runtime resolves `-e` flags with last-wins semantics,
+// so "first" means "lower priority".
+func prependGlobalEnv(runOpts *driver.RunOptions, env map[string]string) {
+	if len(env) == 0 {
+		return
+	}
+	existing := runOpts.Env
+	runOpts.Env = make([]string, 0, len(env)+len(existing))
+	for k, v := range env {
+		runOpts.Env = append(runOpts.Env, k+"="+v)
+	}
+	runOpts.Env = append(runOpts.Env, existing...)
+}
+
+// appendGlobalMounts parses each mount spec and appends it to runOpts.Mounts.
+func appendGlobalMounts(runOpts *driver.RunOptions, specs []string) error {
+	for _, spec := range specs {
+		m, err := config.ParseMount(spec)
+		if err != nil {
+			return fmt.Errorf("global mount %q: %w", spec, err)
+		}
+		runOpts.Mounts = append(runOpts.Mounts, m)
+	}
+	return nil
+}
 
 // singleBackend implements containerBackend for single-container workspaces.
 type singleBackend struct {
@@ -53,6 +82,14 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (c
 		runOpts.Labels[ocidriver.LabelHome] = b.e.store.BaseDir()
 	}
 
+	// Prepend global env so project-level ContainerEnv (already present in
+	// runOpts.Env via buildRunOptions) wins on duplicate keys when the
+	// runtime resolves the final environment (later -e flags override).
+	prependGlobalEnv(runOpts, b.e.globalWorkspace.Env)
+	if err := appendGlobalMounts(runOpts, b.e.globalWorkspace.Mounts); err != nil {
+		return createContainerResult{}, err
+	}
+
 	subCtx := &config.SubstitutionContext{
 		DevContainerID:           b.ws.ID,
 		LocalWorkspaceFolder:     b.ws.Source,
@@ -60,6 +97,13 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (c
 		Env:                      envMap(),
 	}
 	applyFeatureMetadata(runOpts, opts.metadata, subCtx)
+
+	// Prepend global runArgs so project values (already in runOpts.ExtraArgs)
+	// win on conflict under the runtime's last-flag-wins semantics. Plugin
+	// runArgs are appended below and win over both.
+	if len(b.e.globalWorkspace.RunArgs) > 0 {
+		runOpts.ExtraArgs = append(append([]string{}, b.e.globalWorkspace.RunArgs...), runOpts.ExtraArgs...)
+	}
 
 	// Merge plugin response into run options (mounts, env, runArgs).
 	if opts.pluginResp != nil {
