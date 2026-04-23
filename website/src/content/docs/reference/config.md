@@ -53,7 +53,8 @@ run_args = ["--cap-add", "SYS_PTRACE"]
 ## Per-project config: `.cribrc`
 
 Placed in the project root. Merges with the global config; project values
-override global on conflicts.
+override global on conflicts. When `--dir` is passed, `.cribrc` is read from
+that directory; otherwise it comes from the current working directory.
 
 | Key | Type | Description |
 |---|---|---|

@@ -286,14 +286,20 @@ func composePortsToDriver(ports []compose.PortBinding) []driver.PortBinding {
 	return result
 }
 
-// loadProjectCribRC loads .cribrc from the current working directory. Returns
-// nil when no .cribrc is present or cwd cannot be resolved.
+// loadProjectCribRC loads .cribrc from the project directory. When --dir is
+// set, that directory wins; otherwise the current working directory is used.
+// --config is not consulted: it points at a devcontainer config directory,
+// not a project root, and .cribrc sits at the project root.
 func loadProjectCribRC() (*globalconfig.CribRC, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, err
+	dir := dirFlag
+	if dir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		dir = cwd
 	}
-	return globalconfig.LoadCribRC(filepath.Join(cwd, ".cribrc"))
+	return globalconfig.LoadCribRC(filepath.Join(dir, ".cribrc"))
 }
 
 // setupPlugins builds pluginsetup.Opts from the loaded global + project

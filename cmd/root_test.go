@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -63,6 +65,68 @@ func TestVersionString_UnknownCommit(t *testing.T) {
 	want := "crib 0.3.0-dev"
 	if got != want {
 		t.Errorf("versionString() = %q, want %q", got, want)
+	}
+}
+
+func TestLoadProjectCribRC_UsesCwdByDefault(t *testing.T) {
+	origDir := dirFlag
+	t.Cleanup(func() { dirFlag = origDir })
+	dirFlag = ""
+
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, ".cribrc"), []byte(`config = "from-cwd"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(projectDir)
+
+	rc, err := loadProjectCribRC()
+	if err != nil {
+		t.Fatalf("loadProjectCribRC: %v", err)
+	}
+	if rc.Config != "from-cwd" {
+		t.Errorf("Config = %q, want from-cwd", rc.Config)
+	}
+}
+
+func TestLoadProjectCribRC_RespectsDirFlag(t *testing.T) {
+	origDir := dirFlag
+	t.Cleanup(func() { dirFlag = origDir })
+
+	cwdDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cwdDir, ".cribrc"), []byte(`config = "from-cwd"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(cwdDir)
+
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, ".cribrc"), []byte(`config = "from-dirflag"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dirFlag = projectDir
+	rc, err := loadProjectCribRC()
+	if err != nil {
+		t.Fatalf("loadProjectCribRC: %v", err)
+	}
+	if rc.Config != "from-dirflag" {
+		t.Errorf("Config = %q, want from-dirflag (--dir should win over cwd)", rc.Config)
+	}
+}
+
+func TestLoadProjectCribRC_DirFlagMissingFile(t *testing.T) {
+	origDir := dirFlag
+	t.Cleanup(func() { dirFlag = origDir })
+
+	dirFlag = t.TempDir() // directory exists but has no .cribrc
+	rc, err := loadProjectCribRC()
+	if err != nil {
+		t.Fatalf("expected no error for missing .cribrc, got: %v", err)
+	}
+	if rc == nil {
+		t.Fatal("expected zero CribRC, got nil")
+	}
+	if rc.Config != "" {
+		t.Errorf("expected empty CribRC, got %+v", rc)
 	}
 }
 
