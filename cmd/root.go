@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -63,6 +64,12 @@ type runtimeConfig struct {
 
 	// ProjectPluginsOff is true when .cribrc says `plugins = "false"`.
 	ProjectPluginsOff bool
+
+	// ProjectWorkspace is .cribrc's [workspace] section. Merged on top of
+	// Global.Workspace when configuring the engine: project env wins on key
+	// conflicts, mounts concatenate, runArgs are ordered so project values
+	// win under the runtime's last-flag-wins semantics.
+	ProjectWorkspace globalconfig.WorkspaceConfig
 }
 
 var (
@@ -131,6 +138,7 @@ var rootCmd = &cobra.Command{
 			runtimeCfg.ProjectDotfiles = rc.Dotfiles
 			runtimeCfg.ProjectPluginsDisable = rc.Plugins.Disable
 			runtimeCfg.ProjectPluginsOff = rc.Plugins.DisableAll
+			runtimeCfg.ProjectWorkspace = rc.Workspace
 		}
 
 		return nil
@@ -302,17 +310,49 @@ func loadProjectCribRC() (*globalconfig.CribRC, error) {
 	return globalconfig.LoadCribRC(filepath.Join(dir, ".cribrc"))
 }
 
+// mergeWorkspaceOptions overlays .cribrc's [workspace] section on top of the
+// global config's [workspace] section and returns the effective options to
+// pass to the engine. The backends treat this entire result as "lower
+// priority than devcontainer.json", so within the result we place project
+// values where they will beat global ones:
+//   - Env: project entries overwrite global entries on key conflict.
+//   - Mounts: global first, project second; compose dedupes by target and
+//     the single-backend driver will refuse truly duplicate targets, which
+//     is the right failure mode.
+//   - RunArgs: global first, project second, so when the backend prepends
+//     this list to cfg.RunArgs the project .cribrc values sit later in the
+//     final -flag list and win on key conflicts under last-flag-wins.
+func mergeWorkspaceOptions(global, project globalconfig.WorkspaceConfig) engine.GlobalWorkspaceOptions {
+	out := engine.GlobalWorkspaceOptions{}
+
+	if len(global.Env) > 0 || len(project.Env) > 0 {
+		out.Env = make(map[string]string, len(global.Env)+len(project.Env))
+		maps.Copy(out.Env, global.Env)
+		maps.Copy(out.Env, project.Env)
+	}
+
+	if len(global.Mounts) > 0 || len(project.Mounts) > 0 {
+		out.Mounts = make([]string, 0, len(global.Mounts)+len(project.Mounts))
+		out.Mounts = append(out.Mounts, global.Mounts...)
+		out.Mounts = append(out.Mounts, project.Mounts...)
+	}
+
+	if len(global.RunArgs) > 0 || len(project.RunArgs) > 0 {
+		out.RunArgs = make([]string, 0, len(global.RunArgs)+len(project.RunArgs))
+		out.RunArgs = append(out.RunArgs, global.RunArgs...)
+		out.RunArgs = append(out.RunArgs, project.RunArgs...)
+	}
+
+	return out
+}
+
 // setupPlugins builds pluginsetup.Opts from the loaded global + project
 // config and CLI flags, then wires the resulting manager and cache mounts
 // into the engine. Called from commands that create containers (up, rebuild,
 // restart).
 func setupPlugins(cmd *cobra.Command, eng *engine.Engine, d *oci.OCIDriver) {
 	eng.SetRuntime(d.Runtime().String())
-	eng.SetGlobalWorkspace(engine.GlobalWorkspaceOptions{
-		Env:     runtimeCfg.Global.Workspace.Env,
-		Mounts:  runtimeCfg.Global.Workspace.Mounts,
-		RunArgs: runtimeCfg.Global.Workspace.RunArgs,
-	})
+	eng.SetGlobalWorkspace(mergeWorkspaceOptions(runtimeCfg.Global.Workspace, runtimeCfg.ProjectWorkspace))
 
 	result := pluginsetup.Configure(pluginsetup.Opts{
 		GlobalDisable:     runtimeCfg.Global.Plugins.Disable,

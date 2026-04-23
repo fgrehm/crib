@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Global workspace configuration. New `[workspace]` section in
-  `~/.config/crib/config.toml` sets environment variables, mounts, and
-  runtime arguments applied to every container. Project-level config
-  (devcontainer.json `containerEnv`, `mounts`, `runArgs`) takes priority
-  on key conflicts. Run args are honored in single-container mode only.
+- Workspace configuration via `[workspace]` section in both
+  `~/.config/crib/config.toml` and `.cribrc`. Sets environment variables,
+  mounts, and runtime arguments applied to every container. Precedence on
+  conflicts: `devcontainer.json` > `.cribrc` `[workspace]` > global
+  `[workspace]`. Mounts concatenate across all three layers. Run args are
+  honored in single-container mode only.
 - Plugin configurability. Bundled plugins can now be disabled globally
   (`~/.config/crib/config.toml` under `[plugins]` with `disable = ["ssh",
   ...]` or `disable_all = true`), per-project (`.cribrc` with
