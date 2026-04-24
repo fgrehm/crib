@@ -17,8 +17,7 @@ import (
 	pluginssh "github.com/fgrehm/crib/internal/plugin/ssh"
 )
 
-// KnownPlugins is the canonical set of bundled plugin names.
-var KnownPlugins = []string{
+var knownPlugins = []string{
 	"coding-agents",
 	"shell-history",
 	"ssh",
@@ -26,9 +25,8 @@ var KnownPlugins = []string{
 	"package-cache",
 }
 
-// IsKnown reports whether name matches a bundled plugin.
-func IsKnown(name string) bool {
-	return slices.Contains(KnownPlugins, name)
+func isKnown(name string) bool {
+	return slices.Contains(knownPlugins, name)
 }
 
 // Opts holds the inputs for plugin setup.
@@ -90,8 +88,8 @@ func Configure(opts Opts, logger *slog.Logger) *Result {
 		result.Plugins = append(result.Plugins, p.Name())
 	}
 
-	disabled := CollectDisabled(opts.GlobalDisable, opts.ProjectDisable, opts.CLIDisable)
-	WarnUnknown(disabled, logger)
+	disabled := collectDisabled(opts.GlobalDisable, opts.ProjectDisable, opts.CLIDisable)
+	warnUnknown(disabled, logger)
 
 	if opts.GlobalDisableAll || opts.ProjectDisableAll {
 		return result
@@ -122,9 +120,7 @@ func Configure(opts Opts, logger *slog.Logger) *Result {
 	return result
 }
 
-// CollectDisabled merges disable entries from every layer into a set. Entries
-// are trimmed; empty entries are dropped.
-func CollectDisabled(layers ...[]string) map[string]bool {
+func collectDisabled(layers ...[]string) map[string]bool {
 	out := map[string]bool{}
 	for _, layer := range layers {
 		for _, name := range layer {
@@ -137,18 +133,16 @@ func CollectDisabled(layers ...[]string) map[string]bool {
 	return out
 }
 
-// WarnUnknown logs a warning for each disabled plugin name that is not a
-// bundled plugin. Names are sorted so log output is stable.
-func WarnUnknown(disabled map[string]bool, logger *slog.Logger) {
+func warnUnknown(disabled map[string]bool, logger *slog.Logger) {
 	unknown := make([]string, 0, len(disabled))
 	for name := range disabled {
-		if !IsKnown(name) {
+		if !isKnown(name) {
 			unknown = append(unknown, name)
 		}
 	}
 	slices.Sort(unknown)
 	for _, name := range unknown {
-		logger.Warn("unknown plugin in disable list", "name", name, "known", KnownPlugins)
+		logger.Warn("unknown plugin in disable list", "name", name, "known", knownPlugins)
 	}
 }
 

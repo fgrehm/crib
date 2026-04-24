@@ -21,6 +21,10 @@ func applyGlobalEnv(runOpts *driver.RunOptions, env map[string]string) {
 	}
 	existing := runOpts.Env
 	runOpts.Env = make([]string, 0, len(env)+len(existing))
+	// Map iteration order is non-deterministic; global entries may appear in
+	// any order relative to each other. Correctness is unaffected: the runtime
+	// resolves duplicate keys with last-wins, and all project entries (appended
+	// below) always come after all global entries.
 	for k, v := range env {
 		runOpts.Env = append(runOpts.Env, k+"="+v)
 	}

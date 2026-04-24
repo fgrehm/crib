@@ -156,21 +156,21 @@ run_args = ["--cap-add", "SYS_PTRACE"]
 	// consumes. Without this copy (the bug the review caught), .cribrc's
 	// [workspace] section would be silently dropped.
 	var cfg runtimeConfig
-	cfg.ProjectWorkspace = rc.Workspace
+	cfg.projectWorkspace = rc.Workspace
 
-	if cfg.ProjectWorkspace.Env["FROM_CRIBRC"] != "yes" {
-		t.Errorf("ProjectWorkspace.Env[FROM_CRIBRC] = %q, want yes", cfg.ProjectWorkspace.Env["FROM_CRIBRC"])
+	if cfg.projectWorkspace.Env["FROM_CRIBRC"] != "yes" {
+		t.Errorf("projectWorkspace.Env[FROM_CRIBRC] = %q, want yes", cfg.projectWorkspace.Env["FROM_CRIBRC"])
 	}
-	if len(cfg.ProjectWorkspace.Mounts) != 1 || cfg.ProjectWorkspace.Mounts[0] != "type=bind,source=/host/p,target=/container/p" {
-		t.Errorf("ProjectWorkspace.Mounts = %v", cfg.ProjectWorkspace.Mounts)
+	if len(cfg.projectWorkspace.Mounts) != 1 || cfg.projectWorkspace.Mounts[0] != "type=bind,source=/host/p,target=/container/p" {
+		t.Errorf("projectWorkspace.Mounts = %v", cfg.projectWorkspace.Mounts)
 	}
-	if len(cfg.ProjectWorkspace.RunArgs) != 2 {
-		t.Errorf("ProjectWorkspace.RunArgs = %v", cfg.ProjectWorkspace.RunArgs)
+	if len(cfg.projectWorkspace.RunArgs) != 2 {
+		t.Errorf("projectWorkspace.RunArgs = %v", cfg.projectWorkspace.RunArgs)
 	}
 
 	// And the merge with the global workspace must preserve these values,
 	// producing the options setupPlugins hands to the engine.
-	merged := mergeWorkspaceOptions(globalconfig.WorkspaceConfig{}, cfg.ProjectWorkspace)
+	merged := mergeWorkspaceOptions(globalconfig.WorkspaceConfig{}, cfg.projectWorkspace)
 	if merged.Env["FROM_CRIBRC"] != "yes" {
 		t.Errorf("merged.Env[FROM_CRIBRC] = %q", merged.Env["FROM_CRIBRC"])
 	}

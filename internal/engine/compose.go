@@ -284,15 +284,12 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 // buildOverrideEnv merges environment variables from config, features, and
 // plugins into a single MappingWithEquals for the compose override. Global
 // workspace env is applied first (lowest priority) so project-level
-// ContainerEnv wins on key conflicts. Each loop takes an explicit per-
-// iteration copy before taking its address so the map values don't alias the
-// loop variable (safe on Go 1.22+, but explicit beats implicit).
+// ContainerEnv wins on key conflicts.
 func buildOverrideEnv(cfg *config.DevContainerConfig, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse, globalEnv map[string]string) composetypes.MappingWithEquals {
 	env := composetypes.MappingWithEquals{}
 	addAll := func(src map[string]string) {
 		for k, v := range src {
-			val := v
-			env[k] = &val
+			env[k] = &v
 		}
 	}
 	addAll(globalEnv)

@@ -63,7 +63,7 @@ func TestCollectDisabled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := CollectDisabled(tt.layers...)
+			got := collectDisabled(tt.layers...)
 			if len(got) != len(tt.want) {
 				t.Fatalf("len = %d, want %d (got %v)", len(got), len(tt.want), got)
 			}
@@ -77,14 +77,14 @@ func TestCollectDisabled(t *testing.T) {
 }
 
 func TestIsKnown(t *testing.T) {
-	for _, name := range KnownPlugins {
-		if !IsKnown(name) {
-			t.Errorf("IsKnown(%q) = false, want true", name)
+	for _, name := range knownPlugins {
+		if !isKnown(name) {
+			t.Errorf("isKnown(%q) = false, want true", name)
 		}
 	}
 	for _, name := range []string{"", "sssh", "unknown", "SSH"} {
-		if IsKnown(name) {
-			t.Errorf("IsKnown(%q) = true, want false", name)
+		if isKnown(name) {
+			t.Errorf("isKnown(%q) = true, want false", name)
 		}
 	}
 }
@@ -126,7 +126,7 @@ func TestWarnUnknown(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			WarnUnknown(tt.disabled, captureLogger(&buf))
+			warnUnknown(tt.disabled, captureLogger(&buf))
 
 			out := buf.String()
 			prevIdx := -1

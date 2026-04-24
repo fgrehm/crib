@@ -50,26 +50,12 @@ func displayContainerName(recorded, wsID string) string {
 // struct so the reset-before-load sequence is a single assignment and so
 // additions don't multiply package-level globals.
 type runtimeConfig struct {
-	// Global is the fully loaded ~/.config/crib/config.toml.
-	Global globalconfig.Config
-
-	// CacheProviders is .cribrc's `cache` list.
-	CacheProviders []string
-
-	// ProjectDotfiles is .cribrc's [dotfiles] section (including the kill switch).
-	ProjectDotfiles globalconfig.DotfilesRC
-
-	// ProjectPluginsDisable is .cribrc's plugins.disable list.
-	ProjectPluginsDisable []string
-
-	// ProjectPluginsOff is true when .cribrc says `plugins = "false"`.
-	ProjectPluginsOff bool
-
-	// ProjectWorkspace is .cribrc's [workspace] section. Merged on top of
-	// Global.Workspace when configuring the engine: project env wins on key
-	// conflicts, mounts concatenate, runArgs are ordered so project values
-	// win under the runtime's last-flag-wins semantics.
-	ProjectWorkspace globalconfig.WorkspaceConfig
+	global            globalconfig.Config
+	cacheProviders    []string
+	projectDotfiles   globalconfig.DotfilesRC
+	projectPlugins    []string // plugins.disable from .cribrc
+	projectPluginsOff bool     // plugins = false from .cribrc
+	projectWorkspace  globalconfig.WorkspaceConfig
 }
 
 var (
@@ -118,7 +104,7 @@ var rootCmd = &cobra.Command{
 		if gcfg, err := globalconfig.Load(); err != nil {
 			logger.Warn("failed to load global config", "error", err)
 		} else if gcfg != nil {
-			runtimeCfg.Global = *gcfg
+			runtimeCfg.global = *gcfg
 		}
 
 		// Apply .cribrc defaults for flags not explicitly set by the user.
@@ -132,13 +118,13 @@ var rootCmd = &cobra.Command{
 				logger.Debug("loaded config dir from .cribrc", "dir", rc.Config)
 			}
 			if len(rc.Cache) > 0 {
-				runtimeCfg.CacheProviders = rc.Cache
+				runtimeCfg.cacheProviders = rc.Cache
 				logger.Debug("loaded cache providers from .cribrc", "providers", rc.Cache)
 			}
-			runtimeCfg.ProjectDotfiles = rc.Dotfiles
-			runtimeCfg.ProjectPluginsDisable = rc.Plugins.Disable
-			runtimeCfg.ProjectPluginsOff = rc.Plugins.DisableAll
-			runtimeCfg.ProjectWorkspace = rc.Workspace
+			runtimeCfg.projectDotfiles = rc.Dotfiles
+			runtimeCfg.projectPlugins = rc.Plugins.Disable
+			runtimeCfg.projectPluginsOff = rc.Plugins.DisableAll
+			runtimeCfg.projectWorkspace = rc.Workspace
 		}
 
 		return nil
@@ -352,17 +338,17 @@ func mergeWorkspaceOptions(global, project globalconfig.WorkspaceConfig) engine.
 // restart).
 func setupPlugins(cmd *cobra.Command, eng *engine.Engine, d *oci.OCIDriver) {
 	eng.SetRuntime(d.Runtime().String())
-	eng.SetGlobalWorkspace(mergeWorkspaceOptions(runtimeCfg.Global.Workspace, runtimeCfg.ProjectWorkspace))
+	eng.SetGlobalWorkspace(mergeWorkspaceOptions(runtimeCfg.global.Workspace, runtimeCfg.projectWorkspace))
 
 	result := pluginsetup.Configure(pluginsetup.Opts{
-		GlobalDisable:     runtimeCfg.Global.Plugins.Disable,
-		GlobalDisableAll:  runtimeCfg.Global.Plugins.DisableAll,
-		ProjectDisable:    runtimeCfg.ProjectPluginsDisable,
-		ProjectDisableAll: runtimeCfg.ProjectPluginsOff,
+		GlobalDisable:     runtimeCfg.global.Plugins.Disable,
+		GlobalDisableAll:  runtimeCfg.global.Plugins.DisableAll,
+		ProjectDisable:    runtimeCfg.projectPlugins,
+		ProjectDisableAll: runtimeCfg.projectPluginsOff,
 		CLIDisable:        disabledPluginsForCommand(cmd),
-		GlobalDotfiles:    runtimeCfg.Global.Dotfiles,
-		ProjectDotfiles:   runtimeCfg.ProjectDotfiles,
-		CacheProviders:    runtimeCfg.CacheProviders,
+		GlobalDotfiles:    runtimeCfg.global.Dotfiles,
+		ProjectDotfiles:   runtimeCfg.projectDotfiles,
+		CacheProviders:    runtimeCfg.cacheProviders,
 	}, logger)
 
 	eng.SetPlugins(result.Manager)
