@@ -309,8 +309,9 @@ func buildOverrideEnv(cfg *config.DevContainerConfig, featOv featureOverrides, p
 	return env
 }
 
-// parseGlobalMounts converts the string list from globalconfig.WorkspaceConfig
-// into config.Mount values so they can be added to the compose override.
+// parseGlobalMounts converts workspace mount specs from the engine's merged
+// workspace options into config.Mount values so they can be added to the
+// compose override.
 func parseGlobalMounts(specs []string) ([]config.Mount, error) {
 	if len(specs) == 0 {
 		return nil, nil
@@ -319,7 +320,7 @@ func parseGlobalMounts(specs []string) ([]config.Mount, error) {
 	for _, spec := range specs {
 		m, err := config.ParseMount(spec)
 		if err != nil {
-			return nil, fmt.Errorf("global workspace mount %q from [workspace].mount: %w", spec, err)
+			return nil, fmt.Errorf("workspace mount %q from [workspace].mount: %w", spec, err)
 		}
 		mounts = append(mounts, m)
 	}

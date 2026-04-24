@@ -40,7 +40,7 @@ func applyGlobalMounts(runOpts *driver.RunOptions, specs []string, claimed map[s
 	for _, spec := range specs {
 		m, err := config.ParseMount(spec)
 		if err != nil {
-			return fmt.Errorf("global workspace mount %q from [workspace].mount: %w", spec, err)
+			return fmt.Errorf("workspace mount %q from [workspace].mount: %w", spec, err)
 		}
 		if claimed[m.Target] {
 			logger.Warn("skipping mount: target already claimed by an earlier mount source", "kind", "global", "source", m.Source, "target", m.Target)

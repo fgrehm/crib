@@ -58,7 +58,7 @@ type Engine struct {
 	plugins          *plugin.Manager
 	runtimeName      string
 	buildCacheMounts []string               // BuildKit cache mount targets for feature builds
-	globalWS         GlobalWorkspaceOptions // from ~/.config/crib/config.toml [workspace]
+	globalWS         GlobalWorkspaceOptions // effective merged workspace options (global config + project .cribrc)
 	logger           *slog.Logger
 	stdout           io.Writer
 	stderr           io.Writer
@@ -66,11 +66,11 @@ type Engine struct {
 	progress         func(ProgressEvent)
 }
 
-// GlobalWorkspaceOptions carries the [workspace] section of the user config
-// so it can be applied to every container created by the engine. Project-level
-// configuration (devcontainer.json containerEnv, mounts, runArgs) wins on key
-// conflicts via the runtime's last-flag-wins semantics; these values are
-// prepended by the backends.
+// GlobalWorkspaceOptions carries the effective merged workspace options
+// applied by the engine (global config + project .cribrc [workspace] section).
+// Project-level configuration (devcontainer.json containerEnv, mounts, runArgs)
+// wins on key conflicts via the runtime's last-flag-wins semantics; these
+// values are prepended by the backends.
 type GlobalWorkspaceOptions struct {
 	// Env is injected into the container at lower priority than the project's
 	// ContainerEnv.
