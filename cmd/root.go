@@ -103,7 +103,7 @@ var rootCmd = &cobra.Command{
 		// Load global config ~/.config/crib/config.toml once per command.
 		if gcfg, err := globalconfig.Load(); err != nil {
 			logger.Warn("failed to load global config", "error", err)
-		} else if gcfg != nil {
+		} else {
 			runtimeCfg.global = *gcfg
 		}
 

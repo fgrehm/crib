@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/fgrehm/crib/internal/config"
 	"github.com/fgrehm/crib/internal/driver"
@@ -32,14 +33,24 @@ func applyGlobalEnv(runOpts *driver.RunOptions, env map[string]string) {
 }
 
 // applyGlobalMounts parses each global workspace mount spec and appends it to
-// runOpts.Mounts. Returns an error identifying the offending spec.
-func applyGlobalMounts(runOpts *driver.RunOptions, specs []string) error {
+// runOpts.Mounts, skipping any spec whose target is already claimed by an
+// earlier mount. Returns an error identifying the offending spec.
+func applyGlobalMounts(runOpts *driver.RunOptions, specs []string, logger *slog.Logger) error {
+	existing := make(map[string]bool, len(runOpts.Mounts))
+	for _, m := range runOpts.Mounts {
+		existing[m.Target] = true
+	}
 	for _, spec := range specs {
 		m, err := config.ParseMount(spec)
 		if err != nil {
 			return fmt.Errorf("global workspace mount %q from [workspace].mount: %w", spec, err)
 		}
+		if existing[m.Target] {
+			logger.Warn("skipping mount: target already claimed by an earlier mount source", "kind", "global", "source", m.Source, "target", m.Target)
+			continue
+		}
 		runOpts.Mounts = append(runOpts.Mounts, m)
+		existing[m.Target] = true
 	}
 	return nil
 }
@@ -91,7 +102,7 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (c
 	// runOpts.Env via buildRunOptions) wins on duplicate keys when the
 	// runtime resolves the final environment (later -e flags override).
 	applyGlobalEnv(runOpts, b.e.globalWS.Env)
-	if err := applyGlobalMounts(runOpts, b.e.globalWS.Mounts); err != nil {
+	if err := applyGlobalMounts(runOpts, b.e.globalWS.Mounts, b.e.logger); err != nil {
 		return createContainerResult{}, err
 	}
 
@@ -107,7 +118,9 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (c
 	// win on conflict under the runtime's last-flag-wins semantics. Plugin
 	// runArgs are appended below and win over both.
 	if len(b.e.globalWS.RunArgs) > 0 {
-		runOpts.ExtraArgs = append(append([]string{}, b.e.globalWS.RunArgs...), runOpts.ExtraArgs...)
+		args := make([]string, 0, len(b.e.globalWS.RunArgs)+len(runOpts.ExtraArgs))
+		args = append(args, b.e.globalWS.RunArgs...)
+		runOpts.ExtraArgs = append(args, runOpts.ExtraArgs...)
 	}
 
 	// Merge plugin response into run options (mounts, env, runArgs).

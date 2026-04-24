@@ -339,11 +339,15 @@ func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfi
 	}
 
 	var vols []composetypes.ServiceVolumeConfig
-	if cfg.WorkspaceMount == "" && !seenTargets[workspaceFolder] {
-		vols = append(vols, composetypes.ServiceVolumeConfig{
-			Type: "bind", Source: ws.Source, Target: workspaceFolder,
-		})
-		seenTargets[workspaceFolder] = true
+	if cfg.WorkspaceMount == "" {
+		if seenTargets[workspaceFolder] {
+			warnSkip("workspace", ws.Source, workspaceFolder)
+		} else {
+			vols = append(vols, composetypes.ServiceVolumeConfig{
+				Type: "bind", Source: ws.Source, Target: workspaceFolder,
+			})
+			seenTargets[workspaceFolder] = true
+		}
 	}
 	for _, m := range globalMounts {
 		if seenTargets[m.Target] {
