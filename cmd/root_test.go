@@ -1,9 +1,8 @@
 package cmd
 
 import (
-	"bytes"
-	"log/slog"
-	"strings"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/globalconfig"
@@ -70,169 +69,243 @@ func TestVersionString_UnknownCommit(t *testing.T) {
 	}
 }
 
-func TestResolveDotfilesPlugin(t *testing.T) {
-	globalSet := globalconfig.DotfilesConfig{
-		Repository: "https://github.com/user/dotfiles",
-		TargetPath: "~/dotfiles",
-	}
-	globalEmpty := globalconfig.DotfilesConfig{}
+func TestLoadProjectCribRC_UsesCwdByDefault(t *testing.T) {
+	origDir := dirFlag
+	t.Cleanup(func() { dirFlag = origDir })
+	dirFlag = ""
 
-	tests := []struct {
-		name           string
-		gcfg           globalconfig.DotfilesConfig
-		rc             dotfilesRC
-		wantRun        bool
-		wantRepo       string
-		wantTargetPath string
-		wantInstall    string
-	}{
-		{
-			name:     "global set, no project override → runs",
-			gcfg:     globalSet,
-			rc:       dotfilesRC{},
-			wantRun:  true,
-			wantRepo: "https://github.com/user/dotfiles",
-		},
-		{
-			name:    "global set, project disabled → does not run",
-			gcfg:    globalSet,
-			rc:      dotfilesRC{Disabled: true},
-			wantRun: false,
-		},
-		{
-			name:     "global set, project repo override → runs with override",
-			gcfg:     globalSet,
-			rc:       dotfilesRC{Repository: "https://github.com/user/other"},
-			wantRun:  true,
-			wantRepo: "https://github.com/user/other",
-		},
-		{
-			name:           "global set, project targetPath override → merged",
-			gcfg:           globalSet,
-			rc:             dotfilesRC{TargetPath: "~/custom"},
-			wantRun:        true,
-			wantRepo:       "https://github.com/user/dotfiles",
-			wantTargetPath: "~/custom",
-		},
-		{
-			name:        "global set, project installCommand override → merged",
-			gcfg:        globalSet,
-			rc:          dotfilesRC{InstallCommand: "make install"},
-			wantRun:     true,
-			wantRepo:    "https://github.com/user/dotfiles",
-			wantInstall: "make install",
-		},
-		{
-			name:     "no global repo, project repo → runs with project settings",
-			gcfg:     globalEmpty,
-			rc:       dotfilesRC{Repository: "https://github.com/user/dots"},
-			wantRun:  true,
-			wantRepo: "https://github.com/user/dots",
-		},
-		{
-			name:           "no global repo, project repo, no targetPath → default applied",
-			gcfg:           globalEmpty,
-			rc:             dotfilesRC{Repository: "https://github.com/user/dots"},
-			wantRun:        true,
-			wantRepo:       "https://github.com/user/dots",
-			wantTargetPath: "~/dotfiles",
-		},
-		{
-			name:    "no global repo, no project override → does not run",
-			gcfg:    globalEmpty,
-			rc:      dotfilesRC{},
-			wantRun: false,
-		},
-		{
-			name:    "no global repo, project disabled → does not run",
-			gcfg:    globalEmpty,
-			rc:      dotfilesRC{Disabled: true},
-			wantRun: false,
-		},
-		{
-			name:    "no global repo, project targetPath only → does not run",
-			gcfg:    globalEmpty,
-			rc:      dotfilesRC{TargetPath: "~/custom"},
-			wantRun: false,
-		},
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, ".cribrc"), []byte(`config = "from-cwd"`), 0o644); err != nil {
+		t.Fatal(err)
 	}
+	t.Chdir(projectDir)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg, ok := resolveDotfilesPlugin(tt.gcfg, tt.rc)
-			if ok != tt.wantRun {
-				t.Fatalf("wantRun=%v got %v", tt.wantRun, ok)
-			}
-			if !ok {
-				return
-			}
-			if tt.wantRepo != "" && cfg.Repository != tt.wantRepo {
-				t.Errorf("Repository = %q, want %q", cfg.Repository, tt.wantRepo)
-			}
-			if tt.wantTargetPath != "" && cfg.TargetPath != tt.wantTargetPath {
-				t.Errorf("TargetPath = %q, want %q", cfg.TargetPath, tt.wantTargetPath)
-			}
-			if tt.wantInstall != "" && cfg.InstallCommand != tt.wantInstall {
-				t.Errorf("InstallCommand = %q, want %q", cfg.InstallCommand, tt.wantInstall)
-			}
-		})
+	rc, err := loadProjectCribRC()
+	if err != nil {
+		t.Fatalf("loadProjectCribRC: %v", err)
+	}
+	if rc.Config != "from-cwd" {
+		t.Errorf("Config = %q, want from-cwd", rc.Config)
 	}
 }
 
-func TestCollectDisabledPlugins(t *testing.T) {
-	tests := []struct {
-		name   string
-		layers [][]string
-		want   map[string]bool
-	}{
-		{
-			name:   "no layers",
-			layers: nil,
-			want:   map[string]bool{},
-		},
-		{
-			name:   "single layer",
-			layers: [][]string{{"ssh"}},
-			want:   map[string]bool{"ssh": true},
-		},
-		{
-			name: "merges across global, cribrc, and flag",
-			layers: [][]string{
-				{"ssh"},           // global
-				{"dotfiles"},      // .cribrc
-				{"package-cache"}, // --disable-plugin
-			},
-			want: map[string]bool{"ssh": true, "dotfiles": true, "package-cache": true},
-		},
-		{
-			name:   "dedupes across layers",
-			layers: [][]string{{"ssh", "dotfiles"}, {"ssh"}},
-			want:   map[string]bool{"ssh": true, "dotfiles": true},
-		},
-		{
-			name:   "trims whitespace and filters empty entries",
-			layers: [][]string{{"  ssh  ", "", "  "}, {"dotfiles"}},
-			want:   map[string]bool{"ssh": true, "dotfiles": true},
-		},
-		{
-			name:   "nil layer entries are tolerated",
-			layers: [][]string{nil, {"ssh"}, nil},
-			want:   map[string]bool{"ssh": true},
-		},
+func TestLoadProjectCribRC_RespectsDirFlag(t *testing.T) {
+	origDir := dirFlag
+	t.Cleanup(func() { dirFlag = origDir })
+
+	cwdDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cwdDir, ".cribrc"), []byte(`config = "from-cwd"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(cwdDir)
+
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, ".cribrc"), []byte(`config = "from-dirflag"`), 0o644); err != nil {
+		t.Fatal(err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := collectDisabledPlugins(tt.layers...)
-			if len(got) != len(tt.want) {
-				t.Fatalf("len = %d, want %d (got %v)", len(got), len(tt.want), got)
-			}
-			for k, v := range tt.want {
-				if got[k] != v {
-					t.Errorf("key %q = %v, want %v", k, got[k], v)
-				}
-			}
-		})
+	dirFlag = projectDir
+	rc, err := loadProjectCribRC()
+	if err != nil {
+		t.Fatalf("loadProjectCribRC: %v", err)
+	}
+	if rc.Config != "from-dirflag" {
+		t.Errorf("Config = %q, want from-dirflag (--dir should win over cwd)", rc.Config)
+	}
+}
+
+func TestLoadProjectCribRC_DirFlagMissingFile(t *testing.T) {
+	origDir := dirFlag
+	t.Cleanup(func() { dirFlag = origDir })
+
+	dirFlag = t.TempDir() // directory exists but has no .cribrc
+	rc, err := loadProjectCribRC()
+	if err != nil {
+		t.Fatalf("expected no error for missing .cribrc, got: %v", err)
+	}
+	if rc == nil {
+		t.Fatal("expected zero CribRC, got nil")
+	}
+	if rc.Config != "" {
+		t.Errorf("expected empty CribRC, got %+v", rc)
+	}
+}
+
+func TestLoadProjectCribRC_WorkspaceFlowsToRuntimeCfg(t *testing.T) {
+	origDir := dirFlag
+	t.Cleanup(func() { dirFlag = origDir })
+
+	projectDir := t.TempDir()
+	content := `
+[workspace]
+env = { FROM_CRIBRC = "yes" }
+mount = ["type=bind,source=/host/p,target=/container/p"]
+run_args = ["--cap-add", "SYS_PTRACE"]
+`
+	if err := os.WriteFile(filepath.Join(projectDir, ".cribrc"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dirFlag = projectDir
+
+	rc, err := loadProjectCribRC()
+	if err != nil {
+		t.Fatalf("loadProjectCribRC: %v", err)
+	}
+
+	// Simulate the PersistentPreRunE copy into runtimeCfg that setupPlugins
+	// consumes. Without this copy (the bug the review caught), .cribrc's
+	// [workspace] section would be silently dropped.
+	var cfg runtimeConfig
+	cfg.projectWorkspace = rc.Workspace
+
+	if cfg.projectWorkspace.Env["FROM_CRIBRC"] != "yes" {
+		t.Errorf("projectWorkspace.Env[FROM_CRIBRC] = %q, want yes", cfg.projectWorkspace.Env["FROM_CRIBRC"])
+	}
+	if len(cfg.projectWorkspace.Mounts) != 1 || cfg.projectWorkspace.Mounts[0] != "type=bind,source=/host/p,target=/container/p" {
+		t.Errorf("projectWorkspace.Mounts = %v", cfg.projectWorkspace.Mounts)
+	}
+	if len(cfg.projectWorkspace.RunArgs) != 2 {
+		t.Errorf("projectWorkspace.RunArgs = %v", cfg.projectWorkspace.RunArgs)
+	}
+
+	// And the merge with the global workspace must preserve these values,
+	// producing the options setupPlugins hands to the engine.
+	merged := mergeWorkspaceOptions(globalconfig.WorkspaceConfig{}, cfg.projectWorkspace)
+	if merged.Env["FROM_CRIBRC"] != "yes" {
+		t.Errorf("merged.Env[FROM_CRIBRC] = %q", merged.Env["FROM_CRIBRC"])
+	}
+	if len(merged.Mounts) != 1 {
+		t.Errorf("merged.Mounts = %v", merged.Mounts)
+	}
+	if len(merged.RunArgs) != 2 {
+		t.Errorf("merged.RunArgs = %v", merged.RunArgs)
+	}
+}
+
+func TestMergeWorkspaceOptions_EmptyInputs(t *testing.T) {
+	out := mergeWorkspaceOptions(globalconfig.WorkspaceConfig{}, globalconfig.WorkspaceConfig{})
+	if out.Env != nil || out.Mounts != nil || out.RunArgs != nil {
+		t.Errorf("expected zero-value output, got %+v", out)
+	}
+}
+
+func TestMergeWorkspaceOptions_EnvProjectWins(t *testing.T) {
+	out := mergeWorkspaceOptions(
+		globalconfig.WorkspaceConfig{Env: map[string]string{
+			"GLOBAL_ONLY": "g",
+			"CONFLICT":    "global-loser",
+		}},
+		globalconfig.WorkspaceConfig{Env: map[string]string{
+			"PROJECT_ONLY": "p",
+			"CONFLICT":     "project-wins",
+		}},
+	)
+	if out.Env["GLOBAL_ONLY"] != "g" {
+		t.Errorf("GLOBAL_ONLY = %q", out.Env["GLOBAL_ONLY"])
+	}
+	if out.Env["PROJECT_ONLY"] != "p" {
+		t.Errorf("PROJECT_ONLY = %q", out.Env["PROJECT_ONLY"])
+	}
+	if out.Env["CONFLICT"] != "project-wins" {
+		t.Errorf("CONFLICT = %q, want project-wins", out.Env["CONFLICT"])
+	}
+}
+
+func TestMergeWorkspaceOptions_MountsProjectBeforeGlobal(t *testing.T) {
+	out := mergeWorkspaceOptions(
+		globalconfig.WorkspaceConfig{Mounts: []string{"type=bind,source=/g,target=/g"}},
+		globalconfig.WorkspaceConfig{Mounts: []string{"type=bind,source=/p,target=/p"}},
+	)
+	if len(out.Mounts) != 2 {
+		t.Fatalf("Mounts = %v, want 2 entries", out.Mounts)
+	}
+	if out.Mounts[0] != "type=bind,source=/p,target=/p" {
+		t.Errorf("Mounts[0] = %q (project should come first)", out.Mounts[0])
+	}
+	if out.Mounts[1] != "type=bind,source=/g,target=/g" {
+		t.Errorf("Mounts[1] = %q (global should come second)", out.Mounts[1])
+	}
+}
+
+func TestMergeWorkspaceOptions_RunArgsProjectAfterGlobal(t *testing.T) {
+	out := mergeWorkspaceOptions(
+		globalconfig.WorkspaceConfig{RunArgs: []string{"--cpus", "2"}},
+		globalconfig.WorkspaceConfig{RunArgs: []string{"--cpus", "4"}},
+	)
+	// Global first, project second — last-flag-wins in the runtime resolves
+	// --cpus to the project value.
+	want := []string{"--cpus", "2", "--cpus", "4"}
+	if len(out.RunArgs) != len(want) {
+		t.Fatalf("RunArgs = %v, want %v", out.RunArgs, want)
+	}
+	for i, w := range want {
+		if out.RunArgs[i] != w {
+			t.Errorf("RunArgs[%d] = %q, want %q", i, out.RunArgs[i], w)
+		}
+	}
+}
+
+func TestMergeWorkspaceOptions_OnlyGlobal(t *testing.T) {
+	out := mergeWorkspaceOptions(
+		globalconfig.WorkspaceConfig{
+			Env:     map[string]string{"G": "1"},
+			Mounts:  []string{"type=bind,source=/a,target=/a"},
+			RunArgs: []string{"--privileged"},
+		},
+		globalconfig.WorkspaceConfig{},
+	)
+	if out.Env["G"] != "1" || len(out.Mounts) != 1 || len(out.RunArgs) != 1 {
+		t.Errorf("unexpected merged output: %+v", out)
+	}
+}
+
+func TestMergeWorkspaceOptions_OnlyProject(t *testing.T) {
+	out := mergeWorkspaceOptions(
+		globalconfig.WorkspaceConfig{},
+		globalconfig.WorkspaceConfig{
+			Env:     map[string]string{"P": "1"},
+			Mounts:  []string{"type=bind,source=/a,target=/a"},
+			RunArgs: []string{"--privileged"},
+		},
+	)
+	if out.Env["P"] != "1" || len(out.Mounts) != 1 || len(out.RunArgs) != 1 {
+		t.Errorf("unexpected merged output: %+v", out)
+	}
+}
+
+func TestMergeWorkspaceOptions_AllFieldsBothSides(t *testing.T) {
+	out := mergeWorkspaceOptions(
+		globalconfig.WorkspaceConfig{
+			Env:     map[string]string{"GLOBAL_ONLY": "g", "CONFLICT": "global-loser"},
+			Mounts:  []string{"type=bind,source=/global,target=/global"},
+			RunArgs: []string{"--cpus", "2"},
+		},
+		globalconfig.WorkspaceConfig{
+			Env:     map[string]string{"PROJECT_ONLY": "p", "CONFLICT": "project-wins"},
+			Mounts:  []string{"type=bind,source=/project,target=/project"},
+			RunArgs: []string{"--cpus", "4"},
+		},
+	)
+	if out.Env["GLOBAL_ONLY"] != "g" {
+		t.Errorf("GLOBAL_ONLY = %q, want g", out.Env["GLOBAL_ONLY"])
+	}
+	if out.Env["PROJECT_ONLY"] != "p" {
+		t.Errorf("PROJECT_ONLY = %q, want p", out.Env["PROJECT_ONLY"])
+	}
+	if out.Env["CONFLICT"] != "project-wins" {
+		t.Errorf("CONFLICT = %q, want project-wins", out.Env["CONFLICT"])
+	}
+	if len(out.Mounts) != 2 || out.Mounts[0] != "type=bind,source=/project,target=/project" || out.Mounts[1] != "type=bind,source=/global,target=/global" {
+		t.Errorf("Mounts = %v, want [project, global]", out.Mounts)
+	}
+	want := []string{"--cpus", "2", "--cpus", "4"}
+	if len(out.RunArgs) != len(want) {
+		t.Fatalf("RunArgs = %v, want %v", out.RunArgs, want)
+	}
+	for i, w := range want {
+		if out.RunArgs[i] != w {
+			t.Errorf("RunArgs[%d] = %q, want %q", i, out.RunArgs[i], w)
+		}
 	}
 }
 
@@ -274,97 +347,5 @@ func TestResetPerExecutionFlags(t *testing.T) {
 	got = disabledPluginsForCommand(sub)
 	if len(got) != 1 || got[0] != "dotfiles" {
 		t.Errorf("third run: got %v, want [dotfiles] only", got)
-	}
-}
-
-func TestIsKnownPlugin(t *testing.T) {
-	for _, name := range []string{"coding-agents", "shell-history", "ssh", "dotfiles", "package-cache"} {
-		if !isKnownPlugin(name) {
-			t.Errorf("isKnownPlugin(%q) = false, want true", name)
-		}
-	}
-	for _, name := range []string{"", "sssh", "unknown", "SSH"} {
-		if isKnownPlugin(name) {
-			t.Errorf("isKnownPlugin(%q) = true, want false", name)
-		}
-	}
-}
-
-// captureLogger installs a slog logger that writes to buf and returns a
-// restore func. Tests patch the package-level logger so warn calls in
-// cmd/root.go are observable.
-func captureLogger(t *testing.T, buf *bytes.Buffer) func() {
-	t.Helper()
-	orig := logger
-	logger = slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	return func() { logger = orig }
-}
-
-func TestWarnUnknownDisabledPlugins(t *testing.T) {
-	tests := []struct {
-		name       string
-		disabled   map[string]bool
-		wantNames  []string // names that should appear in a warning line
-		wantSilent []string // names that should NOT produce warnings
-	}{
-		{
-			name:       "all known names",
-			disabled:   map[string]bool{"ssh": true, "dotfiles": true},
-			wantSilent: []string{"ssh", "dotfiles"},
-		},
-		{
-			name:      "unknown name warns",
-			disabled:  map[string]bool{"sssh": true},
-			wantNames: []string{"sssh"},
-		},
-		{
-			name:       "mixed: only unknowns warn",
-			disabled:   map[string]bool{"ssh": true, "typo": true, "dotfiles": true},
-			wantNames:  []string{"typo"},
-			wantSilent: []string{"ssh", "dotfiles"},
-		},
-		{
-			name:     "empty set never warns",
-			disabled: map[string]bool{},
-		},
-		{
-			name:      "multiple unknowns log in sorted order",
-			disabled:  map[string]bool{"zebra": true, "alpha": true, "mike": true},
-			wantNames: []string{"alpha", "mike", "zebra"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var buf bytes.Buffer
-			defer captureLogger(t, &buf)()
-
-			warnUnknownDisabledPlugins(tt.disabled)
-
-			out := buf.String()
-			prevIdx := -1
-			for _, n := range tt.wantNames {
-				if !strings.Contains(out, "unknown plugin in disable list") {
-					t.Errorf("expected warning message, got %q", out)
-				}
-				idx := strings.Index(out, "name="+n)
-				if idx == -1 {
-					t.Errorf("expected warning to include name=%s, got %q", n, out)
-					continue
-				}
-				if idx < prevIdx {
-					t.Errorf("expected names in sorted order; %q appeared before expected predecessor in %q", n, out)
-				}
-				prevIdx = idx
-			}
-			for _, n := range tt.wantSilent {
-				if strings.Contains(out, "name="+n+" ") || strings.HasSuffix(strings.TrimRight(out, "\n"), "name="+n) {
-					t.Errorf("did not expect warning for known name %q, got %q", n, out)
-				}
-			}
-			if len(tt.wantNames) == 0 && strings.Contains(out, "unknown plugin in disable list") {
-				t.Errorf("did not expect any warning, got %q", out)
-			}
-		})
 	}
 }

@@ -5,9 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"os/signal"
-	"slices"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -17,12 +18,7 @@ import (
 	"github.com/fgrehm/crib/internal/driver/oci"
 	"github.com/fgrehm/crib/internal/engine"
 	"github.com/fgrehm/crib/internal/globalconfig"
-	"github.com/fgrehm/crib/internal/plugin"
-	"github.com/fgrehm/crib/internal/plugin/codingagents"
-	"github.com/fgrehm/crib/internal/plugin/dotfiles"
-	"github.com/fgrehm/crib/internal/plugin/packagecache"
-	"github.com/fgrehm/crib/internal/plugin/shellhistory"
-	pluginssh "github.com/fgrehm/crib/internal/plugin/ssh"
+	"github.com/fgrehm/crib/internal/pluginsetup"
 	"github.com/fgrehm/crib/internal/ui"
 	"github.com/fgrehm/crib/internal/workspace"
 	"github.com/spf13/cobra"
@@ -49,16 +45,26 @@ func displayContainerName(recorded, wsID string) string {
 	return "crib-" + wsID
 }
 
+// runtimeConfig holds configuration derived from the global config file and
+// the project's .cribrc, populated by PersistentPreRunE. Bundled into one
+// struct so the reset-before-load sequence is a single assignment and so
+// additions don't multiply package-level globals.
+type runtimeConfig struct {
+	global            globalconfig.Config
+	cacheProviders    []string
+	projectDotfiles   globalconfig.DotfilesRC
+	projectPlugins    []string // plugins.disable from .cribrc
+	projectPluginsOff bool     // plugins = false from .cribrc
+	projectWorkspace  globalconfig.WorkspaceConfig
+}
+
 var (
-	debugFlag             bool
-	verboseFlag           bool
-	configDirFlag         string
-	dirFlag               string
-	logger                *slog.Logger
-	cacheProviders        []string   // loaded from .cribrc cache key
-	projectDotfiles       dotfilesRC // loaded from .cribrc dotfiles keys
-	projectPluginsDisable []string   // loaded from .cribrc plugins.disable
-	projectPluginsOff     bool       // loaded from .cribrc plugins = false
+	debugFlag     bool
+	verboseFlag   bool
+	configDirFlag string
+	dirFlag       string
+	logger        *slog.Logger
+	runtimeCfg    runtimeConfig
 )
 
 // version variables injected at build time via ldflags.
@@ -89,18 +95,22 @@ var rootCmd = &cobra.Command{
 			},
 		}))
 
-		// Reset .cribrc-derived globals so stale values from a previous
-		// rootCmd execution in the same process do not leak into this run
-		// (matters for tests that reuse the command tree).
-		cacheProviders = nil
-		projectDotfiles = dotfilesRC{}
-		projectPluginsDisable = nil
-		projectPluginsOff = false
+		// Reset runtime config so stale values from a previous rootCmd
+		// execution in the same process do not leak into this run (matters
+		// for tests that reuse the command tree).
+		runtimeCfg = runtimeConfig{}
+
+		// Load global config ~/.config/crib/config.toml once per command.
+		if gcfg, err := globalconfig.Load(); err != nil {
+			logger.Warn("failed to load global config", "error", err)
+		} else {
+			runtimeCfg.global = *gcfg
+		}
 
 		// Apply .cribrc defaults for flags not explicitly set by the user.
-		rc, rcErr := loadCribRC()
+		rc, rcErr := loadProjectCribRC()
 		if rcErr != nil {
-			logger.Debug("could not load .cribrc", "error", rcErr)
+			logger.Warn("could not load .cribrc", "error", rcErr)
 		}
 		if rc != nil {
 			if !cmd.Root().PersistentFlags().Changed("config") && rc.Config != "" {
@@ -108,12 +118,13 @@ var rootCmd = &cobra.Command{
 				logger.Debug("loaded config dir from .cribrc", "dir", rc.Config)
 			}
 			if len(rc.Cache) > 0 {
-				cacheProviders = rc.Cache
+				runtimeCfg.cacheProviders = rc.Cache
 				logger.Debug("loaded cache providers from .cribrc", "providers", rc.Cache)
 			}
-			projectDotfiles = rc.Dotfiles
-			projectPluginsDisable = rc.PluginsDisable
-			projectPluginsOff = rc.PluginsDisableAll
+			runtimeCfg.projectDotfiles = rc.Dotfiles
+			runtimeCfg.projectPlugins = rc.Plugins.Disable
+			runtimeCfg.projectPluginsOff = rc.Plugins.DisableAll
+			runtimeCfg.projectWorkspace = rc.Workspace
 		}
 
 		return nil
@@ -269,119 +280,79 @@ func composePortsToDriver(ports []compose.PortBinding) []driver.PortBinding {
 	return result
 }
 
-// resolveDotfilesPlugin merges global config with per-project overrides and
-// returns the effective config and whether the plugin should be registered.
-func resolveDotfilesPlugin(gcfg globalconfig.DotfilesConfig, rc dotfilesRC) (globalconfig.DotfilesConfig, bool) {
-	if rc.Disabled {
-		return globalconfig.DotfilesConfig{}, false
+// loadProjectCribRC loads .cribrc from the project directory. When --dir is
+// set, that directory wins; otherwise the current working directory is used.
+// --config is not consulted: it points at a devcontainer config directory,
+// not a project root, and .cribrc sits at the project root.
+func loadProjectCribRC() (*globalconfig.CribRC, error) {
+	dir := dirFlag
+	if dir == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+		dir = cwd
 	}
-
-	// Merge: start with global, apply per-project overrides.
-	merged := gcfg
-	if rc.Repository != "" {
-		merged.Repository = rc.Repository
-	}
-	if rc.TargetPath != "" {
-		merged.TargetPath = rc.TargetPath
-	}
-	if rc.InstallCommand != "" {
-		merged.InstallCommand = rc.InstallCommand
-	}
-
-	if merged.Repository == "" {
-		return globalconfig.DotfilesConfig{}, false
-	}
-
-	// Apply ~/dotfiles default: applyDefaults only ran on the global config
-	// struct; the repo may have come from per-project.
-	if merged.TargetPath == "" {
-		merged.TargetPath = "~/dotfiles"
-	}
-
-	return merged, true
+	return globalconfig.LoadCribRC(filepath.Join(dir, ".cribrc"))
 }
 
-// setupPlugins creates a plugin manager with bundled plugins and attaches it
-// to the engine. Called from commands that create containers (up, rebuild, restart).
-//
-// Plugins can be disabled via the global config (`[plugins]` with
-// `disable = [...]` or `disable_all = true`), `.cribrc`
-// (`plugins.disable = ssh, ...` or `plugins = false`), or the
-// `--disable-plugin` flag on the current command.
-func setupPlugins(cmd *cobra.Command, eng *engine.Engine, d *oci.OCIDriver) {
-	eng.SetRuntime(d.Runtime().String())
-	mgr := plugin.NewManager(logger)
+// mergeWorkspaceOptions overlays .cribrc's [workspace] section on top of the
+// global config's [workspace] section and returns the effective options to
+// pass to the engine. The backends treat this entire result as "lower
+// priority than devcontainer.json", so within the result we place project
+// values where they will beat global ones:
+//   - Env: project entries overwrite global entries on key conflict.
+//   - Mounts: project first, global second; backends use first-wins dedup so
+//     project wins on target conflicts.
+//   - RunArgs: global first, project second, so when the backend prepends
+//     this list to cfg.RunArgs the project .cribrc values sit later in the
+//     final -flag list and win on key conflicts under last-flag-wins.
+func mergeWorkspaceOptions(global, project globalconfig.WorkspaceConfig) engine.GlobalWorkspaceOptions {
+	out := engine.GlobalWorkspaceOptions{}
 
-	var globalCfg globalconfig.Config
-	if gcfg, err := globalconfig.Load(); err != nil {
-		logger.Warn("failed to load global config", "error", err)
-	} else if gcfg != nil {
-		globalCfg = *gcfg
-	}
-
-	// Warn about unknown names in any disable layer before honoring the kill
-	// switch — a typo is a config mistake whether or not plugins are all off.
-	disabled := collectDisabledPlugins(globalCfg.Plugins.Disable, projectPluginsDisable, disabledPluginsForCommand(cmd))
-	warnUnknownDisabledPlugins(disabled)
-
-	// Kill switch: skip every plugin when any layer asks for it.
-	if globalCfg.Plugins.DisableAll || projectPluginsOff {
-		eng.SetPlugins(mgr)
-		return
+	if len(global.Env) > 0 || len(project.Env) > 0 {
+		out.Env = make(map[string]string, len(global.Env)+len(project.Env))
+		maps.Copy(out.Env, global.Env)
+		maps.Copy(out.Env, project.Env)
 	}
 
-	if !disabled["coding-agents"] {
-		mgr.Register(codingagents.New())
+	if len(global.Mounts) > 0 || len(project.Mounts) > 0 {
+		out.Mounts = make([]string, 0, len(project.Mounts)+len(global.Mounts))
+		out.Mounts = append(out.Mounts, project.Mounts...)
+		out.Mounts = append(out.Mounts, global.Mounts...)
 	}
-	if !disabled["shell-history"] {
-		mgr.Register(shellhistory.New())
-	}
-	if !disabled["ssh"] {
-		mgr.Register(pluginssh.New())
-	}
-	if !disabled["dotfiles"] {
-		if cfg, ok := resolveDotfilesPlugin(globalCfg.Dotfiles, projectDotfiles); ok {
-			mgr.Register(dotfiles.New(cfg))
-		}
-	}
-	if !disabled["package-cache"] && len(cacheProviders) > 0 {
-		if unknown := packagecache.ValidateProviders(cacheProviders); len(unknown) > 0 {
-			logger.Warn("unknown cache providers in .cribrc", "unknown", unknown, "supported", packagecache.SupportedProviders())
-		}
-		mgr.Register(packagecache.New(cacheProviders))
-		eng.SetBuildCacheMounts(packagecache.BuildCacheMounts(cacheProviders))
-	}
-	eng.SetPlugins(mgr)
-}
 
-// collectDisabledPlugins merges disable entries from every layer into a set.
-// Trimmed, empty-filtered.
-func collectDisabledPlugins(layers ...[]string) map[string]bool {
-	out := map[string]bool{}
-	for _, layer := range layers {
-		for _, name := range layer {
-			name = strings.TrimSpace(name)
-			if name != "" {
-				out[name] = true
-			}
-		}
+	if len(global.RunArgs) > 0 || len(project.RunArgs) > 0 {
+		out.RunArgs = make([]string, 0, len(global.RunArgs)+len(project.RunArgs))
+		out.RunArgs = append(out.RunArgs, global.RunArgs...)
+		out.RunArgs = append(out.RunArgs, project.RunArgs...)
 	}
+
 	return out
 }
 
-// warnUnknownDisabledPlugins logs a warning for names that do not match any
-// bundled plugin. Typos shouldn't silently disable nothing. Names are sorted
-// so log output is stable across runs.
-func warnUnknownDisabledPlugins(disabled map[string]bool) {
-	unknown := make([]string, 0, len(disabled))
-	for name := range disabled {
-		if !isKnownPlugin(name) {
-			unknown = append(unknown, name)
-		}
-	}
-	slices.Sort(unknown)
-	for _, name := range unknown {
-		logger.Warn("unknown plugin in disable list", "name", name, "known", knownPlugins)
+// setupPlugins builds pluginsetup.Opts from the loaded global + project
+// config and CLI flags, then wires the resulting manager and cache mounts
+// into the engine. Called from commands that create containers (up, rebuild,
+// restart).
+func setupPlugins(cmd *cobra.Command, eng *engine.Engine, d *oci.OCIDriver) {
+	eng.SetRuntime(d.Runtime().String())
+	eng.SetGlobalWorkspace(mergeWorkspaceOptions(runtimeCfg.global.Workspace, runtimeCfg.projectWorkspace))
+
+	result := pluginsetup.Configure(pluginsetup.Opts{
+		GlobalDisable:     runtimeCfg.global.Plugins.Disable,
+		GlobalDisableAll:  runtimeCfg.global.Plugins.DisableAll,
+		ProjectDisable:    runtimeCfg.projectPlugins,
+		ProjectDisableAll: runtimeCfg.projectPluginsOff,
+		CLIDisable:        disabledPluginsForCommand(cmd),
+		GlobalDotfiles:    runtimeCfg.global.Dotfiles,
+		ProjectDotfiles:   runtimeCfg.projectDotfiles,
+		CacheProviders:    runtimeCfg.cacheProviders,
+	}, logger)
+
+	eng.SetPlugins(result.Manager)
+	if len(result.BuildCacheMounts) > 0 {
+		eng.SetBuildCacheMounts(result.BuildCacheMounts)
 	}
 }
 

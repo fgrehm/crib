@@ -303,6 +303,11 @@ func TestSubstituteString(t *testing.T) {
 			"vol-myproject",
 		},
 		{
+			"localWorkspaceParentFolder",
+			"${localWorkspaceParentFolder}/other-project",
+			"/home/user/other-project",
+		},
+		{
 			"containerWorkspaceFolder",
 			"${containerWorkspaceFolder}/build",
 			"/workspaces/myproject/build",

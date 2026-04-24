@@ -286,6 +286,14 @@ func TestParseMount(t *testing.T) {
 			want:  Mount{Type: "volume", Source: "data", Target: "/data"},
 		},
 		{
+			input: "type=bind,src=/h,dst=/c,readonly",
+			want:  Mount{Type: "bind", Source: "/h", Target: "/c", ReadOnly: true},
+		},
+		{
+			input: "type=bind,src=/h,dst=/c,ro",
+			want:  Mount{Type: "bind", Source: "/h", Target: "/c", ReadOnly: true},
+		},
+		{
 			input:   "type=bind",
 			wantErr: true,
 		},
@@ -314,6 +322,15 @@ func TestMount_String(t *testing.T) {
 	m := Mount{Type: "bind", Source: "/host", Target: "/container"}
 	got := m.String()
 	want := "type=bind,src=/host,dst=/container"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestMount_String_ReadOnly(t *testing.T) {
+	m := Mount{Type: "bind", Source: "/host", Target: "/container", ReadOnly: true}
+	got := m.String()
+	want := "type=bind,src=/host,dst=/container,readonly"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}

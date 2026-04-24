@@ -126,6 +126,9 @@ func replaceWithContext(ctx *SubstitutionContext, match, variable string, args [
 	case "localWorkspaceFolderBasename":
 		return filepath.Base(ctx.LocalWorkspaceFolder)
 
+	case "localWorkspaceParentFolder":
+		return filepath.Dir(ctx.LocalWorkspaceFolder)
+
 	case "containerWorkspaceFolder":
 		return ctx.ContainerWorkspaceFolder
 

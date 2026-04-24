@@ -149,6 +149,7 @@ type Mount struct {
 	Type     string `json:"type,omitempty"`
 	Source   string `json:"source,omitempty"`
 	Target   string `json:"target,omitempty"`
+	ReadOnly bool   `json:"readonly,omitempty"`
 	External bool   `json:"external,omitempty"`
 }
 
@@ -158,6 +159,12 @@ type Mount struct {
 func ParseMount(s string) (Mount, error) {
 	m := Mount{}
 	for part := range strings.SplitSeq(s, ",") {
+		part = strings.TrimSpace(part)
+		// Standalone boolean flags (no =).
+		if part == "readonly" || part == "ro" {
+			m.ReadOnly = true
+			continue
+		}
 		k, v, ok := strings.Cut(part, "=")
 		if !ok {
 			continue
@@ -169,6 +176,8 @@ func ParseMount(s string) (Mount, error) {
 			m.Source = v
 		case "dst", "destination", "target":
 			m.Target = v
+		case "readonly", "ro":
+			m.ReadOnly = v == "true" || v == "1"
 		}
 	}
 	if m.Target == "" {
@@ -188,6 +197,9 @@ func (m Mount) String() string {
 	}
 	if m.Target != "" {
 		parts = append(parts, "dst="+m.Target)
+	}
+	if m.ReadOnly {
+		parts = append(parts, "readonly")
 	}
 	return strings.Join(parts, ",")
 }

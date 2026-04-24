@@ -57,12 +57,32 @@ type Engine struct {
 	store            *workspace.Store
 	plugins          *plugin.Manager
 	runtimeName      string
-	buildCacheMounts []string // BuildKit cache mount targets for feature builds
+	buildCacheMounts []string               // BuildKit cache mount targets for feature builds
+	globalWS         GlobalWorkspaceOptions // effective merged workspace options (global config + project .cribrc)
 	logger           *slog.Logger
 	stdout           io.Writer
 	stderr           io.Writer
 	verbose          bool
 	progress         func(ProgressEvent)
+}
+
+// GlobalWorkspaceOptions carries the effective merged workspace options
+// applied by the engine (global config + project .cribrc [workspace] section).
+// Project-level configuration (devcontainer.json containerEnv, mounts, runArgs)
+// wins on key conflicts via the runtime's last-flag-wins semantics; these
+// values are prepended by the backends.
+type GlobalWorkspaceOptions struct {
+	// Env is injected into the container at lower priority than the project's
+	// ContainerEnv.
+	Env map[string]string
+
+	// Mounts are docker-mount-format specs appended to the project's mounts.
+	Mounts []string
+
+	// RunArgs are extra runtime arguments. Prepended before the project's
+	// runArgs so project values win. Honored in single-container mode only;
+	// compose workspaces should set runtime options in the compose YAML.
+	RunArgs []string
 }
 
 // New creates an Engine with the given dependencies.
@@ -158,6 +178,44 @@ func (e *Engine) SetRuntime(name string) {
 // install RUN instructions (e.g. "/var/cache/apt", "/root/.npm").
 func (e *Engine) SetBuildCacheMounts(mounts []string) {
 	e.buildCacheMounts = mounts
+}
+
+// SetGlobalWorkspace stores global [workspace] options from the user config
+// so every subsequent Up / Restart applies them on top of project-level
+// settings. Project values win on key conflicts.
+func (e *Engine) SetGlobalWorkspace(opts GlobalWorkspaceOptions) {
+	e.globalWS = opts
+}
+
+// expandedGlobalWorkspace returns a copy of globalWS with devcontainer
+// variable substitution applied to env values and mount specs. Supported
+// variables match the devcontainer spec plus ${localWorkspaceParentFolder}:
+//
+//   - ${localEnv:VAR}, ${localEnv:VAR:fallback}  — host environment variable
+//   - ${localWorkspaceFolder}                     — host project root
+//   - ${localWorkspaceFolderBasename}             — project root basename
+//   - ${localWorkspaceParentFolder}               — parent of project root
+//   - ${containerWorkspaceFolder}                 — container workspace path
+func (e *Engine) expandedGlobalWorkspace(ws *workspace.Workspace, workspaceFolder string) GlobalWorkspaceOptions {
+	if len(e.globalWS.Env) == 0 && len(e.globalWS.Mounts) == 0 {
+		return e.globalWS
+	}
+	ctx := &config.SubstitutionContext{
+		LocalWorkspaceFolder:     ws.Source,
+		ContainerWorkspaceFolder: workspaceFolder,
+		Env:                      envMap(),
+	}
+	out := GlobalWorkspaceOptions{RunArgs: e.globalWS.RunArgs}
+	if len(e.globalWS.Env) > 0 {
+		out.Env = make(map[string]string, len(e.globalWS.Env))
+		for k, v := range e.globalWS.Env {
+			out.Env[k] = config.SubstituteString(ctx, v)
+		}
+	}
+	for _, spec := range e.globalWS.Mounts {
+		out.Mounts = append(out.Mounts, config.SubstituteString(ctx, spec))
+	}
+	return out
 }
 
 // reportProgress sends a progress event to the callback (if set)

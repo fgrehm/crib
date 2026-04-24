@@ -876,3 +876,74 @@ func TestComposeFilesWithOverride_DoesNotMutateInput(t *testing.T) {
 		t.Errorf("input slice was mutated: len=%d", len(base))
 	}
 }
+
+func TestGenerateComposeOverride_GlobalWorkspaceEnv(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Env: map[string]string{"GLOBAL_ONLY": "global-value", "CONFLICT": "global-loser"},
+	})
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+	cfg.ContainerEnv = map[string]string{"CONFLICT": "project-wins"}
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil)
+	if err != nil {
+		t.Fatalf("generateComposeOverride: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "GLOBAL_ONLY: global-value") {
+		t.Errorf("expected GLOBAL_ONLY in override, got:\n%s", content)
+	}
+	if !strings.Contains(content, "CONFLICT: project-wins") {
+		t.Errorf("expected CONFLICT=project-wins (project should win), got:\n%s", content)
+	}
+	if strings.Contains(content, "CONFLICT: global-loser") {
+		t.Errorf("global value leaked into override:\n%s", content)
+	}
+}
+
+func TestGenerateComposeOverride_GlobalWorkspaceMounts(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Mounts: []string{"type=bind,source=/host/mem,target=/home/fabio/.mem"},
+	})
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil)
+	if err != nil {
+		t.Fatalf("generateComposeOverride: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "source: /host/mem") || !strings.Contains(content, "target: /home/fabio/.mem") {
+		t.Errorf("expected global mount in override, got:\n%s", content)
+	}
+}
+
+func TestGenerateComposeOverride_GlobalMountInvalidFails(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Mounts: []string{"type=bind,source=/host/bad"}, // missing target
+	})
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+
+	if _, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil); err == nil {
+		t.Fatal("expected error for invalid mount, got nil")
+	}
+}

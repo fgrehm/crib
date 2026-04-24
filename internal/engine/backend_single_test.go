@@ -539,3 +539,242 @@ func TestSingleBackend_CreateContainer_ProgressReported(t *testing.T) {
 		t.Errorf("expected progress message about creating container, got: %v", progressMessages)
 	}
 }
+
+func TestSingleBackend_CreateContainer_GlobalWorkspaceEnv(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-global-env", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := &snapshotUpMockDriver{containerID: "new-container"}
+	eng := &Engine{
+		driver:   mockDrv,
+		store:    store,
+		logger:   slog.Default(),
+		stdout:   io.Discard,
+		stderr:   io.Discard,
+		progress: func(ProgressEvent) {},
+	}
+	eng.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Env: map[string]string{"GLOBAL_ONLY": "yes", "CONFLICT": "global-loser"},
+	})
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "alpine:3.20"
+	cfg.ContainerEnv = map[string]string{"CONFLICT": "project-wins"}
+
+	b := &singleBackend{
+		e:               eng,
+		ws:              ws,
+		cfg:             cfg,
+		workspaceFolder: "/workspaces/project",
+	}
+
+	if _, err := b.createContainer(context.Background(), createOpts{imageName: "alpine:3.20"}); err != nil {
+		t.Fatalf("createContainer: %v", err)
+	}
+
+	runOpts := mockDrv.runCalls[0]
+
+	// Global-only env must appear.
+	var sawGlobalOnly bool
+	var conflictOccurrences []int
+	for i, e := range runOpts.Env {
+		if e == "GLOBAL_ONLY=yes" {
+			sawGlobalOnly = true
+		}
+		if strings.HasPrefix(e, "CONFLICT=") {
+			conflictOccurrences = append(conflictOccurrences, i)
+		}
+	}
+	if !sawGlobalOnly {
+		t.Errorf("GLOBAL_ONLY=yes not in Env: %v", runOpts.Env)
+	}
+	if len(conflictOccurrences) < 2 {
+		t.Fatalf("expected both CONFLICT entries (global + project), got %d: %v", len(conflictOccurrences), runOpts.Env)
+	}
+	// Project entry must come AFTER the global entry so -e last-wins semantics
+	// resolve to the project value.
+	last := conflictOccurrences[len(conflictOccurrences)-1]
+	if runOpts.Env[last] != "CONFLICT=project-wins" {
+		t.Errorf("last CONFLICT entry = %q, want CONFLICT=project-wins (project must win)", runOpts.Env[last])
+	}
+}
+
+func TestSingleBackend_CreateContainer_GlobalWorkspaceMountsAndRunArgs(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-global-mounts", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := &snapshotUpMockDriver{containerID: "new-container"}
+	eng := &Engine{
+		driver:   mockDrv,
+		store:    store,
+		logger:   slog.Default(),
+		stdout:   io.Discard,
+		stderr:   io.Discard,
+		progress: func(ProgressEvent) {},
+	}
+	eng.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Mounts:  []string{"type=bind,source=/host/mem,target=/container/mem"},
+		RunArgs: []string{"--cap-add", "SYS_PTRACE"},
+	})
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "alpine:3.20"
+	cfg.RunArgs = []string{"--hostname", "project-host"}
+
+	b := &singleBackend{
+		e:               eng,
+		ws:              ws,
+		cfg:             cfg,
+		workspaceFolder: "/workspaces/project",
+	}
+
+	if _, err := b.createContainer(context.Background(), createOpts{imageName: "alpine:3.20"}); err != nil {
+		t.Fatalf("createContainer: %v", err)
+	}
+
+	runOpts := mockDrv.runCalls[0]
+
+	var sawGlobalMount bool
+	for _, m := range runOpts.Mounts {
+		if m.Source == "/host/mem" && m.Target == "/container/mem" {
+			sawGlobalMount = true
+		}
+	}
+	if !sawGlobalMount {
+		t.Errorf("global mount missing: %v", runOpts.Mounts)
+	}
+
+	// Global runArgs must appear, and project runArgs must come after them so
+	// project wins on conflicts.
+	globalIdx := -1
+	projectIdx := -1
+	for i, a := range runOpts.ExtraArgs {
+		if a == "SYS_PTRACE" {
+			globalIdx = i
+		}
+		if a == "project-host" {
+			projectIdx = i
+		}
+	}
+	if globalIdx == -1 {
+		t.Errorf("global runArg SYS_PTRACE missing: %v", runOpts.ExtraArgs)
+	}
+	if projectIdx == -1 {
+		t.Errorf("project runArg project-host missing: %v", runOpts.ExtraArgs)
+	}
+	if globalIdx >= projectIdx {
+		t.Errorf("expected global args before project args, got global=%d project=%d in %v", globalIdx, projectIdx, runOpts.ExtraArgs)
+	}
+}
+
+func TestSingleBackend_CreateContainer_GlobalWorkspaceVarSubstitution(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-var-sub", Source: "/home/user/projects/myproject"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := &snapshotUpMockDriver{containerID: "new-container"}
+	eng := &Engine{
+		driver:   mockDrv,
+		store:    store,
+		logger:   slog.Default(),
+		stdout:   io.Discard,
+		stderr:   io.Discard,
+		progress: func(ProgressEvent) {},
+	}
+	eng.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Env: map[string]string{
+			"WORKSPACE_PATH": "${localWorkspaceFolder}",
+			"WORKSPACE_NAME": "${localWorkspaceFolderBasename}",
+			"PARENT_PATH":    "${localWorkspaceParentFolder}",
+			"CONTAINER_PATH": "${containerWorkspaceFolder}",
+		},
+		Mounts: []string{"type=bind,source=${localWorkspaceParentFolder},target=/workspaces-root"},
+	})
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "alpine:3.20"
+
+	b := &singleBackend{
+		e:               eng,
+		ws:              ws,
+		cfg:             cfg,
+		workspaceFolder: "/workspaces/myproject",
+	}
+
+	if _, err := b.createContainer(context.Background(), createOpts{imageName: "alpine:3.20"}); err != nil {
+		t.Fatalf("createContainer: %v", err)
+	}
+
+	runOpts := mockDrv.runCalls[0]
+
+	envMap := make(map[string]string)
+	for _, e := range runOpts.Env {
+		k, v, _ := strings.Cut(e, "=")
+		envMap[k] = v
+	}
+
+	tests := []struct{ key, want string }{
+		{"WORKSPACE_PATH", "/home/user/projects/myproject"},
+		{"WORKSPACE_NAME", "myproject"},
+		{"PARENT_PATH", "/home/user/projects"},
+		{"CONTAINER_PATH", "/workspaces/myproject"},
+	}
+	for _, tt := range tests {
+		if got := envMap[tt.key]; got != tt.want {
+			t.Errorf("env %s = %q, want %q", tt.key, got, tt.want)
+		}
+	}
+
+	var sawMount bool
+	for _, m := range runOpts.Mounts {
+		if m.Source == "/home/user/projects" && m.Target == "/workspaces-root" {
+			sawMount = true
+		}
+	}
+	if !sawMount {
+		t.Errorf("expanded global mount not found: %v", runOpts.Mounts)
+	}
+}
+
+func TestSingleBackend_CreateContainer_InvalidGlobalMountFails(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-bad-mount", Source: "/home/user/project"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := &snapshotUpMockDriver{containerID: "new-container"}
+	eng := &Engine{
+		driver:   mockDrv,
+		store:    store,
+		logger:   slog.Default(),
+		stdout:   io.Discard,
+		stderr:   io.Discard,
+		progress: func(ProgressEvent) {},
+	}
+	eng.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Mounts: []string{"type=bind,source=/missing-target"},
+	})
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "alpine:3.20"
+
+	b := &singleBackend{
+		e:               eng,
+		ws:              ws,
+		cfg:             cfg,
+		workspaceFolder: "/workspaces/project",
+	}
+
+	if _, err := b.createContainer(context.Background(), createOpts{imageName: "alpine:3.20"}); err == nil {
+		t.Fatal("expected error for invalid global mount, got nil")
+	}
+}
