@@ -427,7 +427,7 @@ func toComposeVolume(m config.Mount) composetypes.ServiceVolumeConfig {
 		typ = "bind"
 	}
 	return composetypes.ServiceVolumeConfig{
-		Type: typ, Source: m.Source, Target: m.Target,
+		Type: typ, Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly,
 	}
 }
 

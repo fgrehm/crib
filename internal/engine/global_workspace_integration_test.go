@@ -123,7 +123,7 @@ func TestIntegrationGlobalWorkspaceMountsAndRunArgs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// runArgs: add a hostname label we can verify via printenv HOSTNAME.
+	// runArgs: set a container hostname that we can verify via the hostname command.
 	configContent := `{
 		"image": "alpine:3.20",
 		"overrideCommand": true,
