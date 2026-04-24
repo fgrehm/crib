@@ -273,6 +273,25 @@ func TestLoadCribRC_Empty(t *testing.T) {
 	}
 }
 
+func TestLoadCribRC_LegacyEmptyValue(t *testing.T) {
+	// `key =` is not valid TOML; coerceCribRCLine must convert it to `key = ""`
+	// so LoadCribRC succeeds and leaves the field at its zero value.
+	content := "plugins.disable =\ncache =\nconfig =\n"
+	rc, err := LoadCribRC(writeCribRC(t, content))
+	if err != nil {
+		t.Fatalf("LoadCribRC: %v", err)
+	}
+	if len(rc.Plugins.Disable) != 0 {
+		t.Errorf("Plugins.Disable = %v, want empty", rc.Plugins.Disable)
+	}
+	if len(rc.Cache) != 0 {
+		t.Errorf("Cache = %v, want empty", rc.Cache)
+	}
+	if rc.Config != "" {
+		t.Errorf("Config = %q, want empty", rc.Config)
+	}
+}
+
 func TestLoadCribRC_ConfigKey(t *testing.T) {
 	rc, err := LoadCribRC(writeCribRC(t, `config = ".devcontainer-custom"`))
 	if err != nil {

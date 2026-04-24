@@ -274,9 +274,14 @@ func coerceCribRCLine(line string) string {
 		return line
 	}
 	v = strings.TrimSpace(v)
+	// Empty value: `key =` is not valid TOML. Coerce to an empty quoted string
+	// so decoding succeeds and the field stays zero-valued, matching the old
+	// parser's behaviour of silently ignoring empty values.
+	if v == "" {
+		return strings.TrimSpace(k) + ` = ""`
+	}
 	// Already a valid TOML value type — leave it alone.
-	if v == "" ||
-		strings.HasPrefix(v, `"`) || strings.HasPrefix(v, "'") ||
+	if strings.HasPrefix(v, `"`) || strings.HasPrefix(v, "'") ||
 		strings.HasPrefix(v, "[") || strings.HasPrefix(v, "{") ||
 		v == "true" || v == "false" {
 		return line
