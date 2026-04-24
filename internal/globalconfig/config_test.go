@@ -525,3 +525,49 @@ disable = ["ssh"]
 		t.Errorf("Plugins.Disable = %v", rc.Plugins.Disable)
 	}
 }
+
+func TestLoadCribRC_InlineComment_KillSwitch(t *testing.T) {
+	content := "plugins = false # disable all plugins for this project"
+	rc, err := LoadCribRC(writeCribRC(t, content))
+	if err != nil {
+		t.Fatalf("LoadCribRC: %v", err)
+	}
+	if !rc.Plugins.DisableAll {
+		t.Error("expected Plugins.DisableAll = true")
+	}
+}
+
+func TestLoadCribRC_InlineComment_BareString(t *testing.T) {
+	content := "cache = npm, pip, go # package caches"
+	rc, err := LoadCribRC(writeCribRC(t, content))
+	if err != nil {
+		t.Fatalf("LoadCribRC: %v", err)
+	}
+	want := []string{"npm", "pip", "go"}
+	if len(rc.Cache) != len(want) {
+		t.Errorf("Cache = %v, want %v", rc.Cache, want)
+	}
+}
+
+func TestLoadCribRC_InlineComment_EmptyValue(t *testing.T) {
+	content := "plugins.disable = # none, skip nothing"
+	rc, err := LoadCribRC(writeCribRC(t, content))
+	if err != nil {
+		t.Fatalf("LoadCribRC: %v", err)
+	}
+	if len(rc.Plugins.Disable) != 0 {
+		t.Errorf("Plugins.Disable = %v, want empty", rc.Plugins.Disable)
+	}
+}
+
+func TestLoadCribRC_InlineComment_QuotedValue(t *testing.T) {
+	content := "plugins.disable = \"ssh\" # only skip ssh"
+	rc, err := LoadCribRC(writeCribRC(t, content))
+	if err != nil {
+		t.Fatalf("LoadCribRC: %v", err)
+	}
+	want := []string{"ssh"}
+	if len(rc.Plugins.Disable) != len(want) || rc.Plugins.Disable[0] != want[0] {
+		t.Errorf("Plugins.Disable = %v, want %v", rc.Plugins.Disable, want)
+	}
+}

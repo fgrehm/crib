@@ -274,11 +274,25 @@ func coerceCribRCLine(line string) string {
 		return line
 	}
 	v = strings.TrimSpace(v)
+
+	// Strip inline TOML comments (#) so we can evaluate the value without
+	// the comment suffix. The comment is re-attached after coercion.
+	var comment string
+	if idx := strings.Index(v, " #"); idx >= 0 {
+		comment = v[idx:]
+		v = strings.TrimSpace(v[:idx])
+	} else if strings.HasPrefix(v, "#") {
+		// Comment starts right after the value boundary, e.g.
+		// `key = # comment`. Treat the value as empty.
+		comment = v
+		v = ""
+	}
+
 	// Empty value: `key =` is not valid TOML. Coerce to an empty quoted string
 	// so decoding succeeds and the field stays zero-valued, matching the old
 	// parser's behaviour of silently ignoring empty values.
 	if v == "" {
-		return strings.TrimSpace(k) + ` = ""`
+		return strings.TrimSpace(k) + ` = ""` + comment
 	}
 	// Already a valid TOML value type — leave it alone.
 	if strings.HasPrefix(v, `"`) || strings.HasPrefix(v, "'") ||
@@ -289,7 +303,7 @@ func coerceCribRCLine(line string) string {
 	// Bare string — escape backslashes and double-quotes, then wrap.
 	v = strings.ReplaceAll(v, `\`, `\\`)
 	v = strings.ReplaceAll(v, `"`, `\"`)
-	return strings.TrimSpace(k) + ` = "` + v + `"`
+	return strings.TrimSpace(k) + ` = "` + v + `"` + comment
 }
 
 // DefaultPath returns the config file location, respecting XDG_CONFIG_HOME.
