@@ -81,7 +81,7 @@ that directory; otherwise it comes from the current working directory.
 | `plugins.disable` | array of strings, or comma-separated string | Plugin names to skip for this project |
 | `plugins` | `false` or `"false"` | Kill switch: skip every plugin for this project |
 | `workspace.env` | map | Extra env for this project (overrides global `[workspace].env` on key conflict) |
-| `workspace.mount` | array | Extra mounts for this project (appended after global mounts) |
+| `workspace.mount` | array | Extra mounts for this project (merged before global mounts; project wins on target conflicts) |
 | `workspace.run_args` | array | Extra runtime args for this project (win over global on flag conflicts; lose to `devcontainer.json` runArgs) |
 
 Both TOML array syntax and the legacy comma-separated string form are

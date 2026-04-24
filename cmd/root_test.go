@@ -211,7 +211,7 @@ func TestMergeWorkspaceOptions_EnvProjectWins(t *testing.T) {
 	}
 }
 
-func TestMergeWorkspaceOptions_MountsConcatGlobalFirst(t *testing.T) {
+func TestMergeWorkspaceOptions_MountsProjectBeforeGlobal(t *testing.T) {
 	out := mergeWorkspaceOptions(
 		globalconfig.WorkspaceConfig{Mounts: []string{"type=bind,source=/g,target=/g"}},
 		globalconfig.WorkspaceConfig{Mounts: []string{"type=bind,source=/p,target=/p"}},
@@ -219,11 +219,11 @@ func TestMergeWorkspaceOptions_MountsConcatGlobalFirst(t *testing.T) {
 	if len(out.Mounts) != 2 {
 		t.Fatalf("Mounts = %v, want 2 entries", out.Mounts)
 	}
-	if out.Mounts[0] != "type=bind,source=/g,target=/g" {
-		t.Errorf("Mounts[0] = %q (global should come first)", out.Mounts[0])
+	if out.Mounts[0] != "type=bind,source=/p,target=/p" {
+		t.Errorf("Mounts[0] = %q (project should come first)", out.Mounts[0])
 	}
-	if out.Mounts[1] != "type=bind,source=/p,target=/p" {
-		t.Errorf("Mounts[1] = %q (project should come second)", out.Mounts[1])
+	if out.Mounts[1] != "type=bind,source=/g,target=/g" {
+		t.Errorf("Mounts[1] = %q (global should come second)", out.Mounts[1])
 	}
 }
 
@@ -295,8 +295,8 @@ func TestMergeWorkspaceOptions_AllFieldsBothSides(t *testing.T) {
 	if out.Env["CONFLICT"] != "project-wins" {
 		t.Errorf("CONFLICT = %q, want project-wins", out.Env["CONFLICT"])
 	}
-	if len(out.Mounts) != 2 || out.Mounts[0] != "type=bind,source=/global,target=/global" || out.Mounts[1] != "type=bind,source=/project,target=/project" {
-		t.Errorf("Mounts = %v, want [global, project]", out.Mounts)
+	if len(out.Mounts) != 2 || out.Mounts[0] != "type=bind,source=/project,target=/project" || out.Mounts[1] != "type=bind,source=/global,target=/global" {
+		t.Errorf("Mounts = %v, want [project, global]", out.Mounts)
 	}
 	want := []string{"--cpus", "2", "--cpus", "4"}
 	if len(out.RunArgs) != len(want) {
