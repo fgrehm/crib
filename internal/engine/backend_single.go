@@ -113,10 +113,14 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (c
 
 	// claimed tracks mount targets already added so later sources (global,
 	// feature, plugin) skip duplicates rather than causing docker/podman to
-	// fail with "duplicate mount destination". Seeded from project mounts.
-	claimed := make(map[string]bool, len(runOpts.Mounts))
+	// fail with "duplicate mount destination". Seeded from project mounts
+	// and the workspace mount, which is tracked separately in RunOptions.
+	claimed := make(map[string]bool, len(runOpts.Mounts)+1)
 	for _, m := range runOpts.Mounts {
 		claimed[m.Target] = true
+	}
+	if runOpts.WorkspaceMount.Target != "" {
+		claimed[runOpts.WorkspaceMount.Target] = true
 	}
 
 	globalWS := b.e.expandedGlobalWorkspace(b.ws, b.workspaceFolder)

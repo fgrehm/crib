@@ -302,8 +302,8 @@ func loadProjectCribRC() (*globalconfig.CribRC, error) {
 // priority than devcontainer.json", so within the result we place project
 // values where they will beat global ones:
 //   - Env: project entries overwrite global entries on key conflict.
-//   - Mounts: global first, project second; both backends skip and warn on
-//     duplicate targets so the earlier source always wins.
+//   - Mounts: project first, global second; backends use first-wins dedup so
+//     project wins on target conflicts.
 //   - RunArgs: global first, project second, so when the backend prepends
 //     this list to cfg.RunArgs the project .cribrc values sit later in the
 //     final -flag list and win on key conflicts under last-flag-wins.
@@ -317,9 +317,9 @@ func mergeWorkspaceOptions(global, project globalconfig.WorkspaceConfig) engine.
 	}
 
 	if len(global.Mounts) > 0 || len(project.Mounts) > 0 {
-		out.Mounts = make([]string, 0, len(global.Mounts)+len(project.Mounts))
-		out.Mounts = append(out.Mounts, global.Mounts...)
+		out.Mounts = make([]string, 0, len(project.Mounts)+len(global.Mounts))
 		out.Mounts = append(out.Mounts, project.Mounts...)
+		out.Mounts = append(out.Mounts, global.Mounts...)
 	}
 
 	if len(global.RunArgs) > 0 || len(project.RunArgs) > 0 {
