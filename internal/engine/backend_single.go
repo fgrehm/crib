@@ -33,26 +33,39 @@ func applyGlobalEnv(runOpts *driver.RunOptions, env map[string]string) {
 }
 
 // applyGlobalMounts parses each global workspace mount spec and appends it to
-// runOpts.Mounts, skipping any spec whose target is already claimed by an
-// earlier mount. Returns an error identifying the offending spec.
-func applyGlobalMounts(runOpts *driver.RunOptions, specs []string, logger *slog.Logger) error {
-	existing := make(map[string]bool, len(runOpts.Mounts))
-	for _, m := range runOpts.Mounts {
-		existing[m.Target] = true
-	}
+// runOpts.Mounts, skipping any spec whose target is already in claimed.
+// claimed is updated in place as targets are added, so the caller can reuse it
+// for subsequent mount sources (features, plugins) to achieve end-to-end dedup.
+func applyGlobalMounts(runOpts *driver.RunOptions, specs []string, claimed map[string]bool, logger *slog.Logger) error {
 	for _, spec := range specs {
 		m, err := config.ParseMount(spec)
 		if err != nil {
 			return fmt.Errorf("global workspace mount %q from [workspace].mount: %w", spec, err)
 		}
-		if existing[m.Target] {
+		if claimed[m.Target] {
 			logger.Warn("skipping mount: target already claimed by an earlier mount source", "kind", "global", "source", m.Source, "target", m.Target)
 			continue
 		}
 		runOpts.Mounts = append(runOpts.Mounts, m)
-		existing[m.Target] = true
+		claimed[m.Target] = true
 	}
 	return nil
+}
+
+// filterMountsAfter removes mounts appended from index start onward whose
+// targets are already in claimed, logging a warning for each skip. New targets
+// are added to claimed so subsequent sources can check against them.
+func filterMountsAfter(mounts []config.Mount, start int, claimed map[string]bool, kind string, logger *slog.Logger) []config.Mount {
+	out := mounts[:start:start]
+	for _, m := range mounts[start:] {
+		if claimed[m.Target] {
+			logger.Warn("skipping mount: target already claimed by an earlier mount source", "kind", kind, "source", m.Source, "target", m.Target)
+			continue
+		}
+		out = append(out, m)
+		claimed[m.Target] = true
+	}
+	return out
 }
 
 // singleBackend implements containerBackend for single-container workspaces.
@@ -98,13 +111,21 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (c
 		runOpts.Labels[ocidriver.LabelHome] = b.e.store.BaseDir()
 	}
 
+	// claimed tracks mount targets already added so later sources (global,
+	// feature, plugin) skip duplicates rather than causing docker/podman to
+	// fail with "duplicate mount destination". Seeded from project mounts.
+	claimed := make(map[string]bool, len(runOpts.Mounts))
+	for _, m := range runOpts.Mounts {
+		claimed[m.Target] = true
+	}
+
 	globalWS := b.e.expandedGlobalWorkspace(b.ws, b.workspaceFolder)
 
 	// Prepend global env so project-level ContainerEnv (already present in
 	// runOpts.Env via buildRunOptions) wins on duplicate keys when the
 	// runtime resolves the final environment (later -e flags override).
 	applyGlobalEnv(runOpts, globalWS.Env)
-	if err := applyGlobalMounts(runOpts, globalWS.Mounts, b.e.logger); err != nil {
+	if err := applyGlobalMounts(runOpts, globalWS.Mounts, claimed, b.e.logger); err != nil {
 		return createContainerResult{}, err
 	}
 
@@ -114,7 +135,9 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (c
 		ContainerWorkspaceFolder: b.workspaceFolder,
 		Env:                      envMap(),
 	}
+	preFeat := len(runOpts.Mounts)
 	applyFeatureMetadata(runOpts, opts.metadata, subCtx)
+	runOpts.Mounts = filterMountsAfter(runOpts.Mounts, preFeat, claimed, "feature", b.e.logger)
 
 	// Prepend global runArgs so project values (already in runOpts.ExtraArgs)
 	// win on conflict under the runtime's last-flag-wins semantics. Plugin
@@ -127,7 +150,14 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (c
 
 	// Merge plugin response into run options (mounts, env, runArgs).
 	if opts.pluginResp != nil {
-		runOpts.Mounts = append(runOpts.Mounts, opts.pluginResp.Mounts...)
+		for _, m := range opts.pluginResp.Mounts {
+			if claimed[m.Target] {
+				b.e.logger.Warn("skipping mount: target already claimed by an earlier mount source", "kind", "plugin", "source", m.Source, "target", m.Target)
+				continue
+			}
+			runOpts.Mounts = append(runOpts.Mounts, m)
+			claimed[m.Target] = true
+		}
 		for k, v := range opts.pluginResp.Env {
 			runOpts.Env = append(runOpts.Env, k+"="+v)
 		}

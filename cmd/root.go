@@ -302,9 +302,8 @@ func loadProjectCribRC() (*globalconfig.CribRC, error) {
 // priority than devcontainer.json", so within the result we place project
 // values where they will beat global ones:
 //   - Env: project entries overwrite global entries on key conflict.
-//   - Mounts: global first, project second; compose dedupes by target and
-//     the single-backend driver will refuse truly duplicate targets, which
-//     is the right failure mode.
+//   - Mounts: global first, project second; both backends skip and warn on
+//     duplicate targets so the earlier source always wins.
 //   - RunArgs: global first, project second, so when the backend prepends
 //     this list to cfg.RunArgs the project .cribrc values sit later in the
 //     final -flag list and win on key conflicts under last-flag-wins.
