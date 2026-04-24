@@ -37,7 +37,7 @@ func applyGlobalMounts(runOpts *driver.RunOptions, specs []string) error {
 	for _, spec := range specs {
 		m, err := config.ParseMount(spec)
 		if err != nil {
-			return fmt.Errorf("global workspace mount %q from config: %w", spec, err)
+			return fmt.Errorf("global workspace mount %q from [workspace].mount: %w", spec, err)
 		}
 		runOpts.Mounts = append(runOpts.Mounts, m)
 	}

@@ -285,8 +285,9 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 
 // buildOverrideEnv merges environment variables from config, features, and
 // plugins into a single MappingWithEquals for the compose override. Global
-// workspace env is applied first (lowest priority) so project-level
-// ContainerEnv wins on key conflicts.
+// workspace env is applied first (lowest priority), then project-level
+// ContainerEnv, then feature env, with plugin env applied last (highest
+// priority) on key conflicts.
 func buildOverrideEnv(cfg *config.DevContainerConfig, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse, globalEnv map[string]string) composetypes.MappingWithEquals {
 	env := composetypes.MappingWithEquals{}
 	addAll := func(src map[string]string) {
@@ -333,8 +334,8 @@ func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfi
 	seenTargets := make(map[string]bool, len(existingTargets))
 	maps.Copy(seenTargets, existingTargets)
 
-	warnSkip := func(source, target string) {
-		logger.Warn("skipping mount: target already claimed by an earlier mount source", "source", source, "target", target)
+	warnSkip := func(kind, mountSource, target string) {
+		logger.Warn("skipping mount: target already claimed by an earlier mount source", "kind", kind, "source", mountSource, "target", target)
 	}
 
 	var vols []composetypes.ServiceVolumeConfig
@@ -346,7 +347,7 @@ func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfi
 	}
 	for _, m := range globalMounts {
 		if seenTargets[m.Target] {
-			warnSkip("global workspace mount", m.Target)
+			warnSkip("global", m.Source, m.Target)
 			continue
 		}
 		vols = append(vols, toComposeVolume(m))
@@ -354,7 +355,7 @@ func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfi
 	}
 	for _, m := range featOv.Mounts {
 		if seenTargets[m.Target] {
-			warnSkip("feature mount", m.Target)
+			warnSkip("feature", m.Source, m.Target)
 			continue
 		}
 		vols = append(vols, toComposeVolume(m))
@@ -363,7 +364,7 @@ func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfi
 	if pluginResp != nil {
 		for _, m := range pluginResp.Mounts {
 			if seenTargets[m.Target] {
-				warnSkip("plugin mount", m.Target)
+				warnSkip("plugin", m.Source, m.Target)
 				continue
 			}
 			vols = append(vols, toComposeVolume(m))
