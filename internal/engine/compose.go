@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -328,26 +329,33 @@ func parseGlobalMounts(specs []string) ([]config.Mount, error) {
 // compose files; mounts for those targets are skipped to avoid "duplicate
 // mount destination" errors when compose merges the files.
 func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse, existingTargets map[string]bool, globalMounts []config.Mount) []composetypes.ServiceVolumeConfig {
+	seenTargets := make(map[string]bool, len(existingTargets))
+	maps.Copy(seenTargets, existingTargets)
+
 	var vols []composetypes.ServiceVolumeConfig
-	if cfg.WorkspaceMount == "" && !existingTargets[workspaceFolder] {
+	if cfg.WorkspaceMount == "" && !seenTargets[workspaceFolder] {
 		vols = append(vols, composetypes.ServiceVolumeConfig{
 			Type: "bind", Source: ws.Source, Target: workspaceFolder,
 		})
+		seenTargets[workspaceFolder] = true
 	}
 	for _, m := range globalMounts {
-		if !existingTargets[m.Target] {
+		if !seenTargets[m.Target] {
 			vols = append(vols, toComposeVolume(m))
+			seenTargets[m.Target] = true
 		}
 	}
 	for _, m := range featOv.Mounts {
-		if !existingTargets[m.Target] {
+		if !seenTargets[m.Target] {
 			vols = append(vols, toComposeVolume(m))
+			seenTargets[m.Target] = true
 		}
 	}
 	if pluginResp != nil {
 		for _, m := range pluginResp.Mounts {
-			if !existingTargets[m.Target] {
+			if !seenTargets[m.Target] {
 				vols = append(vols, toComposeVolume(m))
+				seenTargets[m.Target] = true
 			}
 		}
 	}
