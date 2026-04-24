@@ -673,6 +673,77 @@ func TestSingleBackend_CreateContainer_GlobalWorkspaceMountsAndRunArgs(t *testin
 	}
 }
 
+func TestSingleBackend_CreateContainer_GlobalWorkspaceVarSubstitution(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	ws := &workspace.Workspace{ID: "ws-var-sub", Source: "/home/user/projects/myproject"}
+	if err := store.Save(ws); err != nil {
+		t.Fatal(err)
+	}
+
+	mockDrv := &snapshotUpMockDriver{containerID: "new-container"}
+	eng := &Engine{
+		driver:   mockDrv,
+		store:    store,
+		logger:   slog.Default(),
+		stdout:   io.Discard,
+		stderr:   io.Discard,
+		progress: func(ProgressEvent) {},
+	}
+	eng.SetGlobalWorkspace(GlobalWorkspaceOptions{
+		Env: map[string]string{
+			"WORKSPACE_PATH": "${localWorkspaceFolder}",
+			"WORKSPACE_NAME": "${localWorkspaceFolderBasename}",
+			"PARENT_PATH":    "${localWorkspaceParentFolder}",
+			"CONTAINER_PATH": "${containerWorkspaceFolder}",
+		},
+		Mounts: []string{"type=bind,source=${localWorkspaceParentFolder},target=/workspaces-root"},
+	})
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Image = "alpine:3.20"
+
+	b := &singleBackend{
+		e:               eng,
+		ws:              ws,
+		cfg:             cfg,
+		workspaceFolder: "/workspaces/myproject",
+	}
+
+	if _, err := b.createContainer(context.Background(), createOpts{imageName: "alpine:3.20"}); err != nil {
+		t.Fatalf("createContainer: %v", err)
+	}
+
+	runOpts := mockDrv.runCalls[0]
+
+	envMap := make(map[string]string)
+	for _, e := range runOpts.Env {
+		k, v, _ := strings.Cut(e, "=")
+		envMap[k] = v
+	}
+
+	tests := []struct{ key, want string }{
+		{"WORKSPACE_PATH", "/home/user/projects/myproject"},
+		{"WORKSPACE_NAME", "myproject"},
+		{"PARENT_PATH", "/home/user/projects"},
+		{"CONTAINER_PATH", "/workspaces/myproject"},
+	}
+	for _, tt := range tests {
+		if got := envMap[tt.key]; got != tt.want {
+			t.Errorf("env %s = %q, want %q", tt.key, got, tt.want)
+		}
+	}
+
+	var sawMount bool
+	for _, m := range runOpts.Mounts {
+		if m.Source == "/home/user/projects" && m.Target == "/workspaces-root" {
+			sawMount = true
+		}
+	}
+	if !sawMount {
+		t.Errorf("expanded global mount not found: %v", runOpts.Mounts)
+	}
+}
+
 func TestSingleBackend_CreateContainer_InvalidGlobalMountFails(t *testing.T) {
 	store := workspace.NewStoreAt(t.TempDir())
 	ws := &workspace.Workspace{ID: "ws-bad-mount", Source: "/home/user/project"}

@@ -98,11 +98,13 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (c
 		runOpts.Labels[ocidriver.LabelHome] = b.e.store.BaseDir()
 	}
 
+	globalWS := b.e.expandedGlobalWorkspace(b.ws, b.workspaceFolder)
+
 	// Prepend global env so project-level ContainerEnv (already present in
 	// runOpts.Env via buildRunOptions) wins on duplicate keys when the
 	// runtime resolves the final environment (later -e flags override).
-	applyGlobalEnv(runOpts, b.e.globalWS.Env)
-	if err := applyGlobalMounts(runOpts, b.e.globalWS.Mounts, b.e.logger); err != nil {
+	applyGlobalEnv(runOpts, globalWS.Env)
+	if err := applyGlobalMounts(runOpts, globalWS.Mounts, b.e.logger); err != nil {
 		return createContainerResult{}, err
 	}
 
@@ -117,9 +119,9 @@ func (b *singleBackend) createContainer(ctx context.Context, opts createOpts) (c
 	// Prepend global runArgs so project values (already in runOpts.ExtraArgs)
 	// win on conflict under the runtime's last-flag-wins semantics. Plugin
 	// runArgs are appended below and win over both.
-	if len(b.e.globalWS.RunArgs) > 0 {
-		args := make([]string, 0, len(b.e.globalWS.RunArgs)+len(runOpts.ExtraArgs))
-		args = append(args, b.e.globalWS.RunArgs...)
+	if len(globalWS.RunArgs) > 0 {
+		args := make([]string, 0, len(globalWS.RunArgs)+len(runOpts.ExtraArgs))
+		args = append(args, globalWS.RunArgs...)
 		runOpts.ExtraArgs = append(args, runOpts.ExtraArgs...)
 	}
 

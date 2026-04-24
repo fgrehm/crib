@@ -187,6 +187,37 @@ func (e *Engine) SetGlobalWorkspace(opts GlobalWorkspaceOptions) {
 	e.globalWS = opts
 }
 
+// expandedGlobalWorkspace returns a copy of globalWS with devcontainer
+// variable substitution applied to env values and mount specs. Supported
+// variables match the devcontainer spec plus ${localWorkspaceParentFolder}:
+//
+//   - ${localEnv:VAR}, ${localEnv:VAR:fallback}  — host environment variable
+//   - ${localWorkspaceFolder}                     — host project root
+//   - ${localWorkspaceFolderBasename}             — project root basename
+//   - ${localWorkspaceParentFolder}               — parent of project root
+//   - ${containerWorkspaceFolder}                 — container workspace path
+func (e *Engine) expandedGlobalWorkspace(ws *workspace.Workspace, workspaceFolder string) GlobalWorkspaceOptions {
+	if len(e.globalWS.Env) == 0 && len(e.globalWS.Mounts) == 0 {
+		return e.globalWS
+	}
+	ctx := &config.SubstitutionContext{
+		LocalWorkspaceFolder:     ws.Source,
+		ContainerWorkspaceFolder: workspaceFolder,
+		Env:                      envMap(),
+	}
+	out := GlobalWorkspaceOptions{RunArgs: e.globalWS.RunArgs}
+	if len(e.globalWS.Env) > 0 {
+		out.Env = make(map[string]string, len(e.globalWS.Env))
+		for k, v := range e.globalWS.Env {
+			out.Env[k] = config.SubstituteString(ctx, v)
+		}
+	}
+	for _, spec := range e.globalWS.Mounts {
+		out.Mounts = append(out.Mounts, config.SubstituteString(ctx, spec))
+	}
+	return out
+}
+
 // reportProgress sends a progress event to the callback (if set)
 // and logs the message at debug level.
 func (e *Engine) reportProgress(phase ProgressPhase, msg string) {

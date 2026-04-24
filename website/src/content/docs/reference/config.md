@@ -42,12 +42,25 @@ than project-level config: project values win on key conflicts.
 Global `run_args` are honored only for single-container workspaces. For
 compose-based workspaces, set runtime options directly in the compose YAML.
 
+#### Variable substitution
+
+`env` values and `mount` specs support devcontainer-style variable substitution:
+
+| Variable | Expands to |
+|---|---|
+| `${localEnv:VAR}` | Host environment variable `VAR`; empty string if unset |
+| `${localEnv:VAR:fallback}` | Host environment variable `VAR`, or `fallback` if unset |
+| `${localWorkspaceFolder}` | Absolute path of the project root on the host |
+| `${localWorkspaceFolderBasename}` | Basename of the project root |
+| `${localWorkspaceParentFolder}` | Parent directory of the project root |
+| `${containerWorkspaceFolder}` | Workspace path inside the container |
+
 Example:
 
 ```toml
 [workspace]
-env = { DOTMEM_PATH = "/home/fabio/.mem" }
-mount = ["type=bind,source=/home/fabio/.mem,target=/home/fabio/.mem"]
+env = { CARTAGE_PATH_MAP = "/workspaces:${localWorkspaceParentFolder}" }
+mount = ["type=bind,source=${localEnv:XDG_RUNTIME_DIR},target=/run/host,readonly"]
 run_args = ["--cap-add", "SYS_PTRACE"]
 ```
 

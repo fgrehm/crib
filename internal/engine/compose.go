@@ -232,7 +232,8 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	svc.CapAdd = featOv.CapAdd
 	svc.SecurityOpt = featOv.SecurityOpt
 
-	svc.Environment = buildOverrideEnv(cfg, featOv, pluginResp, e.globalWS.Env)
+	globalWS := e.expandedGlobalWorkspace(ws, workspaceFolder)
+	svc.Environment = buildOverrideEnv(cfg, featOv, pluginResp, globalWS.Env)
 
 	// Load existing volume targets from the user's compose files so we
 	// don't produce duplicate mount destinations in the override. Compose
@@ -240,7 +241,7 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	// when the override uses long-form (compose-go's output format).
 	composeEnv := devcontainerEnv(ws.ID, ws.Source, workspaceFolder)
 	existingTargets := e.existingVolumeTargets(composeFiles, serviceName, composeEnv)
-	globalMounts, err := parseGlobalMounts(e.globalWS.Mounts)
+	globalMounts, err := parseGlobalMounts(globalWS.Mounts)
 	if err != nil {
 		return "", err
 	}
