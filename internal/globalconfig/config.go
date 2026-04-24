@@ -27,11 +27,10 @@ type DotfilesConfig struct {
 
 // PluginsConfig disables bundled plugins globally. Disable lists specific
 // plugins by name; DisableAll is a kill switch that skips plugin registration
-// entirely. Disable uses StringList so global config accepts the same
-// TOML-array / comma-separated-string dual format as .cribrc.
+// entirely.
 type PluginsConfig struct {
-	Disable    StringList `toml:"disable"`
-	DisableAll bool       `toml:"disable_all"`
+	Disable    []string `toml:"disable"`
+	DisableAll bool     `toml:"disable_all"`
 }
 
 // WorkspaceConfig is applied to every container on top of project-level

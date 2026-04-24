@@ -273,6 +273,42 @@ func TestMergeWorkspaceOptions_OnlyProject(t *testing.T) {
 	}
 }
 
+func TestMergeWorkspaceOptions_AllFieldsBothSides(t *testing.T) {
+	out := mergeWorkspaceOptions(
+		globalconfig.WorkspaceConfig{
+			Env:     map[string]string{"GLOBAL_ONLY": "g", "CONFLICT": "global-loser"},
+			Mounts:  []string{"type=bind,source=/global,target=/global"},
+			RunArgs: []string{"--cpus", "2"},
+		},
+		globalconfig.WorkspaceConfig{
+			Env:     map[string]string{"PROJECT_ONLY": "p", "CONFLICT": "project-wins"},
+			Mounts:  []string{"type=bind,source=/project,target=/project"},
+			RunArgs: []string{"--cpus", "4"},
+		},
+	)
+	if out.Env["GLOBAL_ONLY"] != "g" {
+		t.Errorf("GLOBAL_ONLY = %q, want g", out.Env["GLOBAL_ONLY"])
+	}
+	if out.Env["PROJECT_ONLY"] != "p" {
+		t.Errorf("PROJECT_ONLY = %q, want p", out.Env["PROJECT_ONLY"])
+	}
+	if out.Env["CONFLICT"] != "project-wins" {
+		t.Errorf("CONFLICT = %q, want project-wins", out.Env["CONFLICT"])
+	}
+	if len(out.Mounts) != 2 || out.Mounts[0] != "type=bind,source=/global,target=/global" || out.Mounts[1] != "type=bind,source=/project,target=/project" {
+		t.Errorf("Mounts = %v, want [global, project]", out.Mounts)
+	}
+	want := []string{"--cpus", "2", "--cpus", "4"}
+	if len(out.RunArgs) != len(want) {
+		t.Fatalf("RunArgs = %v, want %v", out.RunArgs, want)
+	}
+	for i, w := range want {
+		if out.RunArgs[i] != w {
+			t.Errorf("RunArgs[%d] = %q, want %q", i, out.RunArgs[i], w)
+		}
+	}
+}
+
 func TestResetPerExecutionFlags(t *testing.T) {
 	root := &cobra.Command{Use: "test"}
 	sub := &cobra.Command{Use: "up", RunE: func(*cobra.Command, []string) error { return nil }}
