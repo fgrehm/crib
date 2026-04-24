@@ -283,6 +283,42 @@ func TestLoadCribRC_ConfigKey(t *testing.T) {
 	}
 }
 
+// TestLoadCribRC_LegacyBareValues covers the pre-TOML .cribrc format where
+// string values were written without quotes. The coerceLegacyCribRC
+// pre-processor must convert them to valid TOML so existing files keep working.
+func TestLoadCribRC_LegacyBareValues(t *testing.T) {
+	content := `
+config = .devcontainer-custom
+cache = npm, pip, go
+plugins.disable = ssh, dotfiles
+dotfiles.repository = git@github.com:user/dots
+dotfiles.targetPath = ~/my-dots
+dotfiles.installCommand = make install
+`
+	rc, err := LoadCribRC(writeCribRC(t, content))
+	if err != nil {
+		t.Fatalf("LoadCribRC: %v", err)
+	}
+	if rc.Config != ".devcontainer-custom" {
+		t.Errorf("Config = %q", rc.Config)
+	}
+	if want := []string{"npm", "pip", "go"}; len(rc.Cache) != len(want) {
+		t.Errorf("Cache = %v, want %v", rc.Cache, want)
+	}
+	if want := []string{"ssh", "dotfiles"}; len(rc.Plugins.Disable) != len(want) {
+		t.Errorf("Plugins.Disable = %v, want %v", rc.Plugins.Disable, want)
+	}
+	if rc.Dotfiles.Repository != "git@github.com:user/dots" {
+		t.Errorf("Dotfiles.Repository = %q", rc.Dotfiles.Repository)
+	}
+	if rc.Dotfiles.TargetPath != "~/my-dots" {
+		t.Errorf("Dotfiles.TargetPath = %q", rc.Dotfiles.TargetPath)
+	}
+	if rc.Dotfiles.InstallCommand != "make install" {
+		t.Errorf("Dotfiles.InstallCommand = %q", rc.Dotfiles.InstallCommand)
+	}
+}
+
 func TestLoadCribRC_CacheArray(t *testing.T) {
 	rc, err := LoadCribRC(writeCribRC(t, `cache = ["npm", "pip", "go"]`))
 	if err != nil {

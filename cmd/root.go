@@ -110,7 +110,7 @@ var rootCmd = &cobra.Command{
 		// Apply .cribrc defaults for flags not explicitly set by the user.
 		rc, rcErr := loadProjectCribRC()
 		if rcErr != nil {
-			logger.Debug("could not load .cribrc", "error", rcErr)
+			logger.Warn("could not load .cribrc", "error", rcErr)
 		}
 		if rc != nil {
 			if !cmd.Root().PersistentFlags().Changed("config") && rc.Config != "" {

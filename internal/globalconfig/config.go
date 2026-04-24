@@ -224,16 +224,67 @@ func LoadFrom(path string) (*Config, error) {
 
 // LoadCribRC reads a .cribrc file at the given path. Returns a zero CribRC
 // (not an error) if the file does not exist.
+//
+// The file is pre-processed before TOML decoding to coerce bare string values
+// (the pre-TOML .cribrc format) into quoted TOML strings. This preserves
+// backward compatibility with files written in the old format, e.g.:
+//
+//	cache = npm, pip, go          → cache = "npm, pip, go"
+//	plugins.disable = ssh         → plugins.disable = "ssh"
+//	dotfiles.repository = git@…   → dotfiles.repository = "git@…"
+//
+// Lines that are already valid TOML (quoted strings, arrays, inline tables,
+// booleans) are passed through unchanged.
 func LoadCribRC(path string) (*CribRC, error) {
-	var rc CribRC
-	_, err := toml.DecodeFile(path, &rc)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return &rc, nil
+			return &CribRC{}, nil
 		}
 		return nil, err
 	}
+	var rc CribRC
+	if _, err := toml.Decode(coerceLegacyCribRC(string(data)), &rc); err != nil {
+		return nil, err
+	}
 	return &rc, nil
+}
+
+// coerceLegacyCribRC pre-processes .cribrc content so that bare (unquoted)
+// string values from the pre-TOML format are wrapped in double quotes before
+// the TOML parser sees them. Lines that are blank, comments, section headers,
+// or already carry a TOML-valid value (quoted string, array, inline table,
+// boolean) are returned unchanged.
+func coerceLegacyCribRC(content string) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		lines[i] = coerceCribRCLine(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func coerceCribRCLine(line string) string {
+	trimmed := strings.TrimSpace(line)
+	// Pass through: blank, comment, section header.
+	if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "[") {
+		return line
+	}
+	k, v, ok := strings.Cut(trimmed, "=")
+	if !ok {
+		return line
+	}
+	v = strings.TrimSpace(v)
+	// Already a valid TOML value type — leave it alone.
+	if v == "" ||
+		strings.HasPrefix(v, `"`) || strings.HasPrefix(v, "'") ||
+		strings.HasPrefix(v, "[") || strings.HasPrefix(v, "{") ||
+		v == "true" || v == "false" {
+		return line
+	}
+	// Bare string — escape backslashes and double-quotes, then wrap.
+	v = strings.ReplaceAll(v, `\`, `\\`)
+	v = strings.ReplaceAll(v, `"`, `\"`)
+	return strings.TrimSpace(k) + ` = "` + v + `"`
 }
 
 // DefaultPath returns the config file location, respecting XDG_CONFIG_HOME.
