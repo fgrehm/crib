@@ -4,7 +4,8 @@ description: crib configuration files and options.
 ---
 
 crib reads settings from two TOML files: a user-level global config at
-`~/.config/crib/config.toml` and a per-project `.cribrc` in the project root.
+`~/.config/crib/config.toml` and a per-project `.cribrc` from the directory
+passed via `--dir`, or the current working directory if `--dir` is not set.
 Project-level values override global values on key conflicts.
 
 ## Global config: `~/.config/crib/config.toml`

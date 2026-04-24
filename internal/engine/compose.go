@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -243,7 +244,7 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	if err != nil {
 		return "", err
 	}
-	svc.Volumes = buildOverrideVolumes(ws, cfg, workspaceFolder, featOv, pluginResp, existingTargets, globalMounts)
+	svc.Volumes = buildOverrideVolumes(ws, cfg, workspaceFolder, featOv, pluginResp, existingTargets, globalMounts, e.logger)
 
 	// Auto-inject userns_mode for rootless Podman.
 	isPodman := e.isRootlessPodman() && !composeFilesContainUserns(composeFiles)
@@ -316,7 +317,7 @@ func parseGlobalMounts(specs []string) ([]config.Mount, error) {
 	for _, spec := range specs {
 		m, err := config.ParseMount(spec)
 		if err != nil {
-			return nil, fmt.Errorf("global workspace mount %q from config: %w", spec, err)
+			return nil, fmt.Errorf("global workspace mount %q from [workspace].mount: %w", spec, err)
 		}
 		mounts = append(mounts, m)
 	}
@@ -328,9 +329,13 @@ func parseGlobalMounts(specs []string) ([]config.Mount, error) {
 // existingTargets contains volume targets already defined in the user's
 // compose files; mounts for those targets are skipped to avoid "duplicate
 // mount destination" errors when compose merges the files.
-func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse, existingTargets map[string]bool, globalMounts []config.Mount) []composetypes.ServiceVolumeConfig {
+func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, featOv featureOverrides, pluginResp *plugin.PreContainerRunResponse, existingTargets map[string]bool, globalMounts []config.Mount, logger *slog.Logger) []composetypes.ServiceVolumeConfig {
 	seenTargets := make(map[string]bool, len(existingTargets))
 	maps.Copy(seenTargets, existingTargets)
+
+	warnSkip := func(source, target string) {
+		logger.Warn("skipping mount: target already claimed by an earlier mount source", "source", source, "target", target)
+	}
 
 	var vols []composetypes.ServiceVolumeConfig
 	if cfg.WorkspaceMount == "" && !seenTargets[workspaceFolder] {
@@ -340,23 +345,29 @@ func buildOverrideVolumes(ws *workspace.Workspace, cfg *config.DevContainerConfi
 		seenTargets[workspaceFolder] = true
 	}
 	for _, m := range globalMounts {
-		if !seenTargets[m.Target] {
-			vols = append(vols, toComposeVolume(m))
-			seenTargets[m.Target] = true
+		if seenTargets[m.Target] {
+			warnSkip("global workspace mount", m.Target)
+			continue
 		}
+		vols = append(vols, toComposeVolume(m))
+		seenTargets[m.Target] = true
 	}
 	for _, m := range featOv.Mounts {
-		if !seenTargets[m.Target] {
-			vols = append(vols, toComposeVolume(m))
-			seenTargets[m.Target] = true
+		if seenTargets[m.Target] {
+			warnSkip("feature mount", m.Target)
+			continue
 		}
+		vols = append(vols, toComposeVolume(m))
+		seenTargets[m.Target] = true
 	}
 	if pluginResp != nil {
 		for _, m := range pluginResp.Mounts {
-			if !seenTargets[m.Target] {
-				vols = append(vols, toComposeVolume(m))
-				seenTargets[m.Target] = true
+			if seenTargets[m.Target] {
+				warnSkip("plugin mount", m.Target)
+				continue
 			}
+			vols = append(vols, toComposeVolume(m))
+			seenTargets[m.Target] = true
 		}
 	}
 	return vols
