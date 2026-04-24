@@ -144,9 +144,16 @@ func splitCSV(s string) []string {
 type dotfilesRCAlias DotfilesRC
 
 // UnmarshalTOML accepts either a nested table (dotfiles.repository, etc.) or
-// the legacy scalar `dotfiles = "false"` kill switch. Table decoding is
+// a legacy kill switch: the boolean `dotfiles = false` (pre-TOML .cribrc) and
+// the quoted string `dotfiles = "false"` both set Disabled. Table decoding is
 // delegated to the tagged struct so field names stay in one place.
 func (d *DotfilesRC) UnmarshalTOML(v any) error {
+	if b, ok := v.(bool); ok {
+		if !b {
+			d.Disabled = true
+		}
+		return nil
+	}
 	if s, ok := v.(string); ok {
 		if s == "false" {
 			d.Disabled = true
@@ -165,10 +172,17 @@ func (d *DotfilesRC) UnmarshalTOML(v any) error {
 	return nil
 }
 
-// UnmarshalTOML accepts either a nested table (plugins.disable, etc.) or the
-// legacy scalar `plugins = "false"` kill switch. Table decoding is delegated
-// to the tagged struct so field names stay in one place.
+// UnmarshalTOML accepts either a nested table (plugins.disable, etc.) or a
+// legacy kill switch: the boolean `plugins = false` (pre-TOML .cribrc) and
+// the quoted string `plugins = "false"` both set DisableAll. Table decoding
+// is delegated to the tagged struct so field names stay in one place.
 func (p *PluginsRC) UnmarshalTOML(v any) error {
+	if b, ok := v.(bool); ok {
+		if !b {
+			p.DisableAll = true
+		}
+		return nil
+	}
 	if s, ok := v.(string); ok {
 		if s == "false" {
 			p.DisableAll = true

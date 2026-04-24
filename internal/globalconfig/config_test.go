@@ -358,6 +358,16 @@ func TestLoadCribRC_PluginsKillSwitch(t *testing.T) {
 	}
 }
 
+func TestLoadCribRC_PluginsKillSwitchUnquotedBool(t *testing.T) {
+	rc, err := LoadCribRC(writeCribRC(t, `plugins = false`))
+	if err != nil {
+		t.Fatalf("LoadCribRC: %v", err)
+	}
+	if !rc.Plugins.DisableAll {
+		t.Error("expected Plugins.DisableAll = true for unquoted boolean false")
+	}
+}
+
 func TestLoadCribRC_PluginsKillSwitchUnknown_Ignored(t *testing.T) {
 	rc, err := LoadCribRC(writeCribRC(t, `plugins = "maybe"`))
 	if err != nil {
@@ -375,6 +385,16 @@ func TestLoadCribRC_DotfilesDisable(t *testing.T) {
 	}
 	if !rc.Dotfiles.Disabled {
 		t.Error("expected Dotfiles.Disabled = true")
+	}
+}
+
+func TestLoadCribRC_DotfilesDisableUnquotedBool(t *testing.T) {
+	rc, err := LoadCribRC(writeCribRC(t, `dotfiles = false`))
+	if err != nil {
+		t.Fatalf("LoadCribRC: %v", err)
+	}
+	if !rc.Dotfiles.Disabled {
+		t.Error("expected Dotfiles.Disabled = true for unquoted boolean false")
 	}
 }
 

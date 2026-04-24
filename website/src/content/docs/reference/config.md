@@ -35,7 +35,7 @@ than project-level config: project values win on key conflicts.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `env` | map of string to string | | Environment variables injected into every container |
-| `mount` | array of strings | | Mount specs (same format as devcontainer.json `mounts`) |
+| `mount` | array of strings | | Mount specs (`type`, `source`, and `target` keys; other options are not recognized) |
 | `run_args` | array of strings | | Extra container runtime arguments (single-container mode only) |
 
 Global `run_args` are honored only for single-container workspaces. For
