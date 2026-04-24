@@ -63,9 +63,9 @@ that directory; otherwise it comes from the current working directory.
 | `dotfiles.repository` | string | Dotfiles repo URL (overrides global) |
 | `dotfiles.targetPath` | string | Clone destination (overrides global) |
 | `dotfiles.installCommand` | string | Install command (overrides global) |
-| `dotfiles` | `"false"` | Kill switch: skip dotfiles for this project |
+| `dotfiles` | `false` or `"false"` | Kill switch: skip dotfiles for this project |
 | `plugins.disable` | array of strings, or comma-separated string | Plugin names to skip for this project |
-| `plugins` | `"false"` | Kill switch: skip every plugin for this project |
+| `plugins` | `false` or `"false"` | Kill switch: skip every plugin for this project |
 | `workspace.env` | map | Extra env for this project (overrides global `[workspace].env` on key conflict) |
 | `workspace.mount` | array | Extra mounts for this project (appended after global mounts) |
 | `workspace.run_args` | array | Extra runtime args for this project (win over global on flag conflicts; lose to `devcontainer.json` runArgs) |

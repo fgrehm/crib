@@ -162,7 +162,7 @@ func (d *DotfilesRC) UnmarshalTOML(v any) error {
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
-		return fmt.Errorf("dotfiles: expected table or string, got %T", v)
+		return fmt.Errorf("dotfiles: expected table, string, or bool, got %T", v)
 	}
 	var a dotfilesRCAlias
 	if err := decodeTable(m, &a); err != nil {
@@ -191,7 +191,7 @@ func (p *PluginsRC) UnmarshalTOML(v any) error {
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
-		return fmt.Errorf("plugins: expected table or string, got %T", v)
+		return fmt.Errorf("plugins: expected table, string, or bool, got %T", v)
 	}
 	var a pluginsRCAlias
 	if err := decodeTable(m, &a); err != nil {

@@ -289,7 +289,8 @@ func buildOverrideEnv(cfg *config.DevContainerConfig, featOv featureOverrides, p
 	env := composetypes.MappingWithEquals{}
 	addAll := func(src map[string]string) {
 		for k, v := range src {
-			env[k] = &v
+			val := v
+			env[k] = &val
 		}
 	}
 	addAll(globalEnv)
