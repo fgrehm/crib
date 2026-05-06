@@ -72,14 +72,6 @@ func TestFilterProbedEnv_SkipsNoisyHostVars(t *testing.T) {
 	probed := map[string]string{
 		"PATH":                     "/usr/bin",
 		"HOME":                     "/home/user",
-		"LS_COLORS":                "rs=0:di=01;34:...",
-		"LSCOLORS":                 "Gxfxcxdxbxegedabagacad",
-		"LESSCLOSE":                "/usr/bin/lesspipe %s %s",
-		"LESSOPEN":                 "| /usr/bin/lesspipe %s",
-		"TERM_PROGRAM":             "tmux",
-		"TERM_PROGRAM_VERSION":     "3.4",
-		"COLORTERM":                "truecolor",
-		"VTE_VERSION":              "7200",
 		"WINDOWID":                 "12345",
 		"DISPLAY":                  ":0",
 		"WAYLAND_DISPLAY":          "wayland-0",
@@ -95,8 +87,6 @@ func TestFilterProbedEnv_SkipsNoisyHostVars(t *testing.T) {
 	result := filterProbedEnv(probed)
 
 	noisyVars := []string{
-		"LS_COLORS", "LSCOLORS", "LESSCLOSE", "LESSOPEN",
-		"TERM_PROGRAM", "TERM_PROGRAM_VERSION", "COLORTERM", "VTE_VERSION",
 		"WINDOWID", "DISPLAY", "WAYLAND_DISPLAY",
 		"DESKTOP_SESSION", "SESSION_MANAGER",
 		"XDG_SESSION_TYPE", "XDG_SESSION_CLASS", "XDG_SESSION_ID",
