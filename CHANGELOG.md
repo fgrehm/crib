@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `bat`, `delta`, and `less` to render without the user's preferred
   styling during `crib shell`/`crib exec`.
 
-## [0.9.1] - 2026-04-28
+## [0.9.0] - 2026-04-28
 
 ### Added
 
