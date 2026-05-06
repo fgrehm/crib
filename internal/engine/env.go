@@ -39,18 +39,6 @@ var probedEnvSkip = map[string]bool{
 	"_":          true,
 	"MISE_SHELL": true,
 
-	// Terminal colors and pager helpers.
-	"LS_COLORS": true,
-	"LSCOLORS":  true,
-	"LESSCLOSE": true,
-	"LESSOPEN":  true,
-
-	// Terminal identity.
-	"TERM_PROGRAM":         true,
-	"TERM_PROGRAM_VERSION": true,
-	"COLORTERM":            true,
-	"VTE_VERSION":          true,
-
 	// X11/Wayland display.
 	"WINDOWID":        true,
 	"DISPLAY":         true,
