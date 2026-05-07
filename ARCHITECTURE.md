@@ -52,6 +52,12 @@ crib/
 
 ```mermaid
 graph TD
+  cmd -- "wires" --> driver
+  cmd -- "wires" --> compose
+  cmd -- "wires" --> workspace
+  cmd -- "wires" --> globalconfig
+  cmd -- "wires" --> pluginsetup
+  cmd -- "wires" --> ui
   cmd --> engine
   engine --> config
   engine --> feature
@@ -67,7 +73,7 @@ graph TD
   plugin --> driver
 ```
 
-Dependency flow runs strictly downward. `cmd` never imports siblings of `engine`; `engine` is the only package that orchestrates across subsystems. There are no cycles. If you find yourself wanting to import `engine` from a leaf package, the abstraction is wrong.
+`cmd` is the composition root. It loads global and project config, constructs the runtime dependencies (`OCIDriver`, workspace store, compose helper, plugin manager, UI), and injects them into `engine`. The orchestration logic itself lives in `engine`; `cmd` is wiring plus a thin per-verb wrapper. Dependency flow runs strictly downward — leaf packages never import `engine` and there are no cycles. If you find yourself wanting to import `engine` from a leaf package, the abstraction is wrong.
 
 ## Engine internals
 
@@ -88,7 +94,7 @@ These are the rules a contributor could break without realizing. Most exist beca
 - **Config wins.** `remoteUser` / `containerUser` from devcontainer.json are consulted before any backend-specific or generic fallback. The contract is enforced by `backend.pluginUser()` before plugin dispatch.
 - **`remoteEnv` is injected, not baked.** `remoteEnv` (including plugin `PathPrepend` entries) flows into the container via `docker exec -e`, not via `ENV` in the image or `environment:` in compose. Baking it in would defeat the userEnvProbe contract.
 - **State lives under `~/.crib/`.** Per-workspace state in `~/.crib/workspaces/{id}/`, derived from the project path. Container labels (`crib.workspace`, `crib.home`) tie running containers back to that state. Don't add parallel state stores.
-- **Locked state-mutating commands.** `up`, `down`, `rebuild`, `restart`, `remove` acquire `store.Lock(ctx, ws.ID)` before operating. Read-only commands (`exec`, `run`, `shell`, `logs`, `status`, `list`, `doctor`) do not lock.
+- **Locked state-mutating commands.** Commands that mutate workspace or container state (`up`, `down`, `stop`, `rebuild`, `restart`, `remove`) acquire `store.Lock(ctx, ws.ID)` before operating. Read-only commands (`exec`, `run`, `shell`, `logs`, `status`, `list`, `doctor`) do not lock.
 - **No cycles in the dependency graph.** See the diagram above.
 
 ## Cross-cutting concerns
