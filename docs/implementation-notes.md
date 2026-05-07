@@ -22,13 +22,13 @@ creates pods by default and `--userns` and `--pod` are incompatible in Podman.
 
 The same `x-podman: { in_pod: false }` directive must also be passed during `compose down`.
 Without it, podman-compose tries to remove a pod named `pod_crib-<id>` that was never created,
-causing a "no pod with name or ID ... found" error. `composeDown` generates a temporary
-override for this.
+causing a "no pod with name or ID ... found" error. `composeDown` reuses the persisted
+override file (via `composeFilesWithOverride`) so the directive is in scope on teardown.
 
 **Files**:
 
-- `internal/engine/single.go` (`RunOptions`)
-- `internal/engine/compose.go` (`generateComposeOverride`, `composeDown`, `writePodmanDownOverride`)
+- `internal/driver/types.go` (`RunOptions`)
+- `internal/engine/compose.go` (`generateComposeOverride`, `composeDown`, `composeFilesWithOverride`)
 - `internal/driver/oci/container.go` (`buildRunArgs`)
 
 ### Version managers (mise, rbenv, nvm) not in PATH during lifecycle hooks
@@ -54,7 +54,7 @@ The probe shell type maps to:
 **Files**:
 
 - `internal/engine/setup.go` (`probeUserEnv`, `detectUserShell`)
-- `internal/engine/env.go` (`mergeEnv`)
+- `internal/engine/envbuilder.go` (`EnvBuilder`)
 
 ### Container user detection
 
@@ -98,8 +98,8 @@ If the detected user is root, it falls through to the default "root" behavior. N
 - `internal/engine/backend_compose.go` (config → compose user → fallbacks)
 - `internal/engine/build.go` (`buildFromImage`, `buildFromDockerfile`, `parseImageMetadataLabel`, `resolveComposeContainerUser`)
 - `internal/engine/compose.go` (`resolveComposeUser`, `resolveComposeDockerfileInfo`)
-- `internal/engine/engine.go` (`resolveRemoteUser`)
-- `internal/engine/single.go` (`detectContainerUser`, `setupAndReturn`)
+- `internal/engine/finalize.go` (`finalize`, remote user resolution path)
+- `internal/engine/single.go` (`detectContainerUser`)
 - `cmd/user.go` (`liveRemoteUser`)
 
 ### Smart restart with change detection
@@ -126,7 +126,8 @@ whether they require a new image build or just container runtime configuration.
 
 **Files**:
 
-- `internal/engine/engine.go` (`Restart`, `detectConfigChange`, `restartSimple`, `restartWithRecreate`)
+- `internal/engine/restart.go` (`Restart`, `restartSimple`, `restartRecreate`)
+- `internal/engine/change.go` (`detectConfigChange`)
 - `internal/engine/lifecycle.go` (`runResumeHooks`)
 
 ### Early result persistence
@@ -143,7 +144,7 @@ hooks often fail (missing dependencies, broken scripts, etc.).
 **Files**:
 
 - `internal/engine/engine.go` (`Up`, `saveResult`)
-- `internal/engine/single.go` (`setupAndReturn`)
+- `internal/engine/finalize.go` (`finalize`, early save before lifecycle hooks)
 
 ### UID/GID sync conflicts with existing users
 
@@ -303,7 +304,7 @@ a new shell session via `crib shell`.
 **Files**:
 
 - `internal/engine/setup.go` (`setupContainer`)
-- `internal/engine/env.go` (`mergeEnv`)
+- `internal/engine/envbuilder.go` (`EnvBuilder`)
 
 ### TTY detection for exec uses isatty, not ModeCharDevice
 
@@ -354,7 +355,9 @@ reference='crib-*' -q)`.
 
 **Files**:
 
-- `internal/driver/oci/image.go` (`ListImages`, `BuildOptions.Labels`, `CommitContainer`)
+- `internal/driver/oci/image.go` (`ListImages`, `RemoveImage`)
+- `internal/driver/oci/container.go` (`CommitContainer`)
+- `internal/driver/oci/build.go` (`BuildOptions.Labels`)
 - `internal/engine/build.go` (`cleanupPreviousBuildImage`)
 - `internal/engine/engine.go` (`cleanupWorkspaceImages`, `PreviewRemove`)
 - `internal/engine/prune.go` (`PruneImages`)

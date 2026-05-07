@@ -38,6 +38,13 @@ rm crib.tar.gz
 
 Make sure `~/.local/bin` is in your `PATH`.
 
+## Contributing
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for a contributor's map of the
+codebase: module layout, dependency flow, and the invariants that hold the
+design together. Quirks and spec-compliance status live in
+[`docs/implementation-notes.md`](./docs/implementation-notes.md).
+
 ## License
 
 MIT
