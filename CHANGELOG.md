@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- Bumped Go directive to 1.26.3 to pick up stdlib fixes for
+  [GO-2026-4971](https://pkg.go.dev/vuln/GO-2026-4971) (`net.Dialer` /
+  `LookupPort` panic on NUL byte, Windows) and
+  [GO-2026-4918](https://pkg.go.dev/vuln/GO-2026-4918) (HTTP/2 transport
+  infinite loop on bad `SETTINGS_MAX_FRAME_SIZE`). Both reachable from
+  `internal/feature` HTTP/OCI feature resolution.
+
 ## [0.9.1] - 2026-05-06
 
 ### Fixed
