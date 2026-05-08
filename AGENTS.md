@@ -100,6 +100,6 @@ Before wrapping up a session, check whether CHANGELOG.md needs an update for the
 The rest is automated:
 
 - `release.yml` (triggered by the tag) extracts release notes from `CHANGELOG.md`, runs GoReleaser, and force-pushes the `stable` branch.
-- `docs.yml` (triggered by the push to `stable`) runs `scripts/sync-changelog.sh`, which regenerates `website/src/content/docs/reference/changelog.md` from `CHANGELOG.md` (strips `[Unreleased]`, rewrites version headers as GitHub release links), then builds and deploys the site.
+- `docs.yml` (triggered by pushes to `docs-site`, `next`, or `stable`, plus manual `workflow_dispatch`) runs `scripts/sync-changelog.sh`, which regenerates `website/src/content/docs/reference/changelog.md` from `CHANGELOG.md` (strips `[Unreleased]`, rewrites version headers as GitHub release links), then builds and deploys the site. The release flow specifically relies on the `stable` push that `release.yml` performs.
 
 Do not edit `website/src/content/docs/reference/changelog.md` by hand; it is overwritten on every docs build.
