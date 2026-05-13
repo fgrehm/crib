@@ -107,7 +107,7 @@ Modern Go features are used throughout the codebase:
 - Pre-commit hook: `.githooks/pre-commit` auto-formats and lints staged files.
   Run `make setup-hooks` to activate.
 - Release: tag-triggered via GoReleaser. Release notes extracted from `CHANGELOG.md`.
-  See the Releasing section in CLAUDE.md.
+  See the Releasing section in AGENTS.md.
 
 ## CHANGELOG
 
