@@ -90,6 +90,7 @@ export default defineConfig({
             },
             { label: "macOS & Windows", slug: "guides/macos-windows" },
             { label: "Troubleshooting", slug: "guides/troubleshooting" },
+            { label: "Ecosystem", slug: "guides/ecosystem" },
           ],
         },
         {
