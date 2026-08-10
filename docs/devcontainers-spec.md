@@ -3,9 +3,7 @@ title: DevContainer Spec Reference
 description: A distilled reference of the Dev Container Specification for quick lookup.
 ---
 
-:::tip[🤖 AI-generated reference]
-This page was distilled from the [Dev Container Specification](https://containers.dev/implementors/spec/) by Claude (Opus 4.6) for quick lookup when working on crib. It may contain inaccuracies or be out of date. For the authoritative reference, see the [official spec](https://containers.dev/implementors/spec/).
-:::
+:::tip[🤖 AI-generated reference] This page was distilled from the [Dev Container Specification](https://containers.dev/implementors/spec/) by Claude (Opus 4.6) for quick lookup when working on crib. It may contain inaccuracies or be out of date. For the authoritative reference, see the [official spec](https://containers.dev/implementors/spec/). :::
 
 ---
 
@@ -19,8 +17,7 @@ Tools search for `devcontainer.json` in this order:
 2. `.devcontainer.json`
 3. `.devcontainer/<folder>/devcontainer.json` (one level deep only)
 
-Multiple files may coexist. When more than one is found, the tool should let the user choose.
-The search starts at the **project workspace folder**, typically the git repository root.
+Multiple files may coexist. When more than one is found, the tool should let the user choose. The search starts at the **project workspace folder**, typically the git repository root.
 
 ---
 
@@ -34,8 +31,7 @@ The search starts at the **project workspace folder**, typically the git reposit
 | **Dockerfile-based** | `build.dockerfile` | Builds from a Dockerfile |
 | **Docker Compose-based** | `dockerComposeFile`, `service` | Uses Compose to orchestrate one or more services |
 
-Compose configurations handle images and Dockerfiles natively, so `image` and `build.dockerfile`
-are not used in that scenario.
+Compose configurations handle images and Dockerfiles natively, so `image` and `build.dockerfile` are not used in that scenario.
 
 ---
 
@@ -149,9 +145,7 @@ Properties inside `portsAttributes` entries:
 | `${containerWorkspaceFolderBasename}` | Any property | Container folder basename only |
 | `${devcontainerId}` | `name`, lifecycle hooks, `mounts`, env vars, user properties, `customizations` | Stable unique ID across rebuilds |
 
-Substitution happens at the time the value is applied (runtime, not build time).
-`${containerEnv}` is restricted to `remoteEnv` because container env vars only exist after
-the container is running.
+Substitution happens at the time the value is applied (runtime, not build time). `${containerEnv}` is restricted to `remoteEnv` because container env vars only exist after the container is running.
 
 ---
 
@@ -189,8 +183,7 @@ postStartCommand           (in container)
 postAttachCommand          (in container)
 ```
 
-The `waitFor` property controls at which point the tool reports the environment as ready and
-proceeds to implementation-specific steps. Default is `updateContentCommand`.
+The `waitFor` property controls at which point the tool reports the environment as ready and proceeds to implementation-specific steps. Default is `updateContentCommand`.
 
 ### Resume Flow
 
@@ -226,20 +219,15 @@ Remote env vars and user configuration apply during resume.
 
 Two distinct user concepts:
 
-- **Container User** (`containerUser` for image/Dockerfile, `user` in Compose): Runs all
-  container operations including the ENTRYPOINT.
-- **Remote User** (`remoteUser`): Runs lifecycle hooks and tool processes. Defaults to
-  `containerUser` if not set. This separation allows different permissions for container
-  operations vs. developer activity.
+- **Container User** (`containerUser` for image/Dockerfile, `user` in Compose): Runs all container operations including the ENTRYPOINT.
+- **Remote User** (`remoteUser`): Runs lifecycle hooks and tool processes. Defaults to `containerUser` if not set. This separation allows different permissions for container operations vs. developer activity.
 
 ### updateRemoteUserUID
 
 - Linux only, default `true`.
-- When enabled and a remote/container user is specified, the tool updates the image user's
-  UID/GID to match the local user before container creation.
+- When enabled and a remote/container user is specified, the tool updates the image user's UID/GID to match the local user before container creation.
 - Prevents permission mismatches on bind mounts.
-- Implementations may skip this when not using bind mounts or when the container engine
-  provides automatic UID translation.
+- Implementations may skip this when not using bind mounts or when the container engine provides automatic UID translation.
 
 ---
 
@@ -254,14 +242,11 @@ Two classes:
 | **Container** | `containerEnv` | At container build/create time | Entire container lifecycle |
 | **Remote** | `remoteEnv` | Post-ENTRYPOINT by the tool | Lifecycle hooks and tool processes |
 
-Remote env vars support `${containerEnv:VAR}` substitution since the container is already
-running when they are applied.
+Remote env vars support `${containerEnv:VAR}` substitution since the container is already running when they are applied.
 
 ### userEnvProbe
 
-Tools probe the user's environment using the configured shell type and merge the resulting
-variables with `remoteEnv` for injected processes. This emulates the behavior developers
-expect from their profile/rc files.
+Tools probe the user's environment using the configured shell type and merge the resulting variables with `remoteEnv` for injected processes. This emulates the behavior developers expect from their profile/rc files.
 
 ---
 
@@ -269,12 +254,10 @@ expect from their profile/rc files.
 
 > [Spec: Workspace](https://containers.dev/implementors/spec/)
 
-- `workspaceMount` (image/Dockerfile only): Defines the source mount for the workspace.
-  The default is a bind mount of the local folder into `/workspaces/<folder-name>`.
+- `workspaceMount` (image/Dockerfile only): Defines the source mount for the workspace. The default is a bind mount of the local folder into `/workspaces/<folder-name>`.
 - `workspaceFolder`: The default working directory inside the container.
 - Both should reference the repository root (where `.git` lives) for proper source control.
-- For monorepos, `workspaceFolder` can point to a subfolder while `workspaceMount` targets
-  the repo root.
+- For monorepos, `workspaceFolder` can point to a subfolder while `workspaceMount` targets the repo root.
 
 ---
 
@@ -282,8 +265,7 @@ expect from their profile/rc files.
 
 > [Spec: Image Metadata](https://containers.dev/implementors/spec/)
 
-Configuration can be baked into images via the `devcontainer.metadata` label. The label value
-is a JSON string containing either:
+Configuration can be baked into images via the `devcontainer.metadata` label. The label value is a JSON string containing either:
 
 - An **array** of metadata objects (one per Feature, plus one for the devcontainer.json config).
 - A **single top-level object**.
@@ -292,17 +274,11 @@ The array format is preferred because subsequent builds can simply append entrie
 
 ### Storable Properties
 
-These properties can appear in image metadata: `forwardPorts`, `portsAttributes`,
-`otherPortsAttributes`, `containerEnv`, `remoteEnv`, `remoteUser`, `containerUser`,
-`updateRemoteUserUID`, `userEnvProbe`, `overrideCommand`, `shutdownAction`, `init`,
-`privileged`, `capAdd`, `securityOpt`, `entrypoint`, `mounts`, `customizations`,
-`hostRequirements`, all lifecycle hooks (`onCreateCommand` through `postAttachCommand`),
-and `waitFor`.
+These properties can appear in image metadata: `forwardPorts`, `portsAttributes`, `otherPortsAttributes`, `containerEnv`, `remoteEnv`, `remoteUser`, `containerUser`, `updateRemoteUserUID`, `userEnvProbe`, `overrideCommand`, `shutdownAction`, `init`, `privileged`, `capAdd`, `securityOpt`, `entrypoint`, `mounts`, `customizations`, `hostRequirements`, all lifecycle hooks (`onCreateCommand` through `postAttachCommand`), and `waitFor`.
 
 ### Metadata Merge Rules
 
-When merging image metadata with `devcontainer.json`, the local file is considered **last**
-(highest priority where order matters).
+When merging image metadata with `devcontainer.json`, the local file is considered **last** (highest priority where order matters).
 
 | Strategy | Properties |
 |---|---|
@@ -325,8 +301,7 @@ When merging image metadata with `devcontainer.json`, the local file is consider
 > [Features Specification](https://containers.dev/implementors/features/) |
 > [Features Overview](https://containers.dev/features/)
 
-Features are modular, self-contained units that add tools, runtimes, and capabilities to dev
-containers without writing complex Dockerfiles.
+Features are modular, self-contained units that add tools, runtimes, and capabilities to dev containers without writing complex Dockerfiles.
 
 ### Feature Structure
 
@@ -379,8 +354,7 @@ A Feature is a directory containing:
 
 #### Lifecycle Hooks
 
-Features can declare their own lifecycle hooks: `onCreateCommand`, `updateContentCommand`,
-`postCreateCommand`, `postStartCommand`, `postAttachCommand`. Same types as the main config.
+Features can declare their own lifecycle hooks: `onCreateCommand`, `updateContentCommand`, `postCreateCommand`, `postStartCommand`, `postAttachCommand`. Same types as the main config.
 
 #### Customizations
 
@@ -516,13 +490,11 @@ Multiple tags are pushed for each release: `1`, `1.2`, `1.2.3`, and `latest`.
 
 ### Collection Metadata
 
-An auto-generated `devcontainer-collection.json` aggregates all Feature metadata in a namespace.
-Published at `<registry>/<namespace>:latest`.
+An auto-generated `devcontainer-collection.json` aggregates all Feature metadata in a namespace. Published at `<registry>/<namespace>:latest`.
 
 ### Manifest Annotations
 
-Published manifests include a `dev.containers.metadata` annotation containing the escaped JSON
-from `devcontainer-feature.json`.
+Published manifests include a `dev.containers.metadata` annotation containing the escaped JSON from `devcontainer-feature.json`.
 
 ### Authentication
 
@@ -537,8 +509,7 @@ from `devcontainer-feature.json`.
 > [Templates Distribution](https://containers.dev/implementors/templates-distribution/) |
 > [Templates Overview](https://containers.dev/templates/)
 
-Templates are pre-configured dev environment blueprints. They are not directly relevant to
-crib's runtime behavior but are useful context for understanding the ecosystem.
+Templates are pre-configured dev environment blueprints. They are not directly relevant to crib's runtime behavior but are useful context for understanding the ecosystem.
 
 ### Structure
 
@@ -553,18 +524,15 @@ template/
 
 Required: `id`, `version`, `name`, `description`.
 
-Optional: `documentationURL`, `licenseURL`, `platforms`, `publisher`, `keywords`, `options`,
-`optionalPaths`.
+Optional: `documentationURL`, `licenseURL`, `platforms`, `publisher`, `keywords`, `options`, `optionalPaths`.
 
 ### Option Substitution
 
-Template options use `${templateOption:optionId}` syntax. The tool replaces these placeholders
-with user-selected values when applying a template.
+Template options use `${templateOption:optionId}` syntax. The tool replaces these placeholders with user-selected values when applying a template.
 
 ### Distribution
 
-Same OCI pattern as Features (tarballs with custom media types, semver tagging).
-The namespace for Templates **must be different** from the namespace for Features.
+Same OCI pattern as Features (tarballs with custom media types, semver tagging). The namespace for Templates **must be different** from the namespace for Features.
 
 ---
 

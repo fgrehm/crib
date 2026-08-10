@@ -10,9 +10,7 @@ Your `devcontainer.json`, minus the IDE. crib builds the container and stays out
 
 **[Documentation](https://fgrehm.github.io/crib/)** · **[Comparison with alternatives](https://fgrehm.github.io/crib/comparison/)**
 
-> **Note:** This is the `main` branch where active development happens.
-> Docs here may describe unreleased features. For documentation matching
-> the latest release, see the [`stable`](https://github.com/fgrehm/crib/tree/stable) branch.
+> **Note:** This is the `main` branch where active development happens. Docs here may describe unreleased features. For documentation matching the latest release, see the [`stable`](https://github.com/fgrehm/crib/tree/stable) branch.
 
 <p align="center">
   <img src="./demo.gif" alt="crib demo" width="800">
@@ -40,10 +38,7 @@ Make sure `~/.local/bin` is in your `PATH`.
 
 ## Contributing
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for a contributor's map of the
-codebase: module layout, dependency flow, and the invariants that hold the
-design together. Quirks and spec-compliance status live in
-[`docs/implementation-notes.md`](./docs/implementation-notes.md).
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for a contributor's map of the codebase: module layout, dependency flow, and the invariants that hold the design together. Quirks and spec-compliance status live in [`docs/implementation-notes.md`](./docs/implementation-notes.md).
 
 ## License
 

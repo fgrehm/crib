@@ -1,7 +1,6 @@
 # RFC: Remote Access Plugin
 
-**Status:** Draft
-**Goal:** Let users SSH into crib containers with native filesystem performance, building toward a self-hosted Codespaces-like experience.
+**Status:** Draft **Goal:** Let users SSH into crib containers with native filesystem performance, building toward a self-hosted Codespaces-like experience.
 
 ## Problem
 
@@ -227,8 +226,7 @@ Running containers on remote machines (cloud VMs, Kubernetes) is what DevPod pro
 - Publish port, print connection info
 - Add `crib ssh` convenience command
 
-**Effort:** ~1-2 days. Most complexity is in the existing ssh plugin infrastructure.
-**Value:** Your teammates can `ssh -p 2222 user@localhost` and use nvim at native speed (with bind mounts on Linux, and it's the prerequisite for volume mode on macOS).
+**Effort:** ~1-2 days. Most complexity is in the existing ssh plugin infrastructure. **Value:** Your teammates can `ssh -p 2222 user@localhost` and use nvim at native speed (with bind mounts on Linux, and it's the prerequisite for volume mode on macOS).
 
 ### Phase 2: Volume workspaces
 
@@ -237,8 +235,7 @@ Running containers on remote machines (cloud VMs, Kubernetes) is what DevPod pro
 - Handle `crib remove` with volume cleanup
 - Test with SSH-in for the full "edit inside container" workflow
 
-**Effort:** ~3-5 days. The plugin API change is the risk area.
-**Value:** macOS/Windows users get native filesystem performance. Combined with SSH, this is the DevPod experience without the agent.
+**Effort:** ~3-5 days. The plugin API change is the risk area. **Value:** macOS/Windows users get native filesystem performance. Combined with SSH, this is the DevPod experience without the agent.
 
 ### Phase 3: URL-based workspaces
 
@@ -246,8 +243,7 @@ Running containers on remote machines (cloud VMs, Kubernetes) is what DevPod pro
 - Clone into volume, discover devcontainer config
 - Wire up to existing `up` flow
 
-**Effort:** ~2-3 days on top of phase 2.
-**Value:** Zero-local-clone workflow. "Send someone a URL, they run one command, they're developing."
+**Effort:** ~2-3 days on top of phase 2. **Value:** Zero-local-clone workflow. "Send someone a URL, they run one command, they're developing."
 
 ### Phase 4+ (future, not designed yet)
 

@@ -41,6 +41,4 @@ description: Quick reference for all crib CLI commands.
 
 If a command fails with "not found" in `exec`, try `run` instead.
 
-:::tip[Need more detail?]
-See the [command reference](/crib/reference/commands/) for detailed usage, flags, and examples for every command.
-:::
+:::tip[Need more detail?] See the [command reference](/crib/reference/commands/) for detailed usage, flags, and examples for every command. :::

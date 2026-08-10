@@ -44,9 +44,7 @@ disable = ["ssh", "dotfiles"]
 
 Unknown plugin names in any disable list produce a warning at startup and are otherwise ignored, so typos don't silently do nothing.
 
-:::tip[When to disable the SSH plugin]
-On macOS with Colima, virtiofs exposes the SSH agent socket as a regular file. The plugin detects this and logs a warning instead of bind-mounting it (the runtime would crash). If you don't need agent forwarding at all on that setup, disable the plugin with `--disable-plugin ssh` or the equivalent `.cribrc` / global config entry.
-:::
+:::tip[When to disable the SSH plugin] On macOS with Colima, virtiofs exposes the SSH agent socket as a regular file. The plugin detects this and logs a warning instead of bind-mounting it (the runtime would crash). If you don't need agent forwarding at all on that setup, disable the plugin with `--disable-plugin ssh` or the equivalent `.cribrc` / global config entry. :::
 
 ---
 
@@ -112,9 +110,7 @@ Build-time caching applies to the feature-generated Dockerfile only, not to user
 
 For `apt`, crib also disables the `docker-clean` hook in the generated Dockerfile so that cached `.deb` files are preserved across builds.
 
-:::note[First run]
-The first `crib up` after adding a cache provider still downloads everything (the volume is empty). Subsequent rebuilds reuse the cached data.
-:::
+:::note[First run] The first `crib up` after adding a cache provider still downloads everything (the volume is empty). Subsequent rebuilds reuse the cached data. :::
 
 ---
 
@@ -159,9 +155,7 @@ This is the right choice when:
 - You want credentials scoped to a specific project workspace
 - You don't have Claude Code installed on the host
 
-:::note[First use]
-After switching to workspace mode, run `claude` inside the container and authenticate. From that point on, credentials persist automatically.
-:::
+:::note[First use] After switching to workspace mode, run `claude` inside the container and authenticate. From that point on, credentials persist automatically. :::
 
 ### Choosing a mode
 
@@ -232,13 +226,9 @@ The plugin runs during `crib up` (first creation only). Because the effects are 
 
 **No-op when `repository` is not set in either the global config or `.cribrc`.** If you don't configure dotfiles, the plugin does nothing.
 
-:::note[Git required]
-The container must have `git` installed for the clone to work. Most devcontainer base images include it. If yours doesn't, add it via a Feature or `postCreateCommand`.
-:::
+:::note[Git required] The container must have `git` installed for the clone to work. Most devcontainer base images include it. If yours doesn't, add it via a Feature or `postCreateCommand`. :::
 
-:::caution[SSH repos on rootless Podman with root containers]
-If your container runs as `root` and you use rootless Podman, SSH-based repository URLs (e.g. `git@github.com:user/dotfiles`) will fail to authenticate. The SSH agent socket is bind-mounted with the host user's permissions, and rootless Podman's UID remapping prevents the container's `root` from accessing it. Use an HTTPS URL instead, or switch to a non-root `remoteUser`.
-:::
+:::caution[SSH repos on rootless Podman with root containers] If your container runs as `root` and you use rootless Podman, SSH-based repository URLs (e.g. `git@github.com:user/dotfiles`) will fail to authenticate. The SSH agent socket is bind-mounted with the host user's permissions, and rootless Podman's UID remapping prevents the container's `root` from accessing it. Use an HTTPS URL instead, or switch to a non-root `remoteUser`. :::
 
 ---
 
@@ -307,8 +297,6 @@ git config --global tag.gpgsign true
 
 If you already sign commits on your host, nothing else is needed. The plugin reads your existing config.
 
-:::note[Per-project gitconfig]
-The generated `.gitconfig` is injected before lifecycle hooks run. If your `postCreateCommand` sets up a dotfiles repo that writes a `.gitconfig`, that will take precedence. The plugin-generated file is a fallback, not a hard override.
-:::
+:::note[Per-project gitconfig] The generated `.gitconfig` is injected before lifecycle hooks run. If your `postCreateCommand` sets up a dotfiles repo that writes a `.gitconfig`, that will take precedence. The plugin-generated file is a fallback, not a hard override. :::
 
 **If `gpg.format` is not `ssh`,** the plugin skips the gitconfig step entirely. Git settings for GPG signing (OpenPGP) are not forwarded.
