@@ -1,6 +1,6 @@
 module github.com/fgrehm/crib
 
-go 1.26.3
+go 1.26.5
 
 tool (
 	github.com/fzipp/gocyclo/cmd/gocyclo
@@ -19,6 +19,7 @@ require (
 	github.com/moby/buildkit v0.29.0
 	github.com/moby/patternmatcher v0.6.1
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.10
 	github.com/tidwall/jsonc v0.3.3
 	golang.org/x/sync v0.20.0
 )
@@ -199,7 +200,6 @@ require (
 	github.com/spf13/afero v1.15.0 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.12.0 // indirect
 	github.com/ssgreg/nlreturn/v2 v2.2.1 // indirect
 	github.com/stbenjam/no-sprintf-host-port v0.3.1 // indirect
