@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -29,11 +30,37 @@ func WriteEnvFileTo(w io.Writer, env []string) error {
 	return err
 }
 
+// WriteEnvTempFile writes env to a 0600 temp file suitable for `--env-file`
+// and returns its path plus a cleanup func that removes it. It returns
+// ("", nil, nil) when env is empty or contains a value the env-file parser
+// would mutate (a newline), so the caller can fall back to -e flags. When
+// path != "" the caller MUST call cleanup (typically via defer).
+func WriteEnvTempFile(env []string) (path string, cleanup func(), err error) {
+	if len(env) == 0 || !EnvFileSafe(env) {
+		return "", nil, nil
+	}
+	f, err := os.CreateTemp("", "crib-env-*")
+	if err != nil {
+		return "", nil, fmt.Errorf("creating env file: %w", err)
+	}
+	path = f.Name()
+	if err := WriteEnvFileTo(f, env); err != nil {
+		f.Close()
+		os.Remove(path)
+		return "", nil, fmt.Errorf("writing env file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(path)
+		return "", nil, fmt.Errorf("closing env file: %w", err)
+	}
+	return path, func() { os.Remove(path) }, nil
+}
+
 // EnvFileSafe reports whether all env entries can be represented in an
-// env-file for `docker run --env-file` / `podman run --env-file`. That parser
-// is literal: only a leading `#` starts a comment and the rest of the line is
-// taken verbatim, so the only unrepresentable value is one containing a
-// newline (which would break the line structure).
+// env-file for `docker run/exec --env-file` / `podman run/exec --env-file`.
+// That parser is literal: only a leading `#` starts a comment and the rest of
+// the line is taken verbatim, so the only unrepresentable value is one
+// containing a newline (which would break the line structure).
 func EnvFileSafe(env []string) bool {
 	for _, e := range env {
 		if _, v, ok := strings.Cut(e, "="); ok && strings.Contains(v, "\n") {

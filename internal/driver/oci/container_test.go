@@ -170,6 +170,38 @@ func TestWriteEnvFile(t *testing.T) {
 	}
 }
 
+func TestWriteEnvTempFile(t *testing.T) {
+	// Safe env: writes a temp file and returns a cleanup.
+	path, cleanup, err := driver.WriteEnvTempFile([]string{"FOO=bar", "BAZ=qux"})
+	if err != nil {
+		t.Fatalf("WriteEnvTempFile: %v", err)
+	}
+	if path == "" || cleanup == nil {
+		t.Fatalf("expected path and cleanup, got path=%q cleanup-set=%v", path, cleanup != nil)
+	}
+	defer cleanup()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(data); got != "FOO=bar\nBAZ=qux\n" {
+		t.Errorf("unexpected content %q", got)
+	}
+
+	// Unsafe env (newline): no file, no cleanup, no error (caller falls back).
+	path2, cleanup2, err := driver.WriteEnvTempFile([]string{"FOO=bar\nbaz"})
+	if err != nil || path2 != "" || cleanup2 != nil {
+		t.Errorf("expected empty fallback for newline value, got path=%q cleanup-set=%v err=%v", path2, cleanup2 != nil, err)
+	}
+
+	// Empty env: same fallback.
+	path3, cleanup3, err := driver.WriteEnvTempFile(nil)
+	if err != nil || path3 != "" || cleanup3 != nil {
+		t.Errorf("expected empty fallback for empty env, got path=%q cleanup-set=%v err=%v", path3, cleanup3 != nil, err)
+	}
+}
+
 func TestEnvFileSafe(t *testing.T) {
 	cases := []struct {
 		name string
@@ -647,5 +679,54 @@ func assertContains(t *testing.T, s, substr string) {
 	t.Helper()
 	if !strings.Contains(s, substr) {
 		t.Errorf("expected %q to contain %q", s, substr)
+	}
+}
+
+func TestBuildExecArgs_EnvFile(t *testing.T) {
+	d := newTestDockerDriver()
+
+	args := d.buildExecArgs("ctrID", []string{"/bin/sh"}, nil, []string{"FOO=bar"}, "vscode", "/tmp/exec.env")
+	got := strings.Join(args, " ")
+
+	assertContains(t, got, "exec")
+	assertContains(t, got, "--user vscode")
+	assertContains(t, got, "--env-file /tmp/exec.env")
+	assertContains(t, got, "ctrID /bin/sh")
+	if strings.Contains(got, " -e ") {
+		t.Errorf("expected no -e flags when env file is used, got: %s", got)
+	}
+}
+
+func TestBuildExecArgs_FallsBackToDashEWithoutEnvFile(t *testing.T) {
+	d := newTestDockerDriver()
+
+	args := d.buildExecArgs("ctrID", []string{"/bin/sh"}, nil, []string{"FOO=bar", "BAZ=qux"}, "vscode", "")
+	got := strings.Join(args, " ")
+
+	assertContains(t, got, "--user vscode")
+	assertContains(t, got, "-e FOO=bar")
+	assertContains(t, got, "-e BAZ=qux")
+	if strings.Contains(got, "--env-file") {
+		t.Errorf("unexpected --env-file in args: %s", got)
+	}
+}
+
+func TestBuildExecArgs_StdinAddsInteractive(t *testing.T) {
+	d := newTestDockerDriver()
+
+	args := d.buildExecArgs("ctrID", []string{"sh"}, os.Stdin, nil, "", "")
+	got := strings.Join(args, " ")
+	assertContains(t, got, "exec -i")
+}
+
+func TestBuildExecArgs_NoEnvOrUserOmitsFlags(t *testing.T) {
+	d := newTestDockerDriver()
+
+	args := d.buildExecArgs("ctrID", []string{"sh"}, nil, nil, "", "")
+	got := strings.Join(args, " ")
+	for _, flag := range []string{"-e ", "--env-file", "--user"} {
+		if strings.Contains(got, flag) {
+			t.Errorf("unexpected %q in args: %s", flag, got)
+		}
 	}
 }

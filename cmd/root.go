@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -365,4 +366,55 @@ func appendRemoteEnv(args []string, result *workspace.Result) []string {
 		args = append(args, "-e", k+"="+v)
 	}
 	return args
+}
+
+// applyExecEnvFile writes crib-injected env (extra merged under result.RemoteEnv
+// so remoteEnv wins on key conflicts) to a stable env file in the workspace
+// store and appends "--env-file <path>" to args. This keeps the values out of
+// the process table for `crib shell`/`exec`/`run`, which syscall.Exec into the
+// container runtime and therefore can't clean up a temp file afterward. The
+// file is overwritten on every invocation, so there is no leak.
+//
+// When any value is unsafe for the env-file format (e.g. newlines) it falls
+// back to -e flags via appendRemoteEnv, emitting extra first so remoteEnv wins
+// on key conflicts (preserving the prior -e ordering).
+//
+// User-supplied -e/--env-file flags added by the caller afterward still win,
+// matching docker/podman last-wins env resolution.
+func applyExecEnvFile(args []string, store *workspace.Store, wsID string, result *workspace.Result, extra map[string]string) ([]string, error) {
+	env := map[string]string{}
+	maps.Copy(env, extra)
+	if result != nil {
+		maps.Copy(env, result.RemoteEnv)
+	}
+	if len(env) == 0 {
+		return args, nil
+	}
+	list := execEnvList(env)
+	if driver.EnvFileSafe(list) {
+		wsDir := store.WorkspaceDir(wsID)
+		if err := os.MkdirAll(wsDir, 0o755); err != nil {
+			return nil, fmt.Errorf("preparing exec env dir: %w", err)
+		}
+		path := filepath.Join(wsDir, "exec.env")
+		if err := driver.WriteEnvFile(path, list); err != nil {
+			return nil, fmt.Errorf("writing exec env file: %w", err)
+		}
+		return append(args, "--env-file", path), nil
+	}
+	// Fallback: emit -e flags, extra first so remoteEnv wins on conflict.
+	for k, v := range extra {
+		args = append(args, "-e", k+"="+v)
+	}
+	return appendRemoteEnv(args, result), nil
+}
+
+// execEnvList flattens env into sorted KEY=VALUE strings for a stable env file.
+func execEnvList(env map[string]string) []string {
+	keys := slices.Sorted(maps.Keys(env))
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, k+"="+env[k])
+	}
+	return out
 }
