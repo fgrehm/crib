@@ -55,7 +55,26 @@ func (d *OCIDriver) FindContainer(ctx context.Context, workspaceID string) (*dri
 // Returns the chosen container name (default crib-<ws-id> or the runArgs
 // --name override).
 func (d *OCIDriver) RunContainer(ctx context.Context, workspaceID string, options *driver.RunOptions) (string, error) {
-	name, args := d.buildRunArgs(workspaceID, options)
+	envFile := ""
+	if len(options.Env) > 0 && driver.EnvFileSafe(options.Env) {
+		f, err := os.CreateTemp("", "crib-env-*")
+		if err != nil {
+			return "", fmt.Errorf("creating env file: %w", err)
+		}
+		path := f.Name()
+		if err := driver.WriteEnvFileTo(f, options.Env); err != nil {
+			f.Close()
+			os.Remove(path)
+			return "", fmt.Errorf("writing env file: %w", err)
+		}
+		if err := f.Close(); err != nil {
+			os.Remove(path)
+			return "", fmt.Errorf("closing env file: %w", err)
+		}
+		envFile = path
+		defer os.Remove(path)
+	}
+	name, args := d.buildRunArgs(workspaceID, options, envFile)
 	_, err := d.helper.Output(ctx, args...)
 	if err != nil {
 		return "", fmt.Errorf("running container for workspace %s: %w", workspaceID, err)
@@ -65,7 +84,7 @@ func (d *OCIDriver) RunContainer(ctx context.Context, workspaceID string, option
 
 // buildRunArgs constructs the `docker run` argument list and returns the
 // container name chosen for the run.
-func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) (string, []string) {
+func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions, envFile string) (string, []string) {
 	// Allow runArgs to override the container name. If --name is present in
 	// ExtraArgs, always strip it to avoid duplicate flags; use the value as
 	// the container name when non-empty.
@@ -95,8 +114,14 @@ func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) (s
 		args = append(args, "--user", opts.User)
 	}
 
-	// Environment variables.
-	args = appendFlags(args, "-e", opts.Env)
+	// Environment variables. When an env file is provided, reference it via
+	// --env-file; otherwise fall back to -e flags (e.g. values containing
+	// newlines, which the env-file format cannot represent).
+	if envFile != "" {
+		args = append(args, "--env-file", envFile)
+	} else {
+		args = appendFlags(args, "-e", opts.Env)
+	}
 
 	// Init process.
 	if opts.Init {

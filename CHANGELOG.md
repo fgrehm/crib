@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Inject container env vars via an env file (`--env-file` / `env_file:`) instead of a long list of `-e` flags, keeping command lines readable and values out of `ps` output.
+
+  **Note**: in compose, a user's `environment:` block now takes precedence over crib-injected env on key conflicts (previously crib's injected env won). This is spec-aligned. podman-compose `env_file` support may be buggy; see `docs/implementation-notes.md`.
+
 ### Security
 
 - Bumped Go to 1.26.5.

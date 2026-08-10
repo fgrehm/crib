@@ -112,6 +112,71 @@ func TestIntegrationContainerLifecycle(t *testing.T) {
 	}
 }
 
+// TestIntegrationRunContainerEnvFile verifies that env vars passed via the
+// --env-file mechanism round-trip correctly, including values that docker run's
+// env-file parser treats literally (quotes, whitespace, #, $, =). This proves
+// the single-container path preserves values exactly like the old -e flags.
+func TestIntegrationRunContainerEnvFile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	d := newTestDriver(t)
+	wsID := "test-env-file"
+
+	_ = d.DeleteContainer(ctx, wsID, ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, ContainerName(wsID))
+	})
+
+	env := []string{
+		"PLAIN=value",
+		"QUOTED=\"hi\"",
+		"LEADING= value",
+		"TRAILING=value ",
+		"HASH=bar#baz",
+		"DOLLAR=$HOME",
+		"EQUALS=a=b",
+	}
+	_, err := d.RunContainer(ctx, wsID, &driver.RunOptions{
+		Image:      "alpine:3.20",
+		Entrypoint: "/bin/sh",
+		Cmd:        []string{"-c", "sleep infinity"},
+		Env:        env,
+	})
+	if err != nil {
+		t.Fatalf("RunContainer: %v", err)
+	}
+
+	container, err := d.FindContainer(ctx, wsID)
+	if err != nil {
+		t.Fatalf("FindContainer: %v", err)
+	}
+	if container == nil {
+		t.Fatal("FindContainer returned nil")
+	}
+
+	check := func(name, want string) {
+		t.Helper()
+		var stdout bytes.Buffer
+		if err := d.ExecContainer(ctx, wsID, container.ID, []string{"printenv", name}, nil, &stdout, nil, nil, ""); err != nil {
+			t.Fatalf("printenv %s: %v", name, err)
+		}
+		if got := stdout.String(); got != want+"\n" {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+
+	check("PLAIN", "value")
+	check("QUOTED", "\"hi\"")
+	check("LEADING", " value")
+	check("TRAILING", "value ")
+	check("HASH", "bar#baz")
+	check("DOLLAR", "$HOME")
+	check("EQUALS", "a=b")
+}
+
 func TestIntegrationBuildAndInspect(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")

@@ -14,6 +14,19 @@ import (
 	"github.com/fgrehm/crib/internal/workspace"
 )
 
+// readComposeEnvFile returns the contents of the persisted env file that
+// generateComposeOverride writes alongside the override and references via
+// env_file.
+func readComposeEnvFile(t *testing.T, e *Engine, ws *workspace.Workspace) string {
+	t.Helper()
+	envPath := filepath.Join(e.store.WorkspaceDir(ws.ID), "container.env")
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatalf("reading env file: %v", err)
+	}
+	return string(data)
+}
+
 // newComposeTestEngine creates an Engine with a workspace store backed by a
 // temp directory. It saves the workspace so the directory exists for the
 // compose override file.
@@ -260,11 +273,15 @@ func TestGenerateComposeOverride_PluginEnv(t *testing.T) {
 	}
 	content := string(data)
 
-	if !strings.Contains(content, "HISTFILE:") {
-		t.Errorf("expected HISTFILE env var, got:\n%s", content)
+	envContent := readComposeEnvFile(t, e, ws)
+	if !strings.Contains(envContent, "HISTFILE=/home/vscode/.crib_history/.shell_history") {
+		t.Errorf("expected HISTFILE env var, got:\n%s", envContent)
 	}
-	if !strings.Contains(content, "SSH_AUTH_SOCK:") {
-		t.Errorf("expected SSH_AUTH_SOCK env var, got:\n%s", content)
+	if !strings.Contains(envContent, "SSH_AUTH_SOCK=/tmp/ssh-agent.sock") {
+		t.Errorf("expected SSH_AUTH_SOCK env var, got:\n%s", envContent)
+	}
+	if !strings.Contains(content, "env_file:") {
+		t.Errorf("expected env_file in override, got:\n%s", content)
 	}
 }
 
@@ -291,12 +308,16 @@ func TestGenerateComposeOverride_PluginEnvMergedWithConfigEnv(t *testing.T) {
 	}
 	content := string(data)
 
-	// Both config and plugin env vars should be present.
-	if !strings.Contains(content, "APP_ENV:") {
-		t.Errorf("expected APP_ENV from config, got:\n%s", content)
+	// Both config and plugin env vars should be present in the env file.
+	envContent := readComposeEnvFile(t, e, ws)
+	if !strings.Contains(envContent, "APP_ENV=development") {
+		t.Errorf("expected APP_ENV from config, got:\n%s", envContent)
 	}
-	if !strings.Contains(content, "HISTFILE:") {
-		t.Errorf("expected HISTFILE from plugin, got:\n%s", content)
+	if !strings.Contains(envContent, "HISTFILE=/home/vscode/.crib_history/.shell_history") {
+		t.Errorf("expected HISTFILE from plugin, got:\n%s", envContent)
+	}
+	if !strings.Contains(content, "env_file:") {
+		t.Errorf("expected env_file in override, got:\n%s", content)
 	}
 }
 
@@ -634,12 +655,20 @@ func TestGenerateComposeOverride_FeatureEnv(t *testing.T) {
 	}
 	content := string(data)
 
-	if !strings.Contains(content, "DOCKER_HOST:") {
-		t.Errorf("expected DOCKER_HOST in environment, got:\n%s", content)
+	// Env now lives in a separate env file referenced by env_file.
+	envContent := readComposeEnvFile(t, e, ws)
+	if !strings.Contains(envContent, "DOCKER_HOST=unix:///var/run/docker.sock") {
+		t.Errorf("expected DOCKER_HOST in env file, got:\n%s", envContent)
 	}
 	// Variable substitution should resolve ${devcontainerId} in env values.
-	if !strings.Contains(content, "WS_ID: test-ws") {
-		t.Errorf("expected substituted WS_ID value, got:\n%s", content)
+	if !strings.Contains(envContent, "WS_ID=test-ws") {
+		t.Errorf("expected substituted WS_ID value, got:\n%s", envContent)
+	}
+	if !strings.Contains(content, "env_file:") {
+		t.Errorf("expected env_file in override, got:\n%s", content)
+	}
+	if strings.Contains(content, "environment:") {
+		t.Errorf("expected no inline environment in override, got:\n%s", content)
 	}
 }
 
@@ -673,15 +702,19 @@ func TestGenerateComposeOverride_FeatureEnvMergedWithConfigAndPlugin(t *testing.
 	}
 	content := string(data)
 
-	// All three env sources should be present.
-	if !strings.Contains(content, "APP_ENV:") {
-		t.Errorf("expected APP_ENV from config, got:\n%s", content)
+	// All three env sources should be present in the env file.
+	envContent := readComposeEnvFile(t, e, ws)
+	if !strings.Contains(envContent, "APP_ENV=development") {
+		t.Errorf("expected APP_ENV from config, got:\n%s", envContent)
 	}
-	if !strings.Contains(content, "DOCKER_HOST:") {
-		t.Errorf("expected DOCKER_HOST from feature, got:\n%s", content)
+	if !strings.Contains(envContent, "DOCKER_HOST=unix:///var/run/docker.sock") {
+		t.Errorf("expected DOCKER_HOST from feature, got:\n%s", envContent)
 	}
-	if !strings.Contains(content, "HISTFILE:") {
-		t.Errorf("expected HISTFILE from plugin, got:\n%s", content)
+	if !strings.Contains(envContent, "HISTFILE=/home/vscode/.crib_history/.shell_history") {
+		t.Errorf("expected HISTFILE from plugin, got:\n%s", envContent)
+	}
+	if !strings.Contains(content, "env_file:") {
+		t.Errorf("expected env_file in override, got:\n%s", content)
 	}
 }
 
@@ -898,14 +931,78 @@ func TestGenerateComposeOverride_GlobalWorkspaceEnv(t *testing.T) {
 	}
 	content := string(data)
 
-	if !strings.Contains(content, "GLOBAL_ONLY: global-value") {
-		t.Errorf("expected GLOBAL_ONLY in override, got:\n%s", content)
+	envContent := readComposeEnvFile(t, e, ws)
+	if !strings.Contains(envContent, "GLOBAL_ONLY=global-value") {
+		t.Errorf("expected GLOBAL_ONLY in env file, got:\n%s", envContent)
 	}
-	if !strings.Contains(content, "CONFLICT: project-wins") {
-		t.Errorf("expected CONFLICT=project-wins (project should win), got:\n%s", content)
+	if !strings.Contains(envContent, "CONFLICT=project-wins") {
+		t.Errorf("expected CONFLICT=project-wins (project should win), got:\n%s", envContent)
 	}
-	if strings.Contains(content, "CONFLICT: global-loser") {
-		t.Errorf("global value leaked into override:\n%s", content)
+	if strings.Contains(envContent, "CONFLICT=global-loser") {
+		t.Errorf("global value leaked into env file:\n%s", envContent)
+	}
+	if !strings.Contains(content, "env_file:") {
+		t.Errorf("expected env_file in override, got:\n%s", content)
+	}
+}
+
+func TestGenerateComposeOverride_NewlineEnvFallsBackToEnvironment(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+	// A newline cannot be represented in a compose env_file, so the override
+	// must fall back to the inline environment: block.
+	cfg.ContainerEnv = map[string]string{"MULTILINE": "line1\nline2"}
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil)
+	if err != nil {
+		t.Fatalf("generateComposeOverride: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "environment:") {
+		t.Errorf("expected inline environment: fallback for newline value, got:\n%s", content)
+	}
+	if strings.Contains(content, "env_file:") {
+		t.Errorf("expected no env_file for newline value, got:\n%s", content)
+	}
+	// The env file should not have been written.
+	if _, err := os.Stat(filepath.Join(e.store.WorkspaceDir(ws.ID), "container.env")); !os.IsNotExist(err) {
+		t.Errorf("expected no container.env file, got err=%v", err)
+	}
+}
+
+func TestGenerateComposeOverride_EnvFileUnsafeFallsBackToEnvironment(t *testing.T) {
+	ws := &workspace.Workspace{ID: "test-ws", Source: "/tmp/project"}
+	e := newComposeTestEngine(t, "docker", ws)
+
+	cfg := &config.DevContainerConfig{}
+	cfg.Service = "app"
+	// A value with surrounding quotes would be stripped by compose's env_file
+	// parser, so it must fall back to the inline environment: block.
+	cfg.ContainerEnv = map[string]string{"GREETING": "\"hi\""}
+
+	path, err := e.generateComposeOverride(ws, cfg, "/workspaces/project", nil, "", nil)
+	if err != nil {
+		t.Fatalf("generateComposeOverride: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "environment:") {
+		t.Errorf("expected inline environment: fallback for unsafe value, got:\n%s", content)
+	}
+	if strings.Contains(content, "env_file:") {
+		t.Errorf("expected no env_file for unsafe value, got:\n%s", content)
 	}
 }
 

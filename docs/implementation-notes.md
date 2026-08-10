@@ -23,6 +23,27 @@ The same `x-podman: { in_pod: false }` directive must also be passed during `com
 - `internal/engine/compose.go` (`generateComposeOverride`, `composeDown`, `composeFilesWithOverride`)
 - `internal/driver/oci/container.go` (`buildRunArgs`)
 
+### Env vars are injected via env files, not `-e` flags
+
+crib writes container environment variables to an env file and passes it to the runtime via `--env-file` (single containers) or `env_file:` (compose override) instead of a long list of `-e KEY=VALUE` flags. This keeps the `docker run` / `docker compose` command lines readable and avoids leaking values into `ps` output.
+
+Values that the env-file format cannot represent fall back to the old mechanisms: `-e` flags (single containers) or the inline `environment:` block (compose). The two runtimes parse env files differently, so the gate differs per path:
+
+- `docker run --env-file` / `podman run --env-file` is **literal**: only a leading `#` starts a comment and the rest of the line is taken verbatim. The only unrepresentable value is one containing a newline (`EnvFileSafe`).
+- Compose `env_file:` is **richer**: it strips surrounding quotes, trims leading/trailing whitespace, treats a space before `#` as an inline comment, and interpolates unquoted/double-quoted values. Values containing any of those constructs would be silently mutated, so they fall back to inline `environment:` (`EnvFileSafeForCompose`).
+
+**Compose precedence**: the spec treats the compose file as the source of truth for container-wide env in a compose scenario (`containerEnv` is for image/Dockerfile scenarios; the reference implementation only supports `remoteEnv` in compose). crib's `containerEnv`/feature/plugin env is injected via the override's `env_file:`, which compose merges after the user's own `env_file:` entries but below the user's `environment:` block. So if a user's compose service sets `environment:` directly, it wins over crib's injected env on a key conflict. This is spec-aligned; `remoteEnv` is unaffected (applied at exec time).
+
+The compose env file is regenerated alongside the override on every backend start/create/restart, so it stays in sync. It is not regenerated on a no-op `up` against an already-running container (mirroring the override's existing staleness behavior).
+
+**podman-compose caveat**: `env_file` support in podman-compose has historically been buggy. Basic literal `KEY=VALUE` entries work, but interpolation and path resolution have had issues (e.g. [containers/podman-compose#848](https://github.com/containers/podman-compose/issues/848), [containers/podman-compose#1287](https://github.com/containers/podman-compose/issues/1287)). If you hit issues with podman-compose, we're open to adding a config option to fall back to inline `environment:` or rolling back this code path.
+
+**Files**:
+
+- `internal/driver/envfile.go` (`WriteEnvFile`, `WriteEnvFileTo`, `EnvFileSafe`, `EnvFileSafeForCompose`)
+- `internal/driver/oci/container.go` (`RunContainer`, `buildRunArgs`)
+- `internal/engine/compose.go` (`generateComposeOverride`)
+
 ### Version managers (mise, rbenv, nvm) not in PATH during lifecycle hooks
 
 Lifecycle hooks run via `sh -c "<command>"`. Tools installed by version managers like [mise](https://mise.jdx.dev/) activate in `~/.bashrc` (interactive shell), not in `/etc/profile.d/` (login shell). This means `sh -c` and even `bash -l -c` won't find them.

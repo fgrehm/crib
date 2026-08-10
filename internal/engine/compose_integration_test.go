@@ -153,6 +153,129 @@ func TestIntegrationComposeDownUpSkipsBuild(t *testing.T) {
 	}
 }
 
+// TestIntegrationComposeEnv verifies containerEnv is visible in a compose
+// container via the env_file mechanism.
+func TestIntegrationComposeEnv(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngineWithCompose(t)
+
+	projectDir := t.TempDir()
+	wsID := "test-compose-env"
+	ws := writeComposeDevcontainer(t, projectDir, wsID)
+
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
+
+	// Add containerEnv to the devcontainer config.
+	configContent := `{
+		"dockerComposeFile": "compose.yml",
+		"service": "app",
+		"overrideCommand": true,
+		"containerEnv": {
+			"COMPOSE_ENV_ONE": "compose-one",
+			"COMPOSE_ENV_TWO": "compose-two"
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(projectDir, ".devcontainer", "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := e.Up(ctx, ws, UpOptions{}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	container, err := d.FindContainer(ctx, ws.ID)
+	if err != nil {
+		t.Fatalf("FindContainer: %v", err)
+	}
+	if container == nil {
+		t.Fatal("container not found after Up")
+	}
+
+	check := func(name, want string) {
+		t.Helper()
+		var stdout bytes.Buffer
+		if err := d.ExecContainer(ctx, ws.ID, container.ID, []string{"printenv", name}, nil, &stdout, nil, nil, ""); err != nil {
+			t.Fatalf("printenv %s: %v", name, err)
+		}
+		got := strings.TrimSpace(stdout.String())
+		if got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+
+	check("COMPOSE_ENV_ONE", "compose-one")
+	check("COMPOSE_ENV_TWO", "compose-two")
+}
+
+// TestIntegrationComposeEnvPrecedence verifies that a user's compose
+// `environment:` block wins over crib-injected containerEnv on a key conflict
+// (compose precedence: environment > env_file).
+func TestIntegrationComposeEnvPrecedence(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngineWithCompose(t)
+
+	projectDir := t.TempDir()
+	wsID := "test-compose-env-precedence"
+	ws := writeComposeDevcontainer(t, projectDir, wsID)
+
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
+
+	// User's compose file sets FOO via environment:.
+	composeContent := `services:
+  app:
+    image: alpine:3.20
+    command: ["sleep", "infinity"]
+    environment:
+      FOO: from-user-compose
+`
+	if err := os.WriteFile(filepath.Join(projectDir, ".devcontainer", "compose.yml"), []byte(composeContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// devcontainer.json sets the same key via containerEnv.
+	configContent := `{
+		"dockerComposeFile": "compose.yml",
+		"service": "app",
+		"overrideCommand": true,
+		"containerEnv": {
+			"FOO": "from-devcontainer"
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(projectDir, ".devcontainer", "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := e.Up(ctx, ws, UpOptions{}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	container, err := d.FindContainer(ctx, ws.ID)
+	if err != nil {
+		t.Fatalf("FindContainer: %v", err)
+	}
+	if container == nil {
+		t.Fatal("container not found after Up")
+	}
+
+	var stdout bytes.Buffer
+	if err := d.ExecContainer(ctx, ws.ID, container.ID, []string{"printenv", "FOO"}, nil, &stdout, nil, nil, ""); err != nil {
+		t.Fatalf("printenv FOO: %v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "from-user-compose" {
+		t.Errorf("FOO = %q, want %q (user's compose environment: should win)", got, "from-user-compose")
+	}
+}
+
 // TestIntegrationComposeRestartWithStoppedDeps verifies that restart works
 // even when dependency services are stopped (uses compose up instead of
 // compose restart).
