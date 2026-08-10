@@ -1,6 +1,6 @@
 # Architecture
 
-This document is a map for contributors. It explains how crib is laid out, what the boundaries are, and the invariants you should not break. It is deliberately short. For deep dives, see `docs/implementation-notes.md` and the per-area docs in `docs/ai-instructions/`.
+This document is a map for contributors. It explains how crib is laid out, what the boundaries are, and the invariants you should not break. It is deliberately short. For deep dives, see `docs/implementation-notes.md` and the per-area docs in `.agents/skills/crib-review/references/`.
 
 ## Bird's eye view
 
@@ -135,7 +135,7 @@ crib reads from two homes and writes to one. Configuration is XDG-style; runtime
 
 - `docs/implementation-notes.md` for quirks, workarounds, spec compliance status, and the reasoning behind specific choices (rootless Podman, UID sync, feature entrypoints, image lifecycle).
 - `docs/devcontainers-spec.md` for the spec reference crib targets.
-- `docs/ai-instructions/` for per-area rules: `engine.instructions.md`, `plugins.instructions.md`, `logging.instructions.md`, `docs.instructions.md`.
+- `.agents/skills/crib-review/references/` for per-area rules: `engine.md`, `plugins.md`, `logging.md`, `docs.md`.
 - `docs/decisions/` for ADRs.
 - `docs/plugin-development.md` for the plugin interface and merge rules.
 

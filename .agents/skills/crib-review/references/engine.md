@@ -1,7 +1,3 @@
----
-applyTo: "internal/engine/**"
----
-
 # Engine: containerBackend + finalize Architecture
 
 The engine uses a `containerBackend` interface to abstract single-container vs compose differences. All post-creation/post-restart steps converge in a single `finalize` method.
