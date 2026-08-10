@@ -1,7 +1,3 @@
----
-applyTo: "internal/**,cmd/**"
----
-
 # Logging and Output
 
 ## Rules

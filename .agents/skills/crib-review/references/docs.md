@@ -1,7 +1,3 @@
----
-applyTo: "docs/**,website/**,CHANGELOG.md,README.md"
----
-
 # Documentation and Naming
 
 ## Naming conventions

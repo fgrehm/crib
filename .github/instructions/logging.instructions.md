@@ -1,1 +1,0 @@
-../../docs/ai-instructions/logging.instructions.md

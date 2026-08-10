@@ -1,7 +1,3 @@
----
-applyTo: "internal/engine/**,internal/plugin/**"
----
-
 # Plugin System
 
 Bundled plugins are in-process Go code under `internal/plugin/`. The engine dispatches them via `dispatchPlugins()` which builds the request and returns the response without merging into any target. Plugin dispatch is idempotent.
@@ -28,6 +24,24 @@ When calling from different contexts:
 - **Restart paths**: pass `storedResult.RemoteUser` (detected at Up() time, may differ from config when compose auto-detects the user).
 
 Log a warning when dispatch fails.
+
+## Error handling
+
+Plugins are **fail-open by design**. The plugin manager logs errors as warnings and continues. One broken plugin must never block container creation. This is intentional, not a bug.
+
+## Naming convention
+
+Plugin directory names are Go package names (no hyphens): `codingagents`, `shellhistory`. Display names use hyphens: `coding-agents`, `shell-history`. The `Name()` method returns the display name. Both forms are correct in their respective contexts.
+
+## Shell input validation
+
+Plugins that construct shell commands use layered validation:
+
+- `validAliasName` regex rejects characters unsafe for shell/paths (`;`, spaces, `..`, leading `-`).
+- `plugin.ShellQuote()` wraps values in single quotes with proper escaping.
+- Generated scripts use positional parameters or `command -v` (not eval).
+
+If input passes the regex, it is safe for use in the generated script. Review the regex definition before flagging injection concerns.
 
 ## Bind mount gotcha: file vs directory
 

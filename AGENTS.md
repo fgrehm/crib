@@ -2,12 +2,12 @@
 
 Guidance for coding agents when working in this repository.
 
-Detailed instructions for specific areas are in `docs/ai-instructions/`. Read them when working on the relevant code:
+Detailed instructions for specific areas are in `.agents/skills/crib-review/references/`. Read them when working on the relevant code:
 
-- `engine.instructions.md` - dual code paths, remoteEnv invariants, save sites
-- `plugins.instructions.md` - plugin dispatch, wiring, parameter order
-- `logging.instructions.md` - output mechanisms, slog rules, verbose/debug
-- `docs.instructions.md` - naming conventions, docs workflow, changelog
+- `engine.md` - dual code paths, remoteEnv invariants, save sites
+- `plugins.md` - plugin dispatch, wiring, parameter order
+- `logging.md` - output mechanisms, slog rules, verbose/debug
+- `docs.md` - naming conventions, docs workflow, changelog
 
 ## What is crib
 
