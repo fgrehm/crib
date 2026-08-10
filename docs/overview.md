@@ -5,9 +5,7 @@ description: What crib is, why it exists, and the philosophy behind it.
 
 `crib` is a CLI tool that reads your `.devcontainer/devcontainer.json` config, builds the container, and gets out of your way. No agents injected into your container, no SSH tunnels, no IDE integration. Just Docker (or Podman) doing what Docker does.
 
-:::note[🐧 Linux first]
-Linux is the primary platform. [macOS and Windows work too](/crib/guides/macos-windows/), with caveats.
-:::
+:::note[🐧 Linux first] Linux is the primary platform. [macOS and Windows work too](/crib/guides/macos-windows/), with caveats. :::
 
 ## Demo
 

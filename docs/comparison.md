@@ -3,9 +3,7 @@ title: Comparison with alternatives
 description: How crib compares to devcontainers/cli, DevPod, and VS Code Dev Containers
 ---
 
-:::caution[Living document]
-This page reflects the state of things as of March 2026. The tools listed here are actively developed (except DevPod), so details may shift over time.
-:::
+:::caution[Living document] This page reflects the state of things as of March 2026. The tools listed here are actively developed (except DevPod), so details may shift over time. :::
 
 `crib` isn't the only way to use devcontainers outside VS Code. Here's how the alternatives compare for terminal-first developers.
 

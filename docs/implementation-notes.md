@@ -9,21 +9,13 @@ Notes on quirks, workarounds, and spec compliance gathered during development.
 
 ### Rootless Podman requires userns_mode / --userns=keep-id
 
-When running rootless Podman, bind-mounted files are owned by the host user's UID inside a
-user namespace. Without `--userns=keep-id`, the container sees these files as owned by
-`nobody:nogroup`, breaking all file operations.
+When running rootless Podman, bind-mounted files are owned by the host user's UID inside a user namespace. Without `--userns=keep-id`, the container sees these files as owned by `nobody:nogroup`, breaking all file operations.
 
-`crib` auto-injects `--userns=keep-id` for single containers and `userns_mode: "keep-id"` in
-compose overrides when it detects rootless Podman (non-root UID + `podman` in the runtime
-command). This is skipped when the user's compose files already set `userns_mode`.
+`crib` auto-injects `--userns=keep-id` for single containers and `userns_mode: "keep-id"` in compose overrides when it detects rootless Podman (non-root UID + `podman` in the runtime command). This is skipped when the user's compose files already set `userns_mode`.
 
-For compose, the override also sets `x-podman: { in_pod: false }` because podman-compose
-creates pods by default and `--userns` and `--pod` are incompatible in Podman.
+For compose, the override also sets `x-podman: { in_pod: false }` because podman-compose creates pods by default and `--userns` and `--pod` are incompatible in Podman.
 
-The same `x-podman: { in_pod: false }` directive must also be passed during `compose down`.
-Without it, podman-compose tries to remove a pod named `pod_crib-<id>` that was never created,
-causing a "no pod with name or ID ... found" error. `composeDown` reuses the persisted
-override file (via `composeFilesWithOverride`) so the directive is in scope on teardown.
+The same `x-podman: { in_pod: false }` directive must also be passed during `compose down`. Without it, podman-compose tries to remove a pod named `pod_crib-<id>` that was never created, causing a "no pod with name or ID ... found" error. `composeDown` reuses the persisted override file (via `composeFilesWithOverride`) so the directive is in scope on teardown.
 
 **Files**:
 
@@ -33,14 +25,9 @@ override file (via `composeFilesWithOverride`) so the directive is in scope on t
 
 ### Version managers (mise, rbenv, nvm) not in PATH during lifecycle hooks
 
-Lifecycle hooks run via `sh -c "<command>"`. Tools installed by version managers like
-[mise](https://mise.jdx.dev/) activate in `~/.bashrc` (interactive shell), not in
-`/etc/profile.d/` (login shell). This means `sh -c` and even `bash -l -c` won't find them.
+Lifecycle hooks run via `sh -c "<command>"`. Tools installed by version managers like [mise](https://mise.jdx.dev/) activate in `~/.bashrc` (interactive shell), not in `/etc/profile.d/` (login shell). This means `sh -c` and even `bash -l -c` won't find them.
 
-`crib` implements the spec's `userEnvProbe` (default: `loginInteractiveShell`) to probe the
-container user's environment once during setup, then passes the probed variables to all
-lifecycle hooks via `docker exec -e` flags. The probed env is also persisted in
-`result.json` so `crib exec` and `crib shell` inherit it automatically.
+`crib` implements the spec's `userEnvProbe` (default: `loginInteractiveShell`) to probe the container user's environment once during setup, then passes the probed variables to all lifecycle hooks via `docker exec -e` flags. The probed env is also persisted in `result.json` so `crib exec` and `crib shell` inherit it automatically.
 
 The probe shell type maps to:
 
@@ -58,38 +45,19 @@ The probe shell type maps to:
 
 ### Container user detection
 
-`remoteUser` and `containerUser` from `devcontainer.json` are consulted first. When neither
-is set, crib falls back through several sources depending on the container type.
+`remoteUser` and `containerUser` from `devcontainer.json` are consulted first. When neither is set, crib falls back through several sources depending on the container type.
 
-The "config wins" contract is enforced by `backend.pluginUser()` before plugin dispatch.
-Both single and compose backends check `configRemoteUser(cfg)` first, then fall back to
-backend-specific resolution, then generic fallbacks.
+The "config wins" contract is enforced by `backend.pluginUser()` before plugin dispatch. Both single and compose backends check `configRemoteUser(cfg)` first, then fall back to backend-specific resolution, then generic fallbacks.
 
-**Single containers:** `buildFromImage` and `buildFromDockerfile` both inspect images
-to capture `Config.User` (the last `USER` instruction) and parse the
-`devcontainer.metadata` label (JSON array of `ImageMetadata`; used by pre-built
-images like `mcr.microsoft.com/devcontainers/*` to carry `remoteUser`). For
-image-based devcontainers without features, the base image is inspected before
-use. After a build or runtime pull, a second inspection captures the final
-metadata. This data flows as `buildResult.imageUser` and
-`buildResult.imageMetadata` into `finalizeOpts`, where `resolveRemoteUser`
-applies it as a fallback before running `whoami` in the container. `crib shell`,
-`exec`, and `run` re-read the live `devcontainer.json` on each invocation (via
-`liveRemoteUser()` in `cmd/user.go`) rather than relying on the cached value in
-`result.json`.
+**Single containers:** `buildFromImage` and `buildFromDockerfile` both inspect images to capture `Config.User` (the last `USER` instruction) and parse the `devcontainer.metadata` label (JSON array of `ImageMetadata`; used by pre-built images like `mcr.microsoft.com/devcontainers/*` to carry `remoteUser`). For image-based devcontainers without features, the base image is inspected before use. After a build or runtime pull, a second inspection captures the final metadata. This data flows as `buildResult.imageUser` and `buildResult.imageMetadata` into `finalizeOpts`, where `resolveRemoteUser` applies it as a fallback before running `whoami` in the container. `crib shell`, `exec`, and `run` re-read the live `devcontainer.json` on each invocation (via `liveRemoteUser()` in `cmd/user.go`) rather than relying on the cached value in `result.json`.
 
-**Compose containers:** `resolveComposeUser()` resolves the user from compose configuration
-(service `user:` directive, Dockerfile `USER` instruction, or base image). It's called by
-`pluginUser()` after the config check. The precedence:
+**Compose containers:** `resolveComposeUser()` resolves the user from compose configuration (service `user:` directive, Dockerfile `USER` instruction, or base image). It's called by `pluginUser()` after the config check. The precedence:
 1. `remoteUser`/`containerUser` from devcontainer.json (handled by pluginUser).
 2. The `user:` directive from the compose service definition.
-3. For build-based services (`build:` instead of `image:`), parses the Dockerfile to find the
-   last `USER` instruction and the base image (`resolveComposeDockerfileInfo`).
+3. For build-based services (`build:` instead of `image:`), parses the Dockerfile to find the last `USER` instruction and the base image (`resolveComposeDockerfileInfo`).
 4. Inspects the base image metadata via `docker image inspect`.
 
-**Post-start (for hooks):** `detectContainerUser()` runs `whoami` inside the running container.
-If the detected user is root, it falls through to the default "root" behavior. Non-root users
-(e.g. `vscode` from a `USER vscode` directive) are used as the remote user.
+**Post-start (for hooks):** `detectContainerUser()` runs `whoami` inside the running container. If the detected user is root, it falls through to the default "root" behavior. Non-root users (e.g. `vscode` from a `USER vscode` directive) are used as the remote user.
 
 **Files**:
 
@@ -104,25 +72,15 @@ If the detected user is root, it falls through to the default "root" behavior. N
 
 ### Smart restart with change detection
 
-`crib restart` compares the current devcontainer config against the stored config from the
-last `crib up` to determine the minimal action needed:
+`crib restart` compares the current devcontainer config against the stored config from the last `crib up` to determine the minimal action needed:
 
-- **No changes**: Simple `docker restart` / `docker compose restart`, then run the spec's
-  Resume Flow hooks (`postStartCommand` + `postAttachCommand`).
-- **Safe changes** (volumes, mounts, ports, env, runArgs, user, etc.): Recreate the
-  container with the new config, then run Resume Flow hooks only. Creation-time hooks
-  (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`) are skipped since their
-  marker files still exist.
-- **Image-affecting changes** (image, Dockerfile, features, build args): Error with a
-  message suggesting `crib rebuild`, since the image needs to be rebuilt.
+- **No changes**: Simple `docker restart` / `docker compose restart`, then run the spec's Resume Flow hooks (`postStartCommand` + `postAttachCommand`).
+- **Safe changes** (volumes, mounts, ports, env, runArgs, user, etc.): Recreate the container with the new config, then run Resume Flow hooks only. Creation-time hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`) are skipped since their marker files still exist.
+- **Image-affecting changes** (image, Dockerfile, features, build args): Error with a message suggesting `crib rebuild`, since the image needs to be rebuilt.
 
-This follows the devcontainer spec's distinction between Creation Flow (all hooks) and
-Resume Flow (only `postStartCommand` + `postAttachCommand`). The result is that tweaking
-a volume mount or environment variable takes seconds instead of minutes.
+This follows the devcontainer spec's distinction between Creation Flow (all hooks) and Resume Flow (only `postStartCommand` + `postAttachCommand`). The result is that tweaking a volume mount or environment variable takes seconds instead of minutes.
 
-Change detection uses JSON comparison of the stored `MergedConfig` against a freshly parsed
-and substituted config. Fields are classified as "image-affecting" or "safe" based on
-whether they require a new image build or just container runtime configuration.
+Change detection uses JSON comparison of the stored `MergedConfig` against a freshly parsed and substituted config. Fields are classified as "image-affecting" or "safe" based on whether they require a new image build or just container runtime configuration.
 
 **Files**:
 
@@ -132,14 +90,9 @@ whether they require a new image build or just container runtime configuration.
 
 ### Early result persistence
 
-`crib` saves the workspace result (container ID, workspace folder, remote user) as soon as
-those values are known, before UID sync, environment probing, and lifecycle hooks run. This
-means `crib exec` and `crib shell` work immediately, even while hooks are still executing
-or if they fail. A second save after setup completes updates the result with the probed
-`remoteEnv`.
+`crib` saves the workspace result (container ID, workspace folder, remote user) as soon as those values are known, before UID sync, environment probing, and lifecycle hooks run. This means `crib exec` and `crib shell` work immediately, even while hooks are still executing or if they fail. A second save after setup completes updates the result with the probed `remoteEnv`.
 
-This is particularly useful when iterating on a new devcontainer setup where lifecycle
-hooks often fail (missing dependencies, broken scripts, etc.).
+This is particularly useful when iterating on a new devcontainer setup where lifecycle hooks often fail (missing dependencies, broken scripts, etc.).
 
 **Files**:
 
@@ -148,10 +101,7 @@ hooks often fail (missing dependencies, broken scripts, etc.).
 
 ### UID/GID sync conflicts with existing users
 
-When `updateRemoteUserUID` is true (the default), `crib` syncs the container user's UID/GID to
-match the host user. On images like `ubuntu:24.04`, standard users/groups may already occupy
-the target UID/GID (e.g. the `ubuntu` user at UID 1000). `crib` detects these conflicts and
-moves the conflicting user/group to a free UID/GID before performing the sync.
+When `updateRemoteUserUID` is true (the default), `crib` syncs the container user's UID/GID to match the host user. On images like `ubuntu:24.04`, standard users/groups may already occupy the target UID/GID (e.g. the `ubuntu` user at UID 1000). `crib` detects these conflicts and moves the conflicting user/group to a free UID/GID before performing the sync.
 
 **Files**:
 
@@ -159,9 +109,7 @@ moves the conflicting user/group to a free UID/GID before performing the sync.
 
 ### chown skipped when UIDs already match
 
-After UID sync, if the container and host UIDs already match, `crib` skips `chown -R` on the
-workspace directory. This avoids failures on rootless Podman where `CAP_CHOWN` doesn't work
-over bind-mounted files (the kernel denies it even for root inside the user namespace).
+After UID sync, if the container and host UIDs already match, `crib` skips `chown -R` on the workspace directory. This avoids failures on rootless Podman where `CAP_CHOWN` doesn't work over bind-mounted files (the kernel denies it even for root inside the user namespace).
 
 **Files**:
 
@@ -169,39 +117,19 @@ over bind-mounted files (the kernel denies it even for root inside the user name
 
 ### Feature entrypoints and runtime capabilities
 
-DevContainer Features can declare an `entrypoint` in `devcontainer-feature.json`. These
-scripts typically start a daemon and then chain via `exec "$@"` so the container's normal
-command runs after the daemon is ready (e.g. docker-in-docker starts `dockerd`).
+DevContainer Features can declare an `entrypoint` in `devcontainer-feature.json`. These scripts typically start a daemon and then chain via `exec "$@"` so the container's normal command runs after the daemon is ready (e.g. docker-in-docker starts `dockerd`).
 
-Features can also declare runtime capabilities (`privileged`, `init`, `capAdd`,
-`securityOpt`, `mounts`, `containerEnv`) that must be applied at container creation time,
-not during the image build.
+Features can also declare runtime capabilities (`privileged`, `init`, `capAdd`, `securityOpt`, `mounts`, `containerEnv`) that must be applied at container creation time, not during the image build.
 
 `crib` handles these in two separate phases:
 
-**Image build (Dockerfile generation):** `GenerateDockerfile` in `internal/feature/dockerfile.go`
-bakes entrypoints into the image. For a single feature entrypoint, it emits a simple
-`ENTRYPOINT ["/path/to/script"]`. For multiple features, it generates a wrapper script at
-`/usr/local/share/crib-entrypoint.sh` that chains entrypoints in order (later features wrap
-earlier ones): `exec /last.sh /prev.sh ... /first.sh "$@"`.
+**Image build (Dockerfile generation):** `GenerateDockerfile` in `internal/feature/dockerfile.go` bakes entrypoints into the image. For a single feature entrypoint, it emits a simple `ENTRYPOINT ["/path/to/script"]`. For multiple features, it generates a wrapper script at `/usr/local/share/crib-entrypoint.sh` that chains entrypoints in order (later features wrap earlier ones): `exec /last.sh /prev.sh ... /first.sh "$@"`.
 
-**Container creation (runtime capabilities):** `applyFeatureMetadata` in `internal/engine/single.go`
-applies `privileged`, `init`, `capAdd`, `securityOpt`, `mounts`, and `containerEnv` from
-feature metadata to `RunOptions`. For compose, `generateComposeOverride` writes these into
-the override YAML.
+**Container creation (runtime capabilities):** `applyFeatureMetadata` in `internal/engine/single.go` applies `privileged`, `init`, `capAdd`, `securityOpt`, `mounts`, and `containerEnv` from feature metadata to `RunOptions`. For compose, `generateComposeOverride` writes these into the override YAML.
 
-When features declare entrypoints and `overrideCommand` is true (the default for
-image/Dockerfile containers), only `CMD` is overridden, not `ENTRYPOINT`. This preserves
-the feature entrypoint while still keeping the container alive with a sleep loop. The
-`HasFeatureEntrypoints` flag is persisted in `result.json` so restart paths that don't
-rebuild the image can apply the same logic.
+When features declare entrypoints and `overrideCommand` is true (the default for image/Dockerfile containers), only `CMD` is overridden, not `ENTRYPOINT`. This preserves the feature entrypoint while still keeping the container alive with a sleep loop. The `HasFeatureEntrypoints` flag is persisted in `result.json` so restart paths that don't rebuild the image can apply the same logic.
 
-Feature-declared volume mounts (e.g. docker-in-docker's `/var/lib/docker`) use named Docker
-volumes (`dind-var-lib-docker-${devcontainerId}`). Named volumes are managed by the Docker/Podman
-daemon and persist independently of containers. This means the volume's contents (layer cache,
-container state, etc.) survive `crib restart`, `crib rebuild`, and even `crib remove` followed
-by `crib up`, as long as the volume itself isn't explicitly deleted. For docker-in-docker, this
-means image layers built inside the container are cached across rebuilds.
+Feature-declared volume mounts (e.g. docker-in-docker's `/var/lib/docker`) use named Docker volumes (`dind-var-lib-docker-${devcontainerId}`). Named volumes are managed by the Docker/Podman daemon and persist independently of containers. This means the volume's contents (layer cache, container state, etc.) survive `crib restart`, `crib rebuild`, and even `crib remove` followed by `crib up`, as long as the volume itself isn't explicitly deleted. For docker-in-docker, this means image layers built inside the container are cached across rebuilds.
 
 **Files**:
 
@@ -213,13 +141,9 @@ means image layers built inside the container are cached across rebuilds.
 
 ### overrideCommand default differs by scenario
 
-Per the spec, `overrideCommand` defaults to `true` for image/Dockerfile containers and
-`false` for compose containers. `crib`'s compose path handles this in the override YAML
-generation (injecting entrypoint/command only when the flag is explicitly or implicitly true).
-The single container path treats `nil` as `true`.
+Per the spec, `overrideCommand` defaults to `true` for image/Dockerfile containers and `false` for compose containers. `crib`'s compose path handles this in the override YAML generation (injecting entrypoint/command only when the flag is explicitly or implicitly true). The single container path treats `nil` as `true`.
 
-When features set an `ENTRYPOINT` in the image, `overrideCommand: true` overrides only
-`CMD` (not `ENTRYPOINT`), so the feature daemon starts before the keep-alive command.
+When features set an `ENTRYPOINT` in the image, `overrideCommand: true` overrides only `CMD` (not `ENTRYPOINT`), so the feature daemon starts before the keep-alive command.
 
 **Files**:
 
@@ -228,21 +152,12 @@ When features set an `ENTRYPOINT` in the image, `overrideCommand: true` override
 
 ### Plugins must be wired into both single-container and compose paths
 
-The engine has two separate code paths for container creation: `upSingle()` for image/Dockerfile
-devcontainers and `upCompose()` for Docker Compose devcontainers. They diverge because single
-containers use `docker run` with `RunOptions`, while compose delegates to `docker compose up`
-with a generated override YAML.
+The engine has two separate code paths for container creation: `upSingle()` for image/Dockerfile devcontainers and `upCompose()` for Docker Compose devcontainers. They diverge because single containers use `docker run` with `RunOptions`, while compose delegates to `docker compose up` with a generated override YAML.
 
-Any feature that affects container creation (plugins, mounts, env vars, labels) must be wired
-into **both** paths. The shared entry point is `dispatchPlugins()`, which builds the plugin
-request and returns the response without merging it into any target:
+Any feature that affects container creation (plugins, mounts, env vars, labels) must be wired into **both** paths. The shared entry point is `dispatchPlugins()`, which builds the plugin request and returns the response without merging it into any target:
 
-- **Single-container**: `runPreContainerRunPlugins()` merges the response into `RunOptions`
-  (mounts, env, runArgs), then `execPluginCopies()` runs after container creation.
-- **Compose**: the response is passed to `generateComposeOverride()` which writes plugin
-  mounts as `volumes:` entries and plugin env as `environment:` entries in the override YAML.
-  `runArgs` are ignored (compose owns the container config). `execPluginCopies()` runs after
-  `compose up` finds the container.
+- **Single-container**: `runPreContainerRunPlugins()` merges the response into `RunOptions` (mounts, env, runArgs), then `execPluginCopies()` runs after container creation.
+- **Compose**: the response is passed to `generateComposeOverride()` which writes plugin mounts as `volumes:` entries and plugin env as `environment:` entries in the override YAML. `runArgs` are ignored (compose owns the container config). `execPluginCopies()` runs after `compose up` finds the container.
 
 The `restart.go` file has the same split: `restartRecreateSingle` vs `restartRecreateCompose`.
 
@@ -254,28 +169,19 @@ The `restart.go` file has the same split: `restartRecreateSingle` vs `restartRec
 
 ### Feature installation for compose containers
 
-DevContainer Features (e.g. `ghcr.io/devcontainers/features/node:1`) need special
-handling for compose-based containers. Unlike single containers where `crib` controls the
-entire image build, compose services define their own images or Dockerfiles.
+DevContainer Features (e.g. `ghcr.io/devcontainers/features/node:1`) need special handling for compose-based containers. Unlike single containers where `crib` controls the entire image build, compose services define their own images or Dockerfiles.
 
 `crib` handles this by pre-building a feature image on top of the service's base image:
 
 1. Parse compose files to extract the service's image or build config
 2. For build-based services, run `compose build` first to produce the base image
-3. Generate a feature Dockerfile that layers features on the base image (same
-   `GenerateDockerfile` and `PrepareContext` used for single containers)
+3. Generate a feature Dockerfile that layers features on the base image (same `GenerateDockerfile` and `PrepareContext` used for single containers)
 4. Build the feature image via `doBuild` (with prebuild hash caching)
 5. Override the service image in the compose override YAML
 
-The compose `build` step for the primary service is skipped in the main flow since
-the feature build already produced the final image. Other services still build normally.
+The compose `build` step for the primary service is skipped in the main flow since the feature build already produced the final image. Other services still build normally.
 
-`build.options` (extra Docker build CLI flags) applies to the feature image build
-(step 4 above, via `doBuild`) but **not** to the base service image build (step 2,
-via `compose build`). This is spec-correct: the compose service image is managed by
-`docker-compose.yml`, not by `devcontainer.json`'s `build` section. If you need
-extra flags for the compose service build, set them in the compose file directly
-(e.g. `build.args`, `build.network`).
+`build.options` (extra Docker build CLI flags) applies to the feature image build (step 4 above, via `doBuild`) but **not** to the base service image build (step 2, via `compose build`). This is spec-correct: the compose service image is managed by `docker-compose.yml`, not by `devcontainer.json`'s `build` section. If you need extra flags for the compose service build, set them in the compose file directly (e.g. `build.args`, `build.network`).
 
 **Files**:
 
@@ -285,21 +191,14 @@ extra flags for the compose service build, set them in the compose file directly
 
 ### Environment probe runs twice: before and after lifecycle hooks
 
-`probeUserEnv` runs the user's login shell (`zsh -l -i -c env`) to capture environment
-variables set by shell profile files (mise, nvm, rbenv, etc.). This probe runs twice
-during `setupContainer`:
+`probeUserEnv` runs the user's login shell (`zsh -l -i -c env`) to capture environment variables set by shell profile files (mise, nvm, rbenv, etc.). This probe runs twice during `setupContainer`:
 
-1. **Before hooks**: provides lifecycle hooks with the user's shell environment (PATH,
-   tool paths, etc.) so hooks don't need to explicitly set up their own environment.
-2. **After hooks**: captures any changes made by hooks (e.g. `mise install` adding new
-   tool paths to PATH). This is the version that gets persisted for `crib shell`/`crib exec`.
+1. **Before hooks**: provides lifecycle hooks with the user's shell environment (PATH, tool paths, etc.) so hooks don't need to explicitly set up their own environment.
+2. **After hooks**: captures any changes made by hooks (e.g. `mise install` adding new tool paths to PATH). This is the version that gets persisted for `crib shell`/`crib exec`.
 
-Without the post-hook probe, the saved PATH would be missing tools installed during
-lifecycle hooks (e.g. a `bin/setup` script that runs `mise install`).
+Without the post-hook probe, the saved PATH would be missing tools installed during lifecycle hooks (e.g. a `bin/setup` script that runs `mise install`).
 
-Tool-manager internal state variables (`__MISE_*`, `MISE_SHELL`) are filtered from the
-probed env. These are session-specific and would confuse tool managers when injected into
-a new shell session via `crib shell`.
+Tool-manager internal state variables (`__MISE_*`, `MISE_SHELL`) are filtered from the probed env. These are session-specific and would confuse tool managers when injected into a new shell session via `crib shell`.
 
 **Files**:
 
@@ -308,14 +207,9 @@ a new shell session via `crib shell`.
 
 ### TTY detection for exec uses isatty, not ModeCharDevice
 
-`crib exec` passes `-i -t` to `docker exec` / `podman exec` only when stdin is an
-interactive terminal. The detection must use a proper `isatty` syscall
-(`term.IsTerminal(fd)`) rather than Go's `os.ModeCharDevice` file mode check.
+`crib exec` passes `-i -t` to `docker exec` / `podman exec` only when stdin is an interactive terminal. The detection must use a proper `isatty` syscall (`term.IsTerminal(fd)`) rather than Go's `os.ModeCharDevice` file mode check.
 
-`/dev/null` is a character device on Linux, so `ModeCharDevice` returns true for it.
-This causes `crib exec` to pass `-t` when stdin is `/dev/null` (e.g. in CI, pipes,
-or `exec.Command` with no stdin). Docker strictly validates the TTY and errors with
-"the input device is not a TTY." Podman silently ignores `-t` without a real TTY.
+`/dev/null` is a character device on Linux, so `ModeCharDevice` returns true for it. This causes `crib exec` to pass `-t` when stdin is `/dev/null` (e.g. in CI, pipes, or `exec.Command` with no stdin). Docker strictly validates the TTY and errors with "the input device is not a TTY." Podman silently ignores `-t` without a real TTY.
 
 **Files**:
 
@@ -323,35 +217,24 @@ or `exec.Command` with no stdin). Docker strictly validates the TTY and errors w
 
 ### Image lifecycle management
 
-`crib` labels all images it builds or commits with `crib.workspace={wsID}` (the same
-label key used for containers). This enables discovery via `docker images --filter
-label=crib.workspace` without relying on name-pattern heuristics.
+`crib` labels all images it builds or commits with `crib.workspace={wsID}` (the same label key used for containers). This enables discovery via `docker images --filter label=crib.workspace` without relying on name-pattern heuristics.
 
 | Image type | How the label is applied |
 |------------|------------------------|
 | Build image (`crib-{wsID}:{hash}`) | `--label` flag on `docker build` / `podman build` |
 | Snapshot image (`crib-{wsID}:snapshot`) | `--change "LABEL ..."` on `docker commit` / `podman commit` |
 
-Compose-built images (those produced by `docker compose build`) are not labeled because
-adding a `build:` section to the compose override triggers a build attempt even for
-image-only services that have no Dockerfile.
+Compose-built images (those produced by `docker compose build`) are not labeled because adding a `build:` section to the compose override triggers a build attempt even for image-only services that have no Dockerfile.
 
 Images are cleaned up automatically at three points:
 
-1. **During build:** when the prebuild hash changes, the previous build image is removed
-   before saving the new result. Base images (those not prefixed `crib-`) are never touched.
-2. **On `crib remove`:** all labeled images for the workspace are swept via `ListImages`,
-   plus the active build image from `result.json`.
-3. **On `crib prune`:** stale images (labeled but not referenced by `result.json`) and
-   orphan images (workspace no longer exists in `~/.crib/workspaces/`) are removed.
-   Supports `--all` (global) and dry-run preview with sizes.
+1. **During build:** when the prebuild hash changes, the previous build image is removed before saving the new result. Base images (those not prefixed `crib-`) are never touched.
+2. **On `crib remove`:** all labeled images for the workspace are swept via `ListImages`, plus the active build image from `result.json`.
+3. **On `crib prune`:** stale images (labeled but not referenced by `result.json`) and orphan images (workspace no longer exists in `~/.crib/workspaces/`) are removed. Supports `--all` (global) and dry-run preview with sizes.
 
-All removals are best-effort: failures are logged and skipped so a single in-use image
-doesn't block cleanup of the rest.
+All removals are best-effort: failures are logged and skipped so a single in-use image doesn't block cleanup of the rest.
 
-Existing unlabeled images from before this change are not discovered by label-based
-cleanup. Clean them up manually with `docker rmi $(docker images --filter
-reference='crib-*' -q)`.
+Existing unlabeled images from before this change are not discovered by label-based cleanup. Clean them up manually with `docker rmi $(docker images --filter reference='crib-*' -q)`.
 
 **Files**:
 
@@ -392,8 +275,7 @@ reference='crib-*' -q)`.
 
 ### Parsed but Not Enforced
 
-These fields are parsed from `devcontainer.json` and merged from image metadata, but `crib`
-does not act on them. This is intentional for a CLI-only tool.
+These fields are parsed from `devcontainer.json` and merged from image metadata, but `crib` does not act on them. This is intentional for a CLI-only tool.
 
 | Feature | Reason |
 |---------|--------|

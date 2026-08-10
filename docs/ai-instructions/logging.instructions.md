@@ -7,12 +7,9 @@ applyTo: "internal/**,cmd/**"
 ## Rules
 
 - Use `internal/ui` for user-facing messages in `cmd/` (slog is for diagnostics).
-- Keep exec logging at `Debug` level. Use the engine's stderr writer for verbose
-  command echoing.
-- Use `e.stdout`/`e.stderr` (verbose-aware writers) for subprocess output. These
-  resolve to `io.Discard` when verbose is off.
-- Guard expensive log argument evaluation (like `scrubArgs`) behind
-  `logger.Enabled(ctx, slog.LevelDebug)`.
+- Keep exec logging at `Debug` level. Use the engine's stderr writer for verbose command echoing.
+- Use `e.stdout`/`e.stderr` (verbose-aware writers) for subprocess output. These resolve to `io.Discard` when verbose is off.
+- Guard expensive log argument evaluation (like `scrubArgs`) behind `logger.Enabled(ctx, slog.LevelDebug)`.
 
 ## Output mechanisms
 
@@ -23,9 +20,7 @@ applyTo: "internal/**,cmd/**"
 | Engine stdout/stderr writers | User: subprocess output | `--verbose` |
 | `log/slog` (stderr) | Developer diagnostics | `--debug` |
 
-**slog levels**: `Debug` for exec commands and internal decisions; `Warn` for
-non-fatal fallbacks; `Info` for one-time startup events only (runtime/compose
-detection).
+**slog levels**: `Debug` for exec commands and internal decisions; `Warn` for non-fatal fallbacks; `Info` for one-time startup events only (runtime/compose detection).
 
 **`--verbose`** passes subprocess stdout through. Does not change the slog level.
 
@@ -33,8 +28,4 @@ detection).
 
 ## Progress events
 
-The engine emits `ProgressEvent` structs (defined in `progress.go`) with a
-`Phase` and `Message`. Phases: `PhaseInit`, `PhaseBuild`, `PhaseCreate`,
-`PhasePlugins`, `PhaseHooks`, `PhaseRestart`. The cmd layer renders these
-via `u.Dim("  " + ev.Message)`. Use `e.reportProgress(phase, msg)` inside
-engine code; never call the progress callback directly.
+The engine emits `ProgressEvent` structs (defined in `progress.go`) with a `Phase` and `Message`. Phases: `PhaseInit`, `PhaseBuild`, `PhaseCreate`, `PhasePlugins`, `PhaseHooks`, `PhaseRestart`. The cmd layer renders these via `u.Dim("  " + ev.Message)`. Use `e.reportProgress(phase, msg)` inside engine code; never call the progress callback directly.

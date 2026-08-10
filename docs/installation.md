@@ -12,9 +12,7 @@ description: How to install crib on Linux with Docker or Podman.
 
 `crib` auto-detects which runtime is available. To override, set `CRIB_RUNTIME=docker` or `CRIB_RUNTIME=podman`.
 
-:::note[🐧 Linux only]
-`crib` is Linux-only. macOS and Windows support may be added if there's interest.
-:::
+:::note[🐧 Linux only] `crib` is Linux-only. macOS and Windows support may be added if there's interest. :::
 
 ## Install with mise
 
