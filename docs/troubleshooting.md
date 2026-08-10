@@ -32,16 +32,13 @@ Note: `~/.config/git/ignore` is git's default location (since git 1.7.12), so `c
 
 ### `localhost:port` not reachable even though the port is published
 
-If a container port is published but `http://localhost:PORT` fails (connection refused or reset),
-check how `localhost` resolves on your machine:
+If a container port is published but `http://localhost:PORT` fails (connection refused or reset), check how `localhost` resolves on your machine:
 
 ```bash
 getent hosts localhost
 ```
 
-If it resolves to `::1` (IPv6) rather than `127.0.0.1` (IPv4), the port listener and the
-address don't match. Podman publishes ports to `0.0.0.0` (IPv4 only) by default in rootless
-mode, so `localhost` → `::1` misses it.
+If it resolves to `::1` (IPv6) rather than `127.0.0.1` (IPv4), the port listener and the address don't match. Podman publishes ports to `0.0.0.0` (IPv4 only) by default in rootless mode, so `localhost` → `::1` misses it.
 
 **Fix:** Use `127.0.0.1` instead of `localhost`:
 
@@ -89,11 +86,9 @@ Alternatively, use the spec-standard `${containerEnv:PATH}` syntax, which works 
 
 ### `crib exec` can't find tools installed by mise/asdf/nvm/rbenv
 
-If `crib exec -- ruby -v` fails with "not found" but `crib shell` followed by `ruby -v` works,
-the tool is installed via a version manager that modifies PATH through shell init files.
+If `crib exec -- ruby -v` fails with "not found" but `crib shell` followed by `ruby -v` works, the tool is installed via a version manager that modifies PATH through shell init files.
 
-`crib exec` runs commands directly via `docker exec` without sourcing shell init files, so
-PATH additions from mise, asdf, nvm, rbenv, etc. aren't available.
+`crib exec` runs commands directly via `docker exec` without sourcing shell init files, so PATH additions from mise, asdf, nvm, rbenv, etc. aren't available.
 
 **Fix:** Use `crib run` instead, which wraps commands in a login shell:
 
@@ -102,11 +97,9 @@ crib run -- ruby -v
 crib run -- bundle install
 ```
 
-`crib run` detects the container's shell (zsh, bash, or sh) and runs your command through
-`$SHELL -lc '...'`, which sources login profiles and sets up PATH correctly.
+`crib run` detects the container's shell (zsh, bash, or sh) and runs your command through `$SHELL -lc '...'`, which sources login profiles and sets up PATH correctly.
 
-Use `crib exec` for commands that don't depend on shell init (system binaries, scripts with
-absolute paths) or when you need raw `docker exec` behavior.
+Use `crib exec` for commands that don't depend on shell init (system binaries, scripts with absolute paths) or when you need raw `docker exec` behavior.
 
 ## Podman
 
@@ -219,15 +212,9 @@ For Docker Compose workspaces, `crib` injects `userns_mode: "keep-id"` in the co
 
 ### Workspace files owned by a high UID (100000+)
 
-If a lifecycle hook (e.g. `postCreateCommand: npm install`) fails with permission denied, and
-the workspace contains files owned by a UID like `100000`, it means an earlier container run
-created those files as root inside a rootless Podman container.
+If a lifecycle hook (e.g. `postCreateCommand: npm install`) fails with permission denied, and the workspace contains files owned by a UID like `100000`, it means an earlier container run created those files as root inside a rootless Podman container.
 
-**Why this happens:** In rootless Podman with `--userns=keep-id`, container root (UID 0) maps to
-a subordinate UID on the host (typically `100000`). Any files created inside the container as
-root, such as from a first run without `remoteUser` set, or before adding `remoteUser` to
-`devcontainer.json`, are owned by that subordinate UID on the host filesystem. A subsequent run
-with `remoteUser` set to a non-root user (like `node` or `vscode`) can't write to those files.
+**Why this happens:** In rootless Podman with `--userns=keep-id`, container root (UID 0) maps to a subordinate UID on the host (typically `100000`). Any files created inside the container as root, such as from a first run without `remoteUser` set, or before adding `remoteUser` to `devcontainer.json`, are owned by that subordinate UID on the host filesystem. A subsequent run with `remoteUser` set to a non-root user (like `node` or `vscode`) can't write to those files.
 
 **Check for affected files:**
 
@@ -235,8 +222,7 @@ with `remoteUser` set to a non-root user (like `node` or `vscode`) can't write t
 ls -lan /path/to/project/node_modules | head -5
 ```
 
-If you see a high UID (100000+) instead of your own UID, those files are from a previous root
-container run.
+If you see a high UID (100000+) instead of your own UID, those files are from a previous root container run.
 
 **Fix:** Delete the affected directories from the host and then rebuild:
 
@@ -245,8 +231,7 @@ rm -rf node_modules  # or whatever directory was created by the hook
 crib rebuild
 ```
 
-If the directory is large and `rm -rf` is slow, you can use `podman unshare` to remove it
-faster from inside the same user namespace:
+If the directory is large and `rm -rf` is slow, you can use `podman unshare` to remove it faster from inside the same user namespace:
 
 ```bash
 podman unshare rm -rf node_modules
@@ -328,9 +313,7 @@ level=WARN msg="plugin copy: exec failed" target=/home/vscode/.ssh/id_ed25519-si
 error="... cannot create /home/vscode/.ssh/id_ed25519-sign.pub: Read-only file system"
 ```
 
-A compose volume is already mounted at the same path the plugin is trying to write to. This
-happens when your compose file manually mounts directories like `~/.ssh` or `~/.claude` into
-the container:
+A compose volume is already mounted at the same path the plugin is trying to write to. This happens when your compose file manually mounts directories like `~/.ssh` or `~/.claude` into the container:
 
 ```yaml
 # compose.yaml — these conflict with the ssh and coding-agents plugins
@@ -339,19 +322,13 @@ volumes:
   - "./data/claude:/home/vscode/.claude"
 ```
 
-The built-in plugins now handle SSH config/keys and Claude credentials automatically, so these
-compose mounts are redundant. Remove them from your compose file and let the plugins manage
-the files instead.
+The built-in plugins now handle SSH config/keys and Claude credentials automatically, so these compose mounts are redundant. Remove them from your compose file and let the plugins manage the files instead.
 
-If you were using the compose mount as persistent storage (e.g. authenticating Claude inside the
-container), switch to the coding-agents plugin's
-[workspace mode](/crib/guides/plugins/#workspace-mode) instead.
+If you were using the compose mount as persistent storage (e.g. authenticating Claude inside the container), switch to the coding-agents plugin's [workspace mode](/crib/guides/plugins/#workspace-mode) instead.
 
 ### SSH agent not working with Docker-in-Docker
 
-If `SSH_AUTH_SOCK` is set inside the container but the socket file doesn't exist at that path,
-the Docker-in-Docker feature is likely remounting `/tmp` as a fresh tmpfs, hiding the SSH agent
-bind mount underneath it.
+If `SSH_AUTH_SOCK` is set inside the container but the socket file doesn't exist at that path, the Docker-in-Docker feature is likely remounting `/tmp` as a fresh tmpfs, hiding the SSH agent bind mount underneath it.
 
 **Verify:** Check if `/tmp` is a separate tmpfs inside the container:
 
@@ -361,8 +338,7 @@ crib exec -- findmnt /tmp
 
 If it shows `tmpfs` (not the container's root filesystem), DinD has remounted `/tmp`.
 
-**Fix:** Update to crib v0.7.0+, which mounts the SSH agent socket at `/run/ssh-agent.sock`
-instead of `/tmp/ssh-agent.sock` to avoid this conflict.
+**Fix:** Update to crib v0.7.0+, which mounts the SSH agent socket at `/run/ssh-agent.sock` instead of `/tmp/ssh-agent.sock` to avoid this conflict.
 
 If you're on an older version, you can work around it by adding to your `devcontainer.json`:
 
@@ -372,17 +348,10 @@ If you're on an older version, you can work around it by adding to your `devcont
 }
 ```
 
-This creates a symlink from the DinD-mounted `/tmp` to the original mount point visible in PID 1's
-mount namespace.
+This creates a symlink from the DinD-mounted `/tmp` to the original mount point visible in PID 1's mount namespace.
 
 ### Package cache: `bundler` provider and version managers (mise/rbenv)
 
-The `bundler` cache provider sets `BUNDLE_PATH=~/.bundle` so that `bundle install` writes
-gems into the cached volume. This overrides the default gem location, which means gems end up in
-the volume instead of the version manager's directory (e.g.
-`~/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/`).
+The `bundler` cache provider sets `BUNDLE_PATH=~/.bundle` so that `bundle install` writes gems into the cached volume. This overrides the default gem location, which means gems end up in the volume instead of the version manager's directory (e.g. `~/.local/share/mise/installs/ruby/3.4.7/lib/ruby/gems/`).
 
-This is generally fine for bundler-managed projects. The plugin also sets `BUNDLE_BIN=~/.bundle/bin`
-and installs a `/etc/profile.d/` script that adds it to PATH, so gem executables like `rspec` and
-`rubocop` are available in `crib shell` and `crib run` after `bundle install`. `crib exec` doesn't
-source profile scripts, so use `crib run` for commands that depend on bundler binstubs.
+This is generally fine for bundler-managed projects. The plugin also sets `BUNDLE_BIN=~/.bundle/bin` and installs a `/etc/profile.d/` script that adds it to PATH, so gem executables like `rspec` and `rubocop` are available in `crib shell` and `crib run` after `bundle install`. `crib exec` doesn't source profile scripts, so use `crib run` for commands that depend on bundler binstubs.

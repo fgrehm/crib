@@ -5,9 +5,7 @@ description: Platform-specific quirks, performance tips, and workarounds
 
 `crib` compiles and runs on macOS and Windows, but it's developed and tested on Linux. This page covers what to expect and how to get the best experience on other platforms.
 
-:::caution[Untested]
-The recommendations on this page have not been personally tested by the author. They're based on how Docker/Podman work on macOS and Windows generally, and should apply to `crib` since it's just a Docker/Podman client. If you try these and find issues, please [open an issue](https://github.com/fgrehm/crib/issues).
-:::
+:::caution[Untested] The recommendations on this page have not been personally tested by the author. They're based on how Docker/Podman work on macOS and Windows generally, and should apply to `crib` since it's just a Docker/Podman client. If you try these and find issues, please [open an issue](https://github.com/fgrehm/crib/issues). :::
 
 ## The short version
 
@@ -45,9 +43,7 @@ This is the main thing you'll notice. Your project source is bind-mounted from m
 
 ### Recommended setup
 
-:::note
-These recommendations are based on general Docker-on-macOS best practices, not first-hand testing with `crib`. Your mileage may vary.
-:::
+:::note These recommendations are based on general Docker-on-macOS best practices, not first-hand testing with `crib`. Your mileage may vary. :::
 
 1. **Enable VirtioFS** in Docker Desktop (Settings > General > "VirtioFS"). It's the default on recent versions but worth confirming. If using Colima: `colima start --vm-type=vz --mount-type=virtiofs`.
 

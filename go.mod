@@ -1,6 +1,6 @@
 module github.com/fgrehm/crib
 
-go 1.26.3
+go 1.26.5
 
 tool (
 	github.com/fzipp/gocyclo/cmd/gocyclo

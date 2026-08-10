@@ -1,0 +1,71 @@
+# Engine: containerBackend + finalize Architecture
+
+The engine uses a `containerBackend` interface to abstract single-container vs compose differences. All post-creation/post-restart steps converge in a single `finalize` method.
+
+## Backend abstraction
+
+- **`containerBackend`** (`backend.go`): interface with 7 methods: `pluginUser`, `start`, `buildImage`, `createContainer`, `deleteExisting`, `restart`, `canResumeFromStored`.
+- **`singleBackend`** (`backend_single.go`): single-container implementation. Uses `driver.RunOptions` + `driver.RunContainer()`.
+- **`composeBackend`** (`backend_compose.go`): compose implementation. Generates compose override YAML and delegates to `compose up`.
+- **`newBackend`** factory routes by `len(cfg.DockerComposeFile) > 0`.
+
+Plugin dispatch, file copies, env wiring, lifecycle hooks, and result saving live in the shared orchestration layer, never inside the backend.
+
+## Workspace locking
+
+State-mutating commands (up, down, rebuild, restart, remove) acquire an exclusive file lock via `store.Lock(ctx, ws.ID)` before operating. The lock file lives at `~/.crib/workspaces/{id}/.lock`. Read-only commands (exec, run, shell, logs, status, list, doctor) do not lock. The lock respects context cancellation.
+
+## Up() orchestration
+
+`Up()` in `engine.go` parses config, runs `initializeCommand`, creates a backend, then routes to one of three helpers:
+
+- **`upExisting`**: container exists, no recreation. Dispatches plugins, calls `b.start()` if stopped, then `finalize`.
+- **`upCreate`**: no container (or recreation). Checks snapshot/stored result, routes to `upFromImage` or does fresh build + create + finalize.
+- **`upFromImage`**: creates container from snapshot or stored image. Dispatches plugins, calls `b.createContainer(skipBuild: true)`, then `finalize`.
+
+## Restart() orchestration
+
+`Restart()` in `restart.go` loads stored result, detects config changes, then routes to:
+
+- **`restartSimple`**: no config changes. Finds container, dispatches plugins, calls `b.restart()`, then `finalize` with `fromSnapshot: true` and `skipVolumeChown: true`.
+- **`restartRecreate`**: safe config changes. Calls `Down()`, checks snapshot, dispatches plugins, creates container, then `finalize`.
+
+## Unified finalize
+
+`finalize()` in `finalize.go` replaces the old `setupAndReturn`, `finalizeSetup`, `finalizeFromSnapshot`, and `runRecreateLifecycle`. Every flow converges here.
+
+Steps in order:
+1. Plugin file copies (`execPluginCopies`)
+2. Volume chown (if needed)
+3. Remote user resolution
+4. Early save before lifecycle hooks (so `crib exec`/`crib shell` work)
+5. Lifecycle hooks or snapshot restore
+6. Final save after setup completes (with probed env)
+
+## imageMetadata vs featureMetadata
+
+The `finalizeOpts.imageMetadata` field serves two purposes, controlled by `shouldMergeFeatureHooks`:
+
+- **User inference**: Always used. Extracts `remoteUser`/`containerUser` from `devcontainer.metadata` label entries when devcontainer.json omits user fields.
+- **Feature hook merging**: Only when `shouldMergeFeatureHooks=true`. Merges feature lifecycle hooks with user hooks and stores them for the restart/resume path.
+
+**Why the distinction?** On restart/recreate without a rebuild, we inspect the cached image for metadata labels. This label metadata typically lacks feature lifecycle hooks. If we used it for merging, we'd overwrite stored feature hooks with empty values. `shouldMergeFeatureHooks` ensures we only merge+store hooks on first creation (when metadata includes feature hooks from the build) and restore stored hooks on resume.
+
+## remoteEnv is injected at exec time, not baked in
+
+`remoteEnv` (including plugin `PathPrepend` entries) is injected via `docker exec -e`, NOT written to the container's native environment.
+
+## Compose override is regenerated on start/create/restart
+
+The compose override YAML is written to `~/.crib/workspaces/{id}/compose-override.yml` and regenerated whenever compose services are started, created, or restarted. The `composeBackend` methods (`start`, `createContainer`, `restart`) handle override generation internally. When a container is already running, `upExisting` skips regeneration (no backend call needed).
+
+Override generation uses compose-go types (`composetypes.ServiceConfig`, `composetypes.Project`) and `project.MarshalYAML()`. Volume targets from the user's compose files are loaded via `existingVolumeTargets()` to avoid duplicate mount destinations during merge (compose-go emits long-form volumes which podman-compose does not deduplicate against short-form).
+
+## Persisted build artifacts
+
+The workspace state directory (`~/.crib/workspaces/{id}/`) stores artifacts for troubleshooting:
+
+| File | Written by | Contents |
+|------|-----------|----------|
+| `compose-override.yml` | `generateComposeOverride()` | Last compose override YAML (compose only) |
+| `Dockerfile` | `doBuild()` | Generated Dockerfile used for the last image build |

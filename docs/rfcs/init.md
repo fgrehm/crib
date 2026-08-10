@@ -1,7 +1,6 @@
 # RFC: `crib init`
 
-**Status:** Draft
-**Goal:** Generate a working devcontainer config from project conventions so users can `crib init && crib up` without writing JSON.
+**Status:** Draft **Goal:** Generate a working devcontainer config from project conventions so users can `crib init && crib up` without writing JSON.
 
 ## Problem
 
@@ -140,8 +139,7 @@ Use `text/template` with `go:embed`. Each project type has:
 - An optional `Dockerfile` template
 - A list of recommended cache providers
 
-Templates produce valid JSON with comments (jsonc). Keep them minimal and
-well-commented so users understand what each field does.
+Templates produce valid JSON with comments (jsonc). Keep them minimal and well-commented so users understand what each field does.
 
 ### Phases
 

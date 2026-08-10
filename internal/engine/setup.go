@@ -324,7 +324,7 @@ func (e *Engine) execFindUserByUID(ctx context.Context, cc containerContext, uid
 		return "", nil // getent exits non-zero when not found; treat as "not found"
 	}
 	// Output: "username:x:uid:gid:comment:home:shell"
-	name := strings.SplitN(strings.TrimSpace(stdout.String()), ":", 2)[0]
+	name, _, _ := strings.Cut(strings.TrimSpace(stdout.String()), ":")
 	return name, nil
 }
 
@@ -336,7 +336,7 @@ func (e *Engine) execFindGroupByGID(ctx context.Context, cc containerContext, gi
 		return "", nil // getent exits non-zero when not found; treat as "not found"
 	}
 	// Output: "groupname:x:gid:members"
-	name := strings.SplitN(strings.TrimSpace(stdout.String()), ":", 2)[0]
+	name, _, _ := strings.Cut(strings.TrimSpace(stdout.String()), ":")
 	return name, nil
 }
 

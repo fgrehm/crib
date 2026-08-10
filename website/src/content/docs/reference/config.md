@@ -3,15 +3,11 @@ title: Configuration
 description: crib configuration files and options.
 ---
 
-crib reads settings from two TOML files: a user-level global config at
-`~/.config/crib/config.toml` and a per-project `.cribrc` from the directory
-passed via `--dir`, or the current working directory if `--dir` is not set.
-Project-level values override global values on key conflicts.
+crib reads settings from two TOML files: a user-level global config at `~/.config/crib/config.toml` and a per-project `.cribrc` from the directory passed via `--dir`, or the current working directory if `--dir` is not set. Project-level values override global values on key conflicts.
 
 ## Global config: `~/.config/crib/config.toml`
 
-Respects `$XDG_CONFIG_HOME`. The file is optional; missing sections fall back
-to crib's built-in defaults.
+Respects `$XDG_CONFIG_HOME`. The file is optional; missing sections fall back to crib's built-in defaults.
 
 ### `[dotfiles]`
 
@@ -30,8 +26,7 @@ to crib's built-in defaults.
 
 ### `[workspace]`
 
-Settings applied to every `crib up` regardless of project. Lower priority
-than project-level config: project values win on key conflicts.
+Settings applied to every `crib up` regardless of project. Lower priority than project-level config: project values win on key conflicts.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
@@ -39,8 +34,7 @@ than project-level config: project values win on key conflicts.
 | `mount` | array of strings | | Mount specs (`target` required; `type` optional; accepts `src`/`source`, `dst`/`destination`/`target`, and `readonly`/`ro`) |
 | `run_args` | array of strings | | Extra container runtime arguments (single-container mode only) |
 
-Global `run_args` are honored only for single-container workspaces. For
-compose-based workspaces, set runtime options directly in the compose YAML.
+Global `run_args` are honored only for single-container workspaces. For compose-based workspaces, set runtime options directly in the compose YAML.
 
 #### Variable substitution
 
@@ -66,9 +60,7 @@ run_args = ["--cap-add", "SYS_PTRACE"]
 
 ## Per-project config: `.cribrc`
 
-Placed in the project root. Merges with the global config; project values
-override global on conflicts. When `--dir` is passed, `.cribrc` is read from
-that directory; otherwise it comes from the current working directory.
+Placed in the project root. Merges with the global config; project values override global on conflicts. When `--dir` is passed, `.cribrc` is read from that directory; otherwise it comes from the current working directory.
 
 | Key | Type | Description |
 |---|---|---|
@@ -84,8 +76,7 @@ that directory; otherwise it comes from the current working directory.
 | `workspace.mount` | array | Extra mounts for this project (merged before global mounts; project wins on target conflicts) |
 | `workspace.run_args` | array | Extra runtime args for this project (win over global on flag conflicts; lose to `devcontainer.json` runArgs) |
 
-Both TOML array syntax and the legacy comma-separated string form are
-accepted for list values:
+Both TOML array syntax and the legacy comma-separated string form are accepted for list values:
 
 ```toml
 # TOML array (preferred)

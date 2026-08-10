@@ -196,8 +196,7 @@ func Execute() int {
 		u := newUI()
 		u.Error(err.Error())
 		fmt.Fprintf(os.Stderr, "\ncrib %s (%s)\n", version, commit)
-		var ue *errUsage
-		if errors.As(err, &ue) {
+		if _, ok := errors.AsType[*errUsage](err); ok {
 			return exitUsage
 		}
 		return exitError
