@@ -249,9 +249,10 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 			if err := driver.WriteEnvFile(envPath, envList); err != nil {
 				return "", fmt.Errorf("writing env file: %w", err)
 			}
-			// Required defaults to true; we always write the file before
-			// referencing it, so a missing file should fail loudly.
-			svc.EnvFiles = []composetypes.EnvFile{{Path: envPath}}
+			// Required: true (the compose default) makes a missing file fail loudly.
+			// OptOut has inverted zero-value semantics: leaving it unset marshals as
+			// `required: false` (silent skip), so set it explicitly.
+			svc.EnvFiles = []composetypes.EnvFile{{Path: envPath, Required: true}}
 		} else {
 			svc.Environment = env
 		}
