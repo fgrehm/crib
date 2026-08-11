@@ -1345,3 +1345,36 @@ func TestResolveConfigEnvFromStored_ContainerEnvDefault(t *testing.T) {
 		t.Errorf("DISPLAY = %q, want localhost:0", got["DISPLAY"])
 	}
 }
+
+func TestComputeGlobalWSHash(t *testing.T) {
+	// Empty options hash to "" so unset matches never-set.
+	if got := computeGlobalWSHash(GlobalWorkspaceOptions{}); got != "" {
+		t.Errorf("empty hash = %q, want empty", got)
+	}
+
+	opts := GlobalWorkspaceOptions{
+		Env:     map[string]string{"FOO": "bar", "BAZ": "qux"},
+		Mounts:  []string{"type=bind,source=/x,target=/y"},
+		RunArgs: []string{"--init"},
+	}
+	h := computeGlobalWSHash(opts)
+	if h == "" {
+		t.Fatal("expected non-empty hash for non-empty options")
+	}
+
+	// Map iteration order must not affect the hash.
+	opts2 := GlobalWorkspaceOptions{
+		Env:     map[string]string{"BAZ": "qux", "FOO": "bar"},
+		Mounts:  []string{"type=bind,source=/x,target=/y"},
+		RunArgs: []string{"--init"},
+	}
+	if got := computeGlobalWSHash(opts2); got != h {
+		t.Errorf("hash not stable across map order: %q vs %q", got, h)
+	}
+
+	// A value change must produce a different hash.
+	opts.Env["FOO"] = "changed"
+	if got := computeGlobalWSHash(opts); got == h {
+		t.Errorf("expected hash to change after value edit, still %q", h)
+	}
+}

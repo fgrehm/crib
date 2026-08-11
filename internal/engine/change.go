@@ -99,7 +99,42 @@ func detectConfigChange(stored, current *config.DevContainerConfig) configChange
 	return changeNone
 }
 
-// --- comparison helpers ---
+// computeGlobalWSHash computes a short fingerprint of the effective merged
+// workspace options (global config.toml [workspace] + project .cribrc
+// [workspace]: env, mounts, run_args). Used by restart to detect changes to
+// global settings that live outside devcontainer.json and are therefore
+// invisible to detectConfigChange. Returns "" for empty options so an unset
+// global config matches a never-set one. Hashes pre-substitution values so
+// host-env drift doesn't masquerade as a config change.
+func computeGlobalWSHash(opts GlobalWorkspaceOptions) string {
+	if len(opts.Env) == 0 && len(opts.Mounts) == 0 && len(opts.RunArgs) == 0 {
+		return ""
+	}
+	h := sha256.New()
+	keys := make([]string, 0, len(opts.Env))
+	for k := range opts.Env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		h.Write([]byte("env:"))
+		h.Write([]byte(k))
+		h.Write([]byte{0})
+		h.Write([]byte(opts.Env[k]))
+		h.Write([]byte{0})
+	}
+	for _, m := range opts.Mounts {
+		h.Write([]byte("mount:"))
+		h.Write([]byte(m))
+		h.Write([]byte{0})
+	}
+	for _, a := range opts.RunArgs {
+		h.Write([]byte("arg:"))
+		h.Write([]byte(a))
+		h.Write([]byte{0})
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)[:8])
+}
 
 func stringMapsEqual(a, b map[string]string) bool {
 	if len(a) != len(b) {

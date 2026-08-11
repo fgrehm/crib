@@ -98,6 +98,17 @@ func (e *Engine) Restart(ctx context.Context, ws *workspace.Workspace) (*Restart
 		}
 	}
 
+	// Global workspace config (config.toml [workspace] + .cribrc [workspace])
+	// lives outside devcontainer.json, so detectConfigChange can't see it. A
+	// change to env/mounts/run_args there still requires a container recreate
+	// (single) or override regeneration (compose) to take effect.
+	if change == changeNone {
+		if curGlobalHash := computeGlobalWSHash(e.globalWS); curGlobalHash != storedResult.GlobalWSHash {
+			e.logger.Debug("global workspace config changed", "stored", storedResult.GlobalWSHash, "current", curGlobalHash)
+			change = changeSafe
+		}
+	}
+
 	b := e.newBackend(ws, cfg, workspaceFolder)
 
 	switch change {

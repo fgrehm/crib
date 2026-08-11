@@ -528,6 +528,7 @@ func (e *Engine) saveResult(ws *workspace.Workspace, cfg *config.DevContainerCon
 	} else {
 		wsResult.ComposeFilesHash = ""
 	}
+	wsResult.GlobalWSHash = computeGlobalWSHash(e.globalWS)
 
 	if err := e.store.SaveResult(ws.ID, wsResult); err != nil {
 		e.logger.Warn("failed to save workspace result", "error", err)
