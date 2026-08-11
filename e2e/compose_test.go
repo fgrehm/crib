@@ -23,13 +23,17 @@ const composeDockerCompose = `services:
 
 // composeDevcontainerJSON is the devcontainer.json for the compose e2e test.
 // Exercises: workspaceFolder variable expansion, remoteEnv with ${containerEnv:VAR},
-// runServices, and postCreateCommand.
+// runServices, postCreateCommand, and containerEnv injected via crib's env_file
+// (so the env_file path is exercised on both docker and podman e2e jobs).
 const composeDevcontainerJSON = `{
 	"name": "compose-e2e",
 	"dockerComposeFile": "docker-compose.yml",
 	"service": "app",
 	"runServices": ["app", "db"],
 	"workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+	"containerEnv": {
+		"CRIB_E2E_ENVFILE": "injected-via-envfile"
+	},
 	"remoteEnv": {
 		"PROJECT_NAME": "${containerEnv:PROJECT}",
 		"REDIS_URL": "redis://db:6379"
@@ -175,6 +179,13 @@ func TestE2ECompose(t *testing.T) {
 	outLast := lastLine(out)
 	if outLast != baseName {
 		t.Errorf("printenv PROJECT_NAME: want %q, got %q", baseName, outLast)
+	}
+
+	// containerEnv is injected via crib's env_file (container.env); assert it
+	// reaches the container so the env_file path is covered on both runtimes.
+	out = mustRunCrib(t, projectDir, cribHome, "exec", "--", "printenv", "CRIB_E2E_ENVFILE")
+	if lastLine(out) != "injected-via-envfile" {
+		t.Errorf("printenv CRIB_E2E_ENVFILE: want %q, got %q", "injected-via-envfile", out)
 	}
 
 	// 3. remoteEnv: static REDIS_URL passed through unchanged.
