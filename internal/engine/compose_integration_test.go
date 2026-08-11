@@ -614,6 +614,78 @@ volumes:
 	}
 }
 
+// TestIntegrationComposeRestartGlobalWSChange verifies that Restart detects
+// a change to the global workspace config on a compose workspace and
+// regenerates the override (container.env) so the new env reaches the
+// service container. The global [workspace] options live outside
+// devcontainer.json and the compose files, so neither detectConfigChange nor
+// the compose-files hash can see them; restart compares GlobalWSHash instead.
+func TestIntegrationComposeRestartGlobalWSChange(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngineWithCompose(t)
+
+	projectDir := t.TempDir()
+	wsID := "test-compose-restart-global-ws"
+	ws := writeComposeDevcontainer(t, projectDir, wsID)
+
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
+
+	checkEnv := func(want string) {
+		t.Helper()
+		container, err := d.FindContainer(ctx, ws.ID)
+		if err != nil {
+			t.Fatalf("FindContainer: %v", err)
+		}
+		if container == nil {
+			t.Fatal("container not found")
+		}
+		var stdout bytes.Buffer
+		if err := d.ExecContainer(ctx, ws.ID, container.ID, []string{"printenv", "GLOBAL_COMPOSE_RESTART"}, nil, &stdout, nil, nil, ""); err != nil {
+			t.Fatalf("printenv GLOBAL_COMPOSE_RESTART: %v", err)
+		}
+		if got := strings.TrimSpace(stdout.String()); got != want {
+			t.Errorf("GLOBAL_COMPOSE_RESTART = %q, want %q", got, want)
+		}
+	}
+
+	// Up with global env A.
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{Env: map[string]string{"GLOBAL_COMPOSE_RESTART": "before"}})
+	result1, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	checkEnv("before")
+
+	// Change only the global workspace env (compose file and devcontainer.json untouched).
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{Env: map[string]string{"GLOBAL_COMPOSE_RESTART": "after"}})
+
+	restartResult, err := e.Restart(ctx, ws)
+	if err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	if !restartResult.Recreated {
+		t.Fatal("expected Recreated=true after global workspace config change")
+	}
+	if restartResult.ContainerID == result1.ContainerID {
+		t.Error("container ID should be different after recreate")
+	}
+	checkEnv("after")
+
+	// A second restart with no further changes should be simple (hash in sync).
+	simple, err := e.Restart(ctx, ws)
+	if err != nil {
+		t.Fatalf("second Restart: %v", err)
+	}
+	if simple.Recreated {
+		t.Error("expected simple restart (Recreated=false) when global config is unchanged")
+	}
+}
+
 // TestIntegrationComposeRestartNoChangeSimple verifies that restart does a
 // simple restart (no recreate) when compose file contents haven't changed.
 func TestIntegrationComposeRestartNoChangeSimple(t *testing.T) {
