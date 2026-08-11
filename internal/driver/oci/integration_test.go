@@ -177,6 +177,73 @@ func TestIntegrationRunContainerEnvFile(t *testing.T) {
 	check("EQUALS", "a=b")
 }
 
+// TestIntegrationExecContainerEnvFile verifies that env vars passed to
+// ExecContainer via the --env-file mechanism round-trip correctly, including
+// values that docker/podman exec's env-file parser treats literally (quotes,
+// whitespace, #, $, =). Mirrors TestIntegrationRunContainerEnvFile for the exec
+// path used by hooks, setup, and plugins.
+func TestIntegrationExecContainerEnvFile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	d := newTestDriver(t)
+	wsID := "test-exec-env-file"
+
+	_ = d.DeleteContainer(ctx, wsID, ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, ContainerName(wsID))
+	})
+
+	// Start a container with no env of its own; the exec env file is the
+	// only source for these vars.
+	if _, err := d.RunContainer(ctx, wsID, &driver.RunOptions{
+		Image:      "alpine:3.20",
+		Entrypoint: "/bin/sh",
+		Cmd:        []string{"-c", "sleep infinity"},
+	}); err != nil {
+		t.Fatalf("RunContainer: %v", err)
+	}
+
+	container, err := d.FindContainer(ctx, wsID)
+	if err != nil {
+		t.Fatalf("FindContainer: %v", err)
+	}
+	if container == nil {
+		t.Fatal("FindContainer returned nil")
+	}
+
+	env := []string{
+		"PLAIN=value",
+		"QUOTED=\"hi\"",
+		"LEADING= value",
+		"TRAILING=value ",
+		"HASH=bar#baz",
+		"DOLLAR=$HOME",
+		"EQUALS=a=b",
+	}
+
+	check := func(name, want string) {
+		t.Helper()
+		var stdout bytes.Buffer
+		if err := d.ExecContainer(ctx, wsID, container.ID, []string{"printenv", name}, nil, &stdout, nil, env, ""); err != nil {
+			t.Fatalf("exec printenv %s: %v", name, err)
+		}
+		if got := stdout.String(); got != want+"\n" {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+
+	check("PLAIN", "value")
+	check("QUOTED", "\"hi\"")
+	check("LEADING", " value")
+	check("TRAILING", "value ")
+	check("HASH", "bar#baz")
+	check("DOLLAR", "$HOME")
+	check("EQUALS", "a=b")
+}
+
 func TestIntegrationBuildAndInspect(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")

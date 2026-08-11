@@ -283,6 +283,11 @@ func TestGenerateComposeOverride_PluginEnv(t *testing.T) {
 	if !strings.Contains(content, "env_file:") {
 		t.Errorf("expected env_file in override, got:\n%s", content)
 	}
+	// Required defaults to true (omitted); a regression to `required: false`
+	// would let compose silently skip a missing container.env.
+	if strings.Contains(content, "required: false") {
+		t.Errorf("env_file must not be marked required: false, got:\n%s", content)
+	}
 }
 
 func TestGenerateComposeOverride_PluginEnvMergedWithConfigEnv(t *testing.T) {

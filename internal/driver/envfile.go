@@ -77,13 +77,13 @@ func EnvFileSafe(env []string) bool {
 // values. Values containing any of those constructs would be silently mutated,
 // so they must fall back to the inline `environment:` block instead.
 func EnvFileSafeForCompose(env []string) bool {
+	if !EnvFileSafe(env) {
+		return false
+	}
 	for _, e := range env {
 		_, v, ok := strings.Cut(e, "=")
 		if !ok {
 			continue
-		}
-		if strings.Contains(v, "\n") {
-			return false
 		}
 		if strings.ContainsAny(v, `"'`) {
 			return false

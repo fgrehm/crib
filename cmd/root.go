@@ -381,6 +381,12 @@ func appendRemoteEnv(args []string, result *workspace.Result) []string {
 //
 // User-supplied -e/--env-file flags added by the caller afterward still win,
 // matching docker/podman last-wins env resolution.
+//
+// Concurrency: shell/exec/run don't acquire the workspace lock, so two
+// concurrent invocations in the same workspace both overwrite exec.env. This
+// is benign in practice: same-env calls write identical content, and a
+// shell-vs-exec race can at worst drop or leak the SHELL var (harmless). The
+// runtime reads the file atomically at exec start.
 func applyExecEnvFile(args []string, store *workspace.Store, wsID string, result *workspace.Result, extra map[string]string) ([]string, error) {
 	env := map[string]string{}
 	maps.Copy(env, extra)

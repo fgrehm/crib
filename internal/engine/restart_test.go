@@ -1377,4 +1377,27 @@ func TestComputeGlobalWSHash(t *testing.T) {
 	if got := computeGlobalWSHash(opts); got == h {
 		t.Errorf("expected hash to change after value edit, still %q", h)
 	}
+
+	// A mounts change must produce a different hash.
+	base := GlobalWorkspaceOptions{
+		Env:    map[string]string{"K": "v"},
+		Mounts: []string{"type=bind,source=/a,target=/a"},
+	}
+	baseHash := computeGlobalWSHash(base)
+	withMount := GlobalWorkspaceOptions{
+		Env:    map[string]string{"K": "v"},
+		Mounts: []string{"type=bind,source=/a,target=/a", "type=bind,source=/b,target=/b"},
+	}
+	if got := computeGlobalWSHash(withMount); got == baseHash {
+		t.Errorf("expected hash to change after adding a mount, still %q", baseHash)
+	}
+
+	// A run_args change must produce a different hash.
+	withArgs := GlobalWorkspaceOptions{
+		Env:     map[string]string{"K": "v"},
+		RunArgs: []string{"--init"},
+	}
+	if got := computeGlobalWSHash(withArgs); got == baseHash {
+		t.Errorf("expected hash to differ from base when run_args added, both %q", baseHash)
+	}
 }
