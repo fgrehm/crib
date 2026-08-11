@@ -55,9 +55,13 @@ Integration tests live alongside unit tests in `*_integration_test.go` files (pr
 
 **Pattern**: `newTestEngine(t)` creates an engine with a real `OCIDriver` and a temp-dir workspace store. Tests create a temp project dir, write `.devcontainer/devcontainer.json`, build a `workspace.Workspace` struct, call `e.Up(ctx, ws, UpOptions{})`, then verify side effects via `d.ExecContainer(ctx, ...)`. Cleanup with `t.Cleanup` deletes containers and images via `cleanupWorkspaceImages(t, d, wsID)`.
 
+The driver layer has its own pattern in `internal/driver/oci/integration_test.go`: `newTestDriver(t)` builds a real `OCIDriver`, tests start a container via `RunContainer` (or reuse one) and verify behavior with `ExecContainer` + `printenv`. Use it for changes to `docker run`/`exec` argument construction, env-file injection, and other driver-level concerns that don't need the full engine.
+
 **Convention**: Test function names start with `TestIntegration`. Workspace IDs use `test-engine-<suffix>` to avoid collisions. Use `alpine:3.20` as the base image (small, fast to pull). Local features go in the temp project's `.devcontainer/` directory.
 
-**Requirement**: Always write integration tests for new engine features that touch the container lifecycle (hooks, env, user, features). Unit tests with mock drivers are good for logic but miss real Docker/Podman behavior.
+**Requirement**: Always write integration tests for features that touch the container lifecycle across any layer (engine, driver/OCI, compose, cmd). Unit tests with mock drivers are good for logic but miss real Docker/Podman behavior.
+
+When a change affects multiple code paths (single-container vs compose, `docker run` vs `exec`, restart vs up), add an integration test for **each** path. They exercise different injection points (env-file for run, `env_file:` for compose, `exec.env` for the cmd passthrough), and a single path's test won't catch a regression in the others.
 
 ### Parallel test safety
 
