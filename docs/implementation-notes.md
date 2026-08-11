@@ -96,17 +96,17 @@ The "config wins" contract is enforced by `backend.pluginUser()` before plugin d
 `crib restart` compares the current devcontainer config against the stored config from the last `crib up` to determine the minimal action needed:
 
 - **No changes**: Simple `docker restart` / `docker compose restart`, then run the spec's Resume Flow hooks (`postStartCommand` + `postAttachCommand`).
-- **Safe changes** (volumes, mounts, ports, env, runArgs, user, etc.): Recreate the container with the new config, then run Resume Flow hooks only. Creation-time hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`) are skipped since their marker files still exist.
+- **Safe changes** (volumes, mounts, ports, env, runArgs, user, etc., or global workspace config: `config.toml` `[workspace]` / `.cribrc` `[workspace]` env, mounts, run_args): Recreate the container with the new config, then run Resume Flow hooks only. Creation-time hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`) are skipped since their marker files still exist.
 - **Image-affecting changes** (image, Dockerfile, features, build args): Error with a message suggesting `crib rebuild`, since the image needs to be rebuilt.
 
 This follows the devcontainer spec's distinction between Creation Flow (all hooks) and Resume Flow (only `postStartCommand` + `postAttachCommand`). The result is that tweaking a volume mount or environment variable takes seconds instead of minutes.
 
-Change detection uses JSON comparison of the stored `MergedConfig` against a freshly parsed and substituted config. Fields are classified as "image-affecting" or "safe" based on whether they require a new image build or just container runtime configuration.
+Change detection combines three comparisons: JSON comparison of the stored `MergedConfig` against a freshly parsed and substituted config, a content fingerprint of the compose files (`ComposeFilesHash`, so edits inside a compose file are caught even though devcontainer.json is unchanged), and a fingerprint of the merged global workspace options (`GlobalWSHash`, since `config.toml` / `.cribrc` `[workspace]` env/mounts/run_args live outside devcontainer.json). The fingerprints are persisted by `saveResult` and compared on restart; any mismatch routes to `restartRecreate`. Fields are classified as "image-affecting" or "safe" based on whether they require a new image build or just container runtime configuration.
 
 **Files**:
 
 - `internal/engine/restart.go` (`Restart`, `restartSimple`, `restartRecreate`)
-- `internal/engine/change.go` (`detectConfigChange`)
+- `internal/engine/change.go` (`detectConfigChange`, `computeComposeFilesHash`, `computeGlobalWSHash`)
 - `internal/engine/lifecycle.go` (`runResumeHooks`)
 
 ### Early result persistence

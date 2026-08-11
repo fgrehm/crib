@@ -30,6 +30,8 @@ State-mutating commands (up, down, rebuild, restart, remove) acquire an exclusiv
 - **`restartSimple`**: no config changes. Finds container, dispatches plugins, calls `b.restart()`, then `finalize` with `fromSnapshot: true` and `skipVolumeChown: true`.
 - **`restartRecreate`**: safe config changes. Calls `Down()`, checks snapshot, dispatches plugins, creates container, then `finalize`.
 
+Change detection compares the devcontainer config, the compose files' content fingerprint (`ComposeFilesHash`), and the merged global workspace options fingerprint (`GlobalWSHash` — `config.toml` + `.cribrc` `[workspace]`). A global-only change routes to `restartRecreate` so the env/mounts/run_args are re-applied (single) or the override + `container.env` regenerated (compose). The fingerprints are persisted by `saveResult` on every up/rebuild/restart.
+
 ## Unified finalize
 
 `finalize()` in `finalize.go` replaces the old `setupAndReturn`, `finalizeSetup`, `finalizeFromSnapshot`, and `runRecreateLifecycle`. Every flow converges here.

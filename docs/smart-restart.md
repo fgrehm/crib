@@ -10,6 +10,7 @@ description: How crib restart detects changes and picks the fastest strategy.
 | Nothing | Simple container restart (`docker restart`) | `postStartCommand` + `postAttachCommand` |
 | Volumes, mounts, ports, env, runArgs, user | Container recreated with new config | `postStartCommand` + `postAttachCommand` |
 | Compose file contents (volumes, ports, env, etc.) | Container recreated with new config | `postStartCommand` + `postAttachCommand` |
+| Global workspace config (`config.toml` `[workspace]`, `.cribrc` `[workspace]`: env, mounts, run_args) | Container recreated with new config | `postStartCommand` + `postAttachCommand` |
 | Image, Dockerfile, features, build args | Error, suggests `crib rebuild` | - |
 
 This follows the [devcontainer spec's Resume Flow](https://containers.dev/implementors/spec/#lifecycle): on restart, only `postStartCommand` and `postAttachCommand` run. Creation-time hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`) are skipped since they already ran when the container was first created.
@@ -32,6 +33,7 @@ Use **`crib restart`** when you changed:
 - Port mappings (`forwardPorts`, `appPort`)
 - `runArgs` or `remoteUser`
 - Docker Compose file contents (volumes, ports, environment, networks, etc.)
+- Global workspace settings (`~/.config/crib/config.toml` `[workspace]` or project `.cribrc` `[workspace]`: env, mounts, run_args)
 
 Use **`crib rebuild`** when you changed:
 - The base image (`image` or `FROM` in Dockerfile)
@@ -44,7 +46,7 @@ Use **`crib rebuild`** when you changed:
 
 ## What restart doesn't detect
 
-`restart` compares devcontainer.json fields and compose file contents, but it does not read files referenced by those configs. If you change the contents of a Dockerfile used by your compose `build:` section (e.g. upgrading a Ruby version in `FROM ruby:3.3` to `FROM ruby:3.4`), `restart` won't notice because the compose YAML itself didn't change. The same applies to Dockerfiles referenced by `dockerfile` in devcontainer.json.
+`restart` compares devcontainer.json fields, compose file contents, and the global workspace config fingerprint (`config.toml` / `.cribrc` `[workspace]`), but it does not read files referenced by those configs. If you change the contents of a Dockerfile used by your compose `build:` section (e.g. upgrading a Ruby version in `FROM ruby:3.3` to `FROM ruby:3.4`), `restart` won't notice because the compose YAML itself didn't change. The same applies to Dockerfiles referenced by `dockerfile` in devcontainer.json.
 
 In these cases, use `crib rebuild`:
 
