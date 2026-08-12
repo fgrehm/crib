@@ -81,7 +81,10 @@ Use -- to separate crib flags from the container command:
 		if workdir != "" {
 			execArgs = append(execArgs, "-w", workdir)
 		}
-		execArgs = appendRemoteEnv(execArgs, result)
+		execArgs, err = applyExecEnvFile(execArgs, store, ws.ID, result, nil)
+		if err != nil {
+			return err
+		}
 
 		envVars, _ := cmd.Flags().GetStringSlice("env")
 		for _, envVar := range envVars {

@@ -1345,3 +1345,59 @@ func TestResolveConfigEnvFromStored_ContainerEnvDefault(t *testing.T) {
 		t.Errorf("DISPLAY = %q, want localhost:0", got["DISPLAY"])
 	}
 }
+
+func TestComputeGlobalWSHash(t *testing.T) {
+	// Empty options hash to "" so unset matches never-set.
+	if got := computeGlobalWSHash(GlobalWorkspaceOptions{}); got != "" {
+		t.Errorf("empty hash = %q, want empty", got)
+	}
+
+	opts := GlobalWorkspaceOptions{
+		Env:     map[string]string{"FOO": "bar", "BAZ": "qux"},
+		Mounts:  []string{"type=bind,source=/x,target=/y"},
+		RunArgs: []string{"--init"},
+	}
+	h := computeGlobalWSHash(opts)
+	if h == "" {
+		t.Fatal("expected non-empty hash for non-empty options")
+	}
+
+	// Map iteration order must not affect the hash.
+	opts2 := GlobalWorkspaceOptions{
+		Env:     map[string]string{"BAZ": "qux", "FOO": "bar"},
+		Mounts:  []string{"type=bind,source=/x,target=/y"},
+		RunArgs: []string{"--init"},
+	}
+	if got := computeGlobalWSHash(opts2); got != h {
+		t.Errorf("hash not stable across map order: %q vs %q", got, h)
+	}
+
+	// A value change must produce a different hash.
+	opts.Env["FOO"] = "changed"
+	if got := computeGlobalWSHash(opts); got == h {
+		t.Errorf("expected hash to change after value edit, still %q", h)
+	}
+
+	// A mounts change must produce a different hash.
+	base := GlobalWorkspaceOptions{
+		Env:    map[string]string{"K": "v"},
+		Mounts: []string{"type=bind,source=/a,target=/a"},
+	}
+	baseHash := computeGlobalWSHash(base)
+	withMount := GlobalWorkspaceOptions{
+		Env:    map[string]string{"K": "v"},
+		Mounts: []string{"type=bind,source=/a,target=/a", "type=bind,source=/b,target=/b"},
+	}
+	if got := computeGlobalWSHash(withMount); got == baseHash {
+		t.Errorf("expected hash to change after adding a mount, still %q", baseHash)
+	}
+
+	// A run_args change must produce a different hash.
+	withArgs := GlobalWorkspaceOptions{
+		Env:     map[string]string{"K": "v"},
+		RunArgs: []string{"--init"},
+	}
+	if got := computeGlobalWSHash(withArgs); got == baseHash {
+		t.Errorf("expected hash to differ from base when run_args added, both %q", baseHash)
+	}
+}

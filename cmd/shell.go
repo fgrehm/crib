@@ -62,8 +62,7 @@ Working directory is set to the workspace folder if available.`,
 		execArgs := []string{runtimeBin, "exec", "-i", "-t"}
 
 		// Set SHELL environment variable so the shell and its child processes
-		// know which shell is running
-		execArgs = append(execArgs, "-e", "SHELL="+shellPath)
+		// know which shell is running. Injected via the exec env file below.
 
 		// Inject remoteEnv variables and set working directory from saved result.
 		result, _ := store.LoadResult(ws.ID)
@@ -77,7 +76,10 @@ Working directory is set to the workspace folder if available.`,
 		if remoteUser != "" {
 			execArgs = append(execArgs, "-u", remoteUser)
 		}
-		execArgs = appendRemoteEnv(execArgs, result)
+		execArgs, err = applyExecEnvFile(execArgs, store, ws.ID, result, map[string]string{"SHELL": shellPath})
+		if err != nil {
+			return err
+		}
 		if result != nil && result.WorkspaceFolder != "" {
 			execArgs = append(execArgs, "-w", result.WorkspaceFolder)
 		}

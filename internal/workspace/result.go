@@ -57,6 +57,13 @@ type Result struct {
 	// invisible to devcontainer.json config comparison.
 	ComposeFilesHash string `json:"composeFilesHash,omitempty"`
 
+	// GlobalWSHash is a short fingerprint of the effective merged workspace
+	// options (global config.toml [workspace] + project .cribrc [workspace]:
+	// env, mounts, run_args) applied at up/rebuild time. Used by restart to
+	// detect changes to global settings that live outside devcontainer.json
+	// and are therefore invisible to the config comparison.
+	GlobalWSHash string `json:"globalWSHash,omitempty"`
+
 	// Feature lifecycle hooks, stored so the resume/restart path can dispatch
 	// them without re-resolving features from OCI registries. These are the
 	// hooks declared in devcontainer-feature.json files, NOT the user's hooks

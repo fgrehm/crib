@@ -176,6 +176,11 @@ func collectFeatureOverrides(metadata []*config.ImageMetadata, subCtx *config.Su
 func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.DevContainerConfig, workspaceFolder string, composeFiles []string, featureImage string, pluginResp *plugin.PreContainerRunResponse, featureMetadata ...*config.ImageMetadata) (string, error) {
 	serviceName := cfg.Service
 
+	wsDir := e.store.WorkspaceDir(ws.ID)
+	if err := os.MkdirAll(wsDir, 0o755); err != nil {
+		return "", fmt.Errorf("creating workspace directory: %w", err)
+	}
+
 	labels := composetypes.Labels{
 		ocidriver.LabelWorkspace: ws.ID,
 	}
@@ -233,7 +238,25 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 	svc.SecurityOpt = featOv.SecurityOpt
 
 	globalWS := e.expandedGlobalWorkspace(ws, workspaceFolder)
-	svc.Environment = buildOverrideEnv(cfg, featOv, pluginResp, globalWS.Env)
+	env := buildOverrideEnv(cfg, featOv, pluginResp, globalWS.Env)
+	envList := envToStrings(env)
+	if len(envList) > 0 {
+		if driver.EnvFileSafeForCompose(envList) {
+			// Persist the env file next to the override: compose re-reads it on
+			// every start/create/restart, unlike the single-container path which
+			// uses a transient temp file.
+			envPath := filepath.Join(wsDir, "container.env")
+			if err := driver.WriteEnvFile(envPath, envList); err != nil {
+				return "", fmt.Errorf("writing env file: %w", err)
+			}
+			// Required: true (the compose default) makes a missing file fail loudly.
+			// OptOut has inverted zero-value semantics: leaving it unset marshals as
+			// `required: false` (silent skip), so set it explicitly.
+			svc.EnvFiles = []composetypes.EnvFile{{Path: envPath, Required: true}}
+		} else {
+			svc.Environment = env
+		}
+	}
 
 	// Load existing volume targets from the user's compose files so we
 	// don't produce duplicate mount destinations in the override. Compose
@@ -272,16 +295,31 @@ func (e *Engine) generateComposeOverride(ws *workspace.Workspace, cfg *config.De
 		return "", fmt.Errorf("marshalling compose override: %w", err)
 	}
 
-	wsDir := e.store.WorkspaceDir(ws.ID)
-	if err := os.MkdirAll(wsDir, 0o755); err != nil {
-		return "", fmt.Errorf("creating workspace directory: %w", err)
-	}
 	overridePath := filepath.Join(wsDir, "compose-override.yml")
 	if err := os.WriteFile(overridePath, yamlBytes, 0o644); err != nil {
 		return "", fmt.Errorf("writing compose override: %w", err)
 	}
 
 	return overridePath, nil
+}
+
+// envToStrings flattens a MappingWithEquals into KEY=VALUE strings, skipping
+// entries with nil values (unset). Keys are sorted so the persisted env file
+// has stable line ordering across regenerations.
+//
+// Note: a nil pointer in MappingWithEquals means "unset this variable". The
+// env-file format cannot represent "unset", so such entries are dropped here;
+// the inline `environment:` fallback path would emit them as `KEY:` (null)
+// instead. buildOverrideEnv never produces nils today, so this is latent.
+func envToStrings(env composetypes.MappingWithEquals) []string {
+	keys := slices.Sorted(maps.Keys(env))
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if v := env[k]; v != nil {
+			out = append(out, k+"="+*v)
+		}
+	}
+	return out
 }
 
 // buildOverrideEnv merges environment variables from config, features, and

@@ -222,6 +222,89 @@ func TestIntegrationRestartSafeChange(t *testing.T) {
 	// The snapshot optimization is tested separately in TestIntegrationSnapshot.
 }
 
+// TestIntegrationRestartGlobalWSChange verifies that Restart detects a
+// change to the global workspace config (SetGlobalWorkspace) and recreates
+// the container so the new env is applied. The global [workspace] options
+// live outside devcontainer.json, so detectConfigChange can't see them;
+// restart compares the persisted GlobalWSHash instead.
+func TestIntegrationRestartGlobalWSChange(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngine(t)
+
+	projectDir := t.TempDir()
+	devcontainerDir := filepath.Join(projectDir, ".devcontainer")
+	if err := os.MkdirAll(devcontainerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configContent := `{"image": "alpine:3.20", "overrideCommand": true}`
+	if err := os.WriteFile(filepath.Join(devcontainerDir, "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wsID := "test-restart-global-ws"
+	ws := &workspace.Workspace{
+		ID:               wsID,
+		Source:           projectDir,
+		DevContainerPath: ".devcontainer/devcontainer.json",
+		CreatedAt:        time.Now(),
+		LastUsedAt:       time.Now(),
+	}
+
+	_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+	t.Cleanup(func() {
+		_ = d.DeleteContainer(ctx, wsID, oci.ContainerName(wsID))
+		cleanupWorkspaceImages(t, d, wsID)
+	})
+
+	checkEnv := func(containerID, want string) {
+		t.Helper()
+		var stdout bytes.Buffer
+		if err := d.ExecContainer(ctx, wsID, containerID, []string{"printenv", "GLOBAL_RESTART"}, nil, &stdout, nil, nil, ""); err != nil {
+			t.Fatalf("printenv GLOBAL_RESTART: %v", err)
+		}
+		if got := strings.TrimSpace(stdout.String()); got != want {
+			t.Errorf("GLOBAL_RESTART = %q, want %q", got, want)
+		}
+	}
+
+	// Up with global env A.
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{Env: map[string]string{"GLOBAL_RESTART": "before"}})
+	result, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	originalContainerID := result.ContainerID
+	checkEnv(originalContainerID, "before")
+
+	// Change only the global workspace env (devcontainer.json untouched).
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{Env: map[string]string{"GLOBAL_RESTART": "after"}})
+
+	restartResult, err := e.Restart(ctx, ws)
+	if err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	if !restartResult.Recreated {
+		t.Fatal("expected Recreated=true after global workspace config change")
+	}
+	if restartResult.ContainerID == originalContainerID {
+		t.Error("container ID should be different after recreation")
+	}
+	checkEnv(restartResult.ContainerID, "after")
+
+	// A second restart with no further changes should be simple (hash in sync).
+	simple, err := e.Restart(ctx, ws)
+	if err != nil {
+		t.Fatalf("second Restart: %v", err)
+	}
+	if simple.Recreated {
+		t.Error("expected simple restart (Recreated=false) when global config is unchanged")
+	}
+}
+
 // TestIntegrationRestartNeedsRebuild verifies that Restart returns an error
 // when image-affecting changes are detected.
 func TestIntegrationRestartNeedsRebuild(t *testing.T) {

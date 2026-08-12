@@ -153,6 +153,129 @@ func TestIntegrationComposeDownUpSkipsBuild(t *testing.T) {
 	}
 }
 
+// TestIntegrationComposeEnv verifies containerEnv is visible in a compose
+// container via the env_file mechanism.
+func TestIntegrationComposeEnv(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngineWithCompose(t)
+
+	projectDir := t.TempDir()
+	wsID := "test-compose-env"
+	ws := writeComposeDevcontainer(t, projectDir, wsID)
+
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
+
+	// Add containerEnv to the devcontainer config.
+	configContent := `{
+		"dockerComposeFile": "compose.yml",
+		"service": "app",
+		"overrideCommand": true,
+		"containerEnv": {
+			"COMPOSE_ENV_ONE": "compose-one",
+			"COMPOSE_ENV_TWO": "compose-two"
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(projectDir, ".devcontainer", "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := e.Up(ctx, ws, UpOptions{}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	container, err := d.FindContainer(ctx, ws.ID)
+	if err != nil {
+		t.Fatalf("FindContainer: %v", err)
+	}
+	if container == nil {
+		t.Fatal("container not found after Up")
+	}
+
+	check := func(name, want string) {
+		t.Helper()
+		var stdout bytes.Buffer
+		if err := d.ExecContainer(ctx, ws.ID, container.ID, []string{"printenv", name}, nil, &stdout, nil, nil, ""); err != nil {
+			t.Fatalf("printenv %s: %v", name, err)
+		}
+		got := strings.TrimSpace(stdout.String())
+		if got != want {
+			t.Errorf("%s = %q, want %q", name, got, want)
+		}
+	}
+
+	check("COMPOSE_ENV_ONE", "compose-one")
+	check("COMPOSE_ENV_TWO", "compose-two")
+}
+
+// TestIntegrationComposeEnvPrecedence verifies that a user's compose
+// `environment:` block wins over crib-injected containerEnv on a key conflict
+// (compose precedence: environment > env_file).
+func TestIntegrationComposeEnvPrecedence(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngineWithCompose(t)
+
+	projectDir := t.TempDir()
+	wsID := "test-compose-env-precedence"
+	ws := writeComposeDevcontainer(t, projectDir, wsID)
+
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
+
+	// User's compose file sets FOO via environment:.
+	composeContent := `services:
+  app:
+    image: alpine:3.20
+    command: ["sleep", "infinity"]
+    environment:
+      FOO: from-user-compose
+`
+	if err := os.WriteFile(filepath.Join(projectDir, ".devcontainer", "compose.yml"), []byte(composeContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// devcontainer.json sets the same key via containerEnv.
+	configContent := `{
+		"dockerComposeFile": "compose.yml",
+		"service": "app",
+		"overrideCommand": true,
+		"containerEnv": {
+			"FOO": "from-devcontainer"
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(projectDir, ".devcontainer", "devcontainer.json"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := e.Up(ctx, ws, UpOptions{}); err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+
+	container, err := d.FindContainer(ctx, ws.ID)
+	if err != nil {
+		t.Fatalf("FindContainer: %v", err)
+	}
+	if container == nil {
+		t.Fatal("container not found after Up")
+	}
+
+	var stdout bytes.Buffer
+	if err := d.ExecContainer(ctx, ws.ID, container.ID, []string{"printenv", "FOO"}, nil, &stdout, nil, nil, ""); err != nil {
+		t.Fatalf("printenv FOO: %v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "from-user-compose" {
+		t.Errorf("FOO = %q, want %q (user's compose environment: should win)", got, "from-user-compose")
+	}
+}
+
 // TestIntegrationComposeRestartWithStoppedDeps verifies that restart works
 // even when dependency services are stopped (uses compose up instead of
 // compose restart).
@@ -488,6 +611,78 @@ volumes:
 	}
 	if stored2.ComposeFilesHash == stored.ComposeFilesHash {
 		t.Error("ComposeFilesHash should have changed after restart with new compose content")
+	}
+}
+
+// TestIntegrationComposeRestartGlobalWSChange verifies that Restart detects
+// a change to the global workspace config on a compose workspace and
+// regenerates the override (container.env) so the new env reaches the
+// service container. The global [workspace] options live outside
+// devcontainer.json and the compose files, so neither detectConfigChange nor
+// the compose-files hash can see them; restart compares GlobalWSHash instead.
+func TestIntegrationComposeRestartGlobalWSChange(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx := context.Background()
+	e, d, _ := newTestEngineWithCompose(t)
+
+	projectDir := t.TempDir()
+	wsID := "test-compose-restart-global-ws"
+	ws := writeComposeDevcontainer(t, projectDir, wsID)
+
+	t.Cleanup(func() { cleanupCompose(t, e, d, ws) })
+	cleanupCompose(t, e, d, ws)
+
+	checkEnv := func(want string) {
+		t.Helper()
+		container, err := d.FindContainer(ctx, ws.ID)
+		if err != nil {
+			t.Fatalf("FindContainer: %v", err)
+		}
+		if container == nil {
+			t.Fatal("container not found")
+		}
+		var stdout bytes.Buffer
+		if err := d.ExecContainer(ctx, ws.ID, container.ID, []string{"printenv", "GLOBAL_COMPOSE_RESTART"}, nil, &stdout, nil, nil, ""); err != nil {
+			t.Fatalf("printenv GLOBAL_COMPOSE_RESTART: %v", err)
+		}
+		if got := strings.TrimSpace(stdout.String()); got != want {
+			t.Errorf("GLOBAL_COMPOSE_RESTART = %q, want %q", got, want)
+		}
+	}
+
+	// Up with global env A.
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{Env: map[string]string{"GLOBAL_COMPOSE_RESTART": "before"}})
+	result1, err := e.Up(ctx, ws, UpOptions{})
+	if err != nil {
+		t.Fatalf("Up: %v", err)
+	}
+	checkEnv("before")
+
+	// Change only the global workspace env (compose file and devcontainer.json untouched).
+	e.SetGlobalWorkspace(GlobalWorkspaceOptions{Env: map[string]string{"GLOBAL_COMPOSE_RESTART": "after"}})
+
+	restartResult, err := e.Restart(ctx, ws)
+	if err != nil {
+		t.Fatalf("Restart: %v", err)
+	}
+	if !restartResult.Recreated {
+		t.Fatal("expected Recreated=true after global workspace config change")
+	}
+	if restartResult.ContainerID == result1.ContainerID {
+		t.Error("container ID should be different after recreate")
+	}
+	checkEnv("after")
+
+	// A second restart with no further changes should be simple (hash in sync).
+	simple, err := e.Restart(ctx, ws)
+	if err != nil {
+		t.Fatalf("second Restart: %v", err)
+	}
+	if simple.Recreated {
+		t.Error("expected simple restart (Recreated=false) when global config is unchanged")
 	}
 }
 

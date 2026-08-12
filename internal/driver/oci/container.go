@@ -55,8 +55,15 @@ func (d *OCIDriver) FindContainer(ctx context.Context, workspaceID string) (*dri
 // Returns the chosen container name (default crib-<ws-id> or the runArgs
 // --name override).
 func (d *OCIDriver) RunContainer(ctx context.Context, workspaceID string, options *driver.RunOptions) (string, error) {
-	name, args := d.buildRunArgs(workspaceID, options)
-	_, err := d.helper.Output(ctx, args...)
+	envFile, cleanup, err := driver.WriteEnvTempFile(options.Env)
+	if err != nil {
+		return "", err
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+	name, args := d.buildRunArgs(workspaceID, options, envFile)
+	_, err = d.helper.Output(ctx, args...)
 	if err != nil {
 		return "", fmt.Errorf("running container for workspace %s: %w", workspaceID, err)
 	}
@@ -65,7 +72,7 @@ func (d *OCIDriver) RunContainer(ctx context.Context, workspaceID string, option
 
 // buildRunArgs constructs the `docker run` argument list and returns the
 // container name chosen for the run.
-func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) (string, []string) {
+func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions, envFile string) (string, []string) {
 	// Allow runArgs to override the container name. If --name is present in
 	// ExtraArgs, always strip it to avoid duplicate flags; use the value as
 	// the container name when non-empty.
@@ -95,8 +102,14 @@ func (d *OCIDriver) buildRunArgs(workspaceID string, opts *driver.RunOptions) (s
 		args = append(args, "--user", opts.User)
 	}
 
-	// Environment variables.
-	args = appendFlags(args, "-e", opts.Env)
+	// Environment variables. When an env file is provided, reference it via
+	// --env-file; otherwise fall back to -e flags (e.g. values containing
+	// newlines, which the env-file format cannot represent).
+	if envFile != "" {
+		args = append(args, "--env-file", envFile)
+	} else {
+		args = appendFlags(args, "-e", opts.Env)
+	}
 
 	// Init process.
 	if opts.Init {
@@ -183,9 +196,27 @@ func (d *OCIDriver) DeleteContainer(ctx context.Context, _, containerID string) 
 }
 
 // ExecContainer runs a command inside a container with attached I/O.
-// env is injected as -e KEY=VALUE flags.
-// user overrides the exec user (e.g. "root"); empty string uses the container default.
+// env is injected via an env file (--env-file) when safe, keeping values out of
+// the process table; it falls back to -e flags for values the env-file format
+// cannot represent (e.g. newlines). user overrides the exec user (e.g. "root");
+// empty string uses the container default.
 func (d *OCIDriver) ExecContainer(ctx context.Context, _, containerID string, cmd []string, stdin io.Reader, stdout, stderr io.Writer, env []string, user string) error {
+	envFile, cleanup, err := driver.WriteEnvTempFile(env)
+	if err != nil {
+		return err
+	}
+	if cleanup != nil {
+		defer cleanup()
+	}
+	args := d.buildExecArgs(containerID, cmd, stdin, env, user, envFile)
+	return d.helper.Run(ctx, args, stdin, stdout, stderr)
+}
+
+// buildExecArgs constructs the `docker/podman exec` argument list. envFile is
+// passed via --env-file when non-empty; otherwise env is emitted as -e flags
+// (the fallback for values the env-file format cannot represent, e.g.
+// newlines).
+func (d *OCIDriver) buildExecArgs(containerID string, cmd []string, stdin io.Reader, env []string, user, envFile string) []string {
 	args := []string{"exec"}
 	if stdin != nil {
 		args = append(args, "-i")
@@ -193,12 +224,14 @@ func (d *OCIDriver) ExecContainer(ctx context.Context, _, containerID string, cm
 	if user != "" {
 		args = append(args, "--user", user)
 	}
-	for _, e := range env {
-		args = append(args, "-e", e)
+	if envFile != "" {
+		args = append(args, "--env-file", envFile)
+	} else {
+		args = appendFlags(args, "-e", env)
 	}
 	args = append(args, containerID)
 	args = append(args, cmd...)
-	return d.helper.Run(ctx, args, stdin, stdout, stderr)
+	return args
 }
 
 // ContainerLogs returns the logs from a container.

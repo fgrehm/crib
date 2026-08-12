@@ -3,9 +3,11 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fgrehm/crib/internal/globalconfig"
+	"github.com/fgrehm/crib/internal/workspace"
 	"github.com/spf13/cobra"
 )
 
@@ -347,5 +349,77 @@ func TestResetPerExecutionFlags(t *testing.T) {
 	got = disabledPluginsForCommand(sub)
 	if len(got) != 1 || got[0] != "dotfiles" {
 		t.Errorf("third run: got %v, want [dotfiles] only", got)
+	}
+}
+
+func TestApplyExecEnvFile_WritesEnvFile(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	result := &workspace.Result{RemoteEnv: map[string]string{"FOO": "bar", "BAZ": "qux"}}
+
+	args, err := applyExecEnvFile(nil, store, "ws1", result, nil)
+	if err != nil {
+		t.Fatalf("applyExecEnvFile: %v", err)
+	}
+	got := strings.Join(args, " ")
+	if !strings.Contains(got, "--env-file") {
+		t.Fatalf("expected --env-file in args, got: %s", got)
+	}
+
+	// The env file should contain both vars, written next to the workspace dir.
+	data, err := os.ReadFile(filepath.Join(store.WorkspaceDir("ws1"), "exec.env"))
+	if err != nil {
+		t.Fatalf("reading exec.env: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "FOO=bar\n") || !strings.Contains(content, "BAZ=qux\n") {
+		t.Errorf("unexpected env file content %q", content)
+	}
+}
+
+func TestApplyExecEnvFile_ExtraMergedUnderRemoteEnv(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	result := &workspace.Result{RemoteEnv: map[string]string{"SHELL": "/bin/zsh"}}
+
+	args, err := applyExecEnvFile(nil, store, "ws1", result, map[string]string{"SHELL": "/bin/sh"})
+	if err != nil {
+		t.Fatalf("applyExecEnvFile: %v", err)
+	}
+	if !strings.Contains(strings.Join(args, " "), "--env-file") {
+		t.Fatal("expected --env-file")
+	}
+
+	// remoteEnv wins on key conflict: SHELL must be /bin/zsh.
+	data, _ := os.ReadFile(filepath.Join(store.WorkspaceDir("ws1"), "exec.env"))
+	if got := string(data); !strings.Contains(got, "SHELL=/bin/zsh\n") {
+		t.Errorf("expected SHELL=/bin/zsh (remoteEnv wins), got %q", got)
+	}
+}
+
+func TestApplyExecEnvFile_FallsBackToDashEForNewlines(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	result := &workspace.Result{RemoteEnv: map[string]string{"MULTI": "line\nbreak"}}
+
+	args, err := applyExecEnvFile(nil, store, "ws1", result, map[string]string{"SHELL": "/bin/sh"})
+	if err != nil {
+		t.Fatalf("applyExecEnvFile: %v", err)
+	}
+	got := strings.Join(args, " ")
+	// Fallback emits -e flags (extra first, then remoteEnv).
+	if !strings.Contains(got, "-e SHELL=/bin/sh") || !strings.Contains(got, "-e MULTI=line\nbreak") {
+		t.Errorf("expected -e fallback flags, got: %s", got)
+	}
+	if strings.Contains(got, "--env-file") {
+		t.Errorf("unexpected --env-file in fallback, got: %s", got)
+	}
+}
+
+func TestApplyExecEnvFile_EmptyEmitsNothing(t *testing.T) {
+	store := workspace.NewStoreAt(t.TempDir())
+	args, err := applyExecEnvFile([]string{"exec"}, store, "ws1", nil, nil)
+	if err != nil {
+		t.Fatalf("applyExecEnvFile: %v", err)
+	}
+	if got := strings.Join(args, " "); got != "exec" {
+		t.Errorf("expected unchanged args, got: %s", got)
 	}
 }

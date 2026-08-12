@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Inject container env vars via an env file (`--env-file` / `env_file:`) instead of a long list of `-e` flags, keeping command lines readable and values out of `ps` output. This now covers container creation, the engine's exec calls (hooks/setup/plugins), and the `crib shell`/`exec`/`run` passthrough, which writes a stable `exec.env` next to the workspace state.
+
+  **Note**: in compose, a user's `environment:` block now takes precedence over crib-injected env on key conflicts (previously crib's injected env won). This is spec-aligned. podman-compose `env_file` support may be buggy; see `docs/implementation-notes.md`.
+
+### Fixed
+
+- `crib restart` now picks up changes to the global workspace config (`~/.config/crib/config.toml` `[workspace]` and project `.cribrc` `[workspace]`: env, mounts, run_args). Previously these were invisible to the change detection, so a restart did a plain container restart without re-injecting the updated env/mounts. A fingerprint of the merged options is now persisted with the workspace result and compared on restart, triggering a recreate when it differs. `crib rebuild` was already correct.
+
 ### Security
 
 - Bumped Go to 1.26.5.

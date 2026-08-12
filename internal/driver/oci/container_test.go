@@ -2,6 +2,8 @@ package oci
 
 import (
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,7 +34,7 @@ func TestBuildRunArgs_Minimal(t *testing.T) {
 		Image: "ubuntu:22.04",
 	}
 
-	_, args := d.buildRunArgs("myproject", opts)
+	_, args := d.buildRunArgs("myproject", opts, "")
 	got := strings.Join(args, " ")
 
 	assertContains(t, got, "run -d --name crib-myproject")
@@ -64,15 +66,14 @@ func TestBuildRunArgs_AllOptions(t *testing.T) {
 		},
 	}
 
-	_, args := d.buildRunArgs("test-ws", opts)
+	_, args := d.buildRunArgs("test-ws", opts, "/tmp/env")
 	got := strings.Join(args, " ")
 
 	assertContains(t, got, "--name crib-test-ws")
 	assertContains(t, got, "--label crib.workspace=test-ws")
 	assertContains(t, got, "--label custom=value")
 	assertContains(t, got, "--user vscode")
-	assertContains(t, got, "-e FOO=bar")
-	assertContains(t, got, "-e BAZ=qux")
+	assertContains(t, got, "--env-file /tmp/env")
 	assertContains(t, got, "--init")
 	assertContains(t, got, "--privileged")
 	assertContains(t, got, "--cap-add SYS_PTRACE")
@@ -94,7 +95,7 @@ func TestBuildRunArgs_WorkspaceLabelAlwaysPresent(t *testing.T) {
 		Image: "alpine",
 	}
 
-	_, args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts, "")
 	found := false
 	for i, a := range args {
 		if a == "--label" && i+1 < len(args) && args[i+1] == "crib.workspace=ws1" {
@@ -114,14 +115,135 @@ func TestBuildRunArgs_NoOptionalFlags(t *testing.T) {
 		Image: "alpine",
 	}
 
-	_, args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts, "")
 	got := strings.Join(args, " ")
 
 	// These flags should NOT be present with empty options.
-	for _, flag := range []string{"--user", "--init", "--privileged", "--cap-add", "--security-opt", "--entrypoint", "--mount", "-e"} {
+	for _, flag := range []string{"--user", "--init", "--privileged", "--cap-add", "--security-opt", "--entrypoint", "--mount", "-e", "--env-file"} {
 		if strings.Contains(got, flag) {
 			t.Errorf("unexpected flag %q in args: %s", flag, got)
 		}
+	}
+}
+
+func TestBuildRunArgs_EnvFallsBackToDashEWithoutEnvFile(t *testing.T) {
+	d := newTestDockerDriver()
+
+	opts := &driver.RunOptions{
+		Image: "alpine",
+		Env:   []string{"FOO=bar", "BAZ=qux"},
+	}
+
+	// No env file path: buildRunArgs falls back to -e flags.
+	_, args := d.buildRunArgs("ws1", opts, "")
+	got := strings.Join(args, " ")
+
+	assertContains(t, got, "-e FOO=bar")
+	assertContains(t, got, "-e BAZ=qux")
+	if strings.Contains(got, "--env-file") {
+		t.Errorf("unexpected --env-file in args: %s", got)
+	}
+}
+
+func TestWriteEnvFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "env")
+	env := []string{"FOO=bar", "BAZ=qux"}
+
+	if err := driver.WriteEnvFile(path, env); err != nil {
+		t.Fatalf("WriteEnvFile: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading env file: %v", err)
+	}
+	if got := string(data); got != "FOO=bar\nBAZ=qux\n" {
+		t.Errorf("unexpected env file content %q", got)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("expected 0600 perms, got %v", perm)
+	}
+}
+
+func TestWriteEnvTempFile(t *testing.T) {
+	// Safe env: writes a temp file and returns a cleanup.
+	path, cleanup, err := driver.WriteEnvTempFile([]string{"FOO=bar", "BAZ=qux"})
+	if err != nil {
+		t.Fatalf("WriteEnvTempFile: %v", err)
+	}
+	if path == "" || cleanup == nil {
+		t.Fatalf("expected path and cleanup, got path=%q cleanup-set=%v", path, cleanup != nil)
+	}
+	defer cleanup()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(data); got != "FOO=bar\nBAZ=qux\n" {
+		t.Errorf("unexpected content %q", got)
+	}
+
+	// Unsafe env (newline): no file, no cleanup, no error (caller falls back).
+	path2, cleanup2, err := driver.WriteEnvTempFile([]string{"FOO=bar\nbaz"})
+	if err != nil || path2 != "" || cleanup2 != nil {
+		t.Errorf("expected empty fallback for newline value, got path=%q cleanup-set=%v err=%v", path2, cleanup2 != nil, err)
+	}
+
+	// Empty env: same fallback.
+	path3, cleanup3, err := driver.WriteEnvTempFile(nil)
+	if err != nil || path3 != "" || cleanup3 != nil {
+		t.Errorf("expected empty fallback for empty env, got path=%q cleanup-set=%v err=%v", path3, cleanup3 != nil, err)
+	}
+}
+
+func TestEnvFileSafe(t *testing.T) {
+	cases := []struct {
+		name string
+		env  []string
+		want bool
+	}{
+		{"empty", nil, true},
+		{"simple", []string{"FOO=bar"}, true},
+		{"hash in value", []string{"FOO=bar#baz"}, true},
+		{"newline in value", []string{"FOO=bar\nbaz"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := driver.EnvFileSafe(tc.env); got != tc.want {
+				t.Errorf("EnvFileSafe(%v) = %v, want %v", tc.env, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEnvFileSafeForCompose(t *testing.T) {
+	cases := []struct {
+		name string
+		env  []string
+		want bool
+	}{
+		{"empty", nil, true},
+		{"simple", []string{"FOO=bar"}, true},
+		{"hash in value", []string{"FOO=bar#baz"}, true},
+		{"newline in value", []string{"FOO=bar\nbaz"}, false},
+		{"double quote in value", []string{"FOO=\"hi\""}, false},
+		{"single quote in value", []string{"FOO='hi'"}, false},
+		{"leading whitespace", []string{"FOO= bar"}, false},
+		{"trailing whitespace", []string{"FOO=bar "}, false},
+		{"inline comment", []string{"FOO=bar # comment"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := driver.EnvFileSafeForCompose(tc.env); got != tc.want {
+				t.Errorf("EnvFileSafeForCompose(%v) = %v, want %v", tc.env, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -136,7 +258,7 @@ func TestBuildRunArgs_RootlessPodmanInjectsUserns(t *testing.T) {
 		Image: "alpine",
 	}
 
-	_, args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts, "")
 	got := strings.Join(args, " ")
 
 	assertContains(t, got, "--userns=keep-id")
@@ -153,7 +275,7 @@ func TestBuildRunArgs_RootPodmanSkipsUserns(t *testing.T) {
 		Image: "alpine",
 	}
 
-	_, args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts, "")
 	got := strings.Join(args, " ")
 
 	if strings.Contains(got, "--userns") {
@@ -172,7 +294,7 @@ func TestBuildRunArgs_DockerSkipsUserns(t *testing.T) {
 		Image: "alpine",
 	}
 
-	_, args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts, "")
 	got := strings.Join(args, " ")
 
 	if strings.Contains(got, "--userns") {
@@ -192,7 +314,7 @@ func TestBuildRunArgs_UserUsernsOverrideSkipsAutoInject(t *testing.T) {
 		ExtraArgs: []string{"--userns=host"},
 	}
 
-	_, args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts, "")
 
 	// Should have the user-specified --userns=host but NOT --userns=keep-id.
 	got := strings.Join(args, " ")
@@ -212,7 +334,7 @@ func TestBuildRunArgs_Ports(t *testing.T) {
 		Ports: []string{"8080:8080", "9090:3000"},
 	}
 
-	_, args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts, "")
 	got := strings.Join(args, " ")
 
 	assertContains(t, got, "--publish 8080:8080")
@@ -239,7 +361,7 @@ func TestBuildRunArgs_ExtraArgsPassthrough(t *testing.T) {
 		ExtraArgs: []string{"--network=host", "--gpus", "all"},
 	}
 
-	_, args := d.buildRunArgs("ws1", opts)
+	_, args := d.buildRunArgs("ws1", opts, "")
 	got := strings.Join(args, " ")
 
 	assertContains(t, got, "--network=host")
@@ -266,7 +388,7 @@ func TestBuildRunArgs_UserNameOverridesDefault(t *testing.T) {
 		ExtraArgs: []string{"--network=host", "--name", "my-container", "--gpus", "all"},
 	}
 
-	name, args := d.buildRunArgs("ws1", opts)
+	name, args := d.buildRunArgs("ws1", opts, "")
 	got := strings.Join(args, " ")
 
 	if name != "my-container" {
@@ -292,7 +414,7 @@ func TestBuildRunArgs_UserNameEqualsForm(t *testing.T) {
 		ExtraArgs: []string{"--name=my-container"},
 	}
 
-	name, args := d.buildRunArgs("ws1", opts)
+	name, args := d.buildRunArgs("ws1", opts, "")
 	got := strings.Join(args, " ")
 
 	if name != "my-container" {
@@ -309,7 +431,7 @@ func TestBuildRunArgs_DefaultName(t *testing.T) {
 
 	opts := &driver.RunOptions{Image: "alpine"}
 
-	name, _ := d.buildRunArgs("ws1", opts)
+	name, _ := d.buildRunArgs("ws1", opts, "")
 
 	if name != "crib-ws1" {
 		t.Errorf("expected default name %q, got %q", "crib-ws1", name)
@@ -557,5 +679,54 @@ func assertContains(t *testing.T, s, substr string) {
 	t.Helper()
 	if !strings.Contains(s, substr) {
 		t.Errorf("expected %q to contain %q", s, substr)
+	}
+}
+
+func TestBuildExecArgs_EnvFile(t *testing.T) {
+	d := newTestDockerDriver()
+
+	args := d.buildExecArgs("ctrID", []string{"/bin/sh"}, nil, []string{"FOO=bar"}, "vscode", "/tmp/exec.env")
+	got := strings.Join(args, " ")
+
+	assertContains(t, got, "exec")
+	assertContains(t, got, "--user vscode")
+	assertContains(t, got, "--env-file /tmp/exec.env")
+	assertContains(t, got, "ctrID /bin/sh")
+	if strings.Contains(got, " -e ") {
+		t.Errorf("expected no -e flags when env file is used, got: %s", got)
+	}
+}
+
+func TestBuildExecArgs_FallsBackToDashEWithoutEnvFile(t *testing.T) {
+	d := newTestDockerDriver()
+
+	args := d.buildExecArgs("ctrID", []string{"/bin/sh"}, nil, []string{"FOO=bar", "BAZ=qux"}, "vscode", "")
+	got := strings.Join(args, " ")
+
+	assertContains(t, got, "--user vscode")
+	assertContains(t, got, "-e FOO=bar")
+	assertContains(t, got, "-e BAZ=qux")
+	if strings.Contains(got, "--env-file") {
+		t.Errorf("unexpected --env-file in args: %s", got)
+	}
+}
+
+func TestBuildExecArgs_StdinAddsInteractive(t *testing.T) {
+	d := newTestDockerDriver()
+
+	args := d.buildExecArgs("ctrID", []string{"sh"}, os.Stdin, nil, "", "")
+	got := strings.Join(args, " ")
+	assertContains(t, got, "exec -i")
+}
+
+func TestBuildExecArgs_NoEnvOrUserOmitsFlags(t *testing.T) {
+	d := newTestDockerDriver()
+
+	args := d.buildExecArgs("ctrID", []string{"sh"}, nil, nil, "", "")
+	got := strings.Join(args, " ")
+	for _, flag := range []string{"-e ", "--env-file", "--user"} {
+		if strings.Contains(got, flag) {
+			t.Errorf("unexpected %q in args: %s", flag, got)
+		}
 	}
 }

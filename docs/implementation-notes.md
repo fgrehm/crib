@@ -23,6 +23,27 @@ The same `x-podman: { in_pod: false }` directive must also be passed during `com
 - `internal/engine/compose.go` (`generateComposeOverride`, `composeDown`, `composeFilesWithOverride`)
 - `internal/driver/oci/container.go` (`buildRunArgs`)
 
+### Env vars are injected via env files, not `-e` flags
+
+crib writes container environment variables to an env file and passes it to the runtime via `--env-file` (single containers) or `env_file:` (compose override) instead of a long list of `-e KEY=VALUE` flags. This keeps the `docker run` / `docker compose` command lines readable and avoids leaking values into `ps` output. The same approach applies to `crib shell`/`exec`/`run`: crib writes the resolved `remoteEnv` (plus the detected `SHELL` for `crib shell`) to a stable `exec.env` next to the workspace state and passes it via `--env-file`, so interactive exec sessions don't spray `-e` flags across the process table. The file is overwritten on every invocation (no leak); because these commands `syscall.Exec` into the runtime, a transient temp file can't be cleaned up afterward, which is why the file lives in the workspace store rather than `/tmp`.
+
+Values that the env-file format cannot represent fall back to the old mechanisms: `-e` flags (single containers, exec, and the `crib shell`/`exec`/`run` passthrough) or the inline `environment:` block (compose). The two runtimes parse env files differently, so the gate differs per path:
+
+- `docker run/exec --env-file` / `podman run/exec --env-file` is **literal**: only a leading `#` starts a comment and the rest of the line is taken verbatim. The only unrepresentable value is one containing a newline (`EnvFileSafe`). This is the gate for container creation, the engine's exec calls (hooks/setup/plugins), and the `crib shell`/`exec`/`run` passthrough.
+- Compose `env_file:` is **richer**: it strips surrounding quotes, trims leading/trailing whitespace, treats a space before `#` as an inline comment, and interpolates unquoted/double-quoted values. Values containing any of those constructs would be silently mutated, so they fall back to inline `environment:` (`EnvFileSafeForCompose`).
+
+**Compose precedence**: the spec treats the compose file as the source of truth for container-wide env in a compose scenario (`containerEnv` is for image/Dockerfile scenarios; the reference implementation only supports `remoteEnv` in compose). crib's `containerEnv`/feature/plugin env is injected via the override's `env_file:`, which compose merges after the user's own `env_file:` entries but below the user's `environment:` block. So if a user's compose service sets `environment:` directly, it wins over crib's injected env on a key conflict. This is spec-aligned; `remoteEnv` is unaffected (applied at exec time).
+
+The compose env file is regenerated alongside the override on every backend start/create/restart, so it stays in sync. It is not regenerated on a no-op `up` against an already-running container (mirroring the override's existing staleness behavior).
+
+**podman-compose caveat**: `env_file` support in podman-compose has historically been buggy. Basic literal `KEY=VALUE` entries work, but interpolation and path resolution have had issues (e.g. [containers/podman-compose#848](https://github.com/containers/podman-compose/issues/848), [containers/podman-compose#1287](https://github.com/containers/podman-compose/issues/1287)). If you hit issues with podman-compose, we're open to adding a config option to fall back to inline `environment:` or rolling back this code path.
+
+**Files**:
+
+- `internal/driver/envfile.go` (`WriteEnvFile`, `WriteEnvFileTo`, `EnvFileSafe`, `EnvFileSafeForCompose`)
+- `internal/driver/oci/container.go` (`RunContainer`, `buildRunArgs`)
+- `internal/engine/compose.go` (`generateComposeOverride`)
+
 ### Version managers (mise, rbenv, nvm) not in PATH during lifecycle hooks
 
 Lifecycle hooks run via `sh -c "<command>"`. Tools installed by version managers like [mise](https://mise.jdx.dev/) activate in `~/.bashrc` (interactive shell), not in `/etc/profile.d/` (login shell). This means `sh -c` and even `bash -l -c` won't find them.
@@ -75,17 +96,17 @@ The "config wins" contract is enforced by `backend.pluginUser()` before plugin d
 `crib restart` compares the current devcontainer config against the stored config from the last `crib up` to determine the minimal action needed:
 
 - **No changes**: Simple `docker restart` / `docker compose restart`, then run the spec's Resume Flow hooks (`postStartCommand` + `postAttachCommand`).
-- **Safe changes** (volumes, mounts, ports, env, runArgs, user, etc.): Recreate the container with the new config, then run Resume Flow hooks only. Creation-time hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`) are skipped since their marker files still exist.
+- **Safe changes** (volumes, mounts, ports, env, runArgs, user, etc., or global workspace config: `config.toml` `[workspace]` / `.cribrc` `[workspace]` env, mounts, run_args): Recreate the container with the new config, then run Resume Flow hooks only. Creation-time hooks (`onCreateCommand`, `updateContentCommand`, `postCreateCommand`) are skipped since their marker files still exist.
 - **Image-affecting changes** (image, Dockerfile, features, build args): Error with a message suggesting `crib rebuild`, since the image needs to be rebuilt.
 
 This follows the devcontainer spec's distinction between Creation Flow (all hooks) and Resume Flow (only `postStartCommand` + `postAttachCommand`). The result is that tweaking a volume mount or environment variable takes seconds instead of minutes.
 
-Change detection uses JSON comparison of the stored `MergedConfig` against a freshly parsed and substituted config. Fields are classified as "image-affecting" or "safe" based on whether they require a new image build or just container runtime configuration.
+Change detection combines three comparisons: JSON comparison of the stored `MergedConfig` against a freshly parsed and substituted config, a content fingerprint of the compose files (`ComposeFilesHash`, so edits inside a compose file are caught even though devcontainer.json is unchanged), and a fingerprint of the merged global workspace options (`GlobalWSHash`, since `config.toml` / `.cribrc` `[workspace]` env/mounts/run_args live outside devcontainer.json). The fingerprints are persisted by `saveResult` and compared on restart; any mismatch routes to `restartRecreate`. Fields are classified as "image-affecting" or "safe" based on whether they require a new image build or just container runtime configuration.
 
 **Files**:
 
 - `internal/engine/restart.go` (`Restart`, `restartSimple`, `restartRecreate`)
-- `internal/engine/change.go` (`detectConfigChange`)
+- `internal/engine/change.go` (`detectConfigChange`, `computeComposeFilesHash`, `computeGlobalWSHash`)
 - `internal/engine/lifecycle.go` (`runResumeHooks`)
 
 ### Early result persistence
