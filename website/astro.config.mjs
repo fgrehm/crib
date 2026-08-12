@@ -90,7 +90,6 @@ export default defineConfig({
             },
             { label: "macOS & Windows", slug: "guides/macos-windows" },
             { label: "Troubleshooting", slug: "guides/troubleshooting" },
-            { label: "Ecosystem", slug: "guides/ecosystem" },
           ],
         },
         {
@@ -113,6 +112,10 @@ export default defineConfig({
             {
               label: "Plugin Development",
               slug: "contributing/plugin-development",
+            },
+            {
+              label: "Community Projects",
+              slug: "contributing/community-projects",
             },
             {
               label: "DevContainer Spec Reference",

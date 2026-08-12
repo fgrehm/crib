@@ -37,6 +37,7 @@ const pages = [
   "contributing/roadmap.md",
   "contributing/implementation-notes.md",
   "contributing/plugin-development.md",
+  "contributing/community-projects.md",
   "contributing/devcontainers-spec.md",
 ];
 
