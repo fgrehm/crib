@@ -24,6 +24,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: "crib",
+      routeMiddleware: "./src/routeData.ts",
       favicon: "/favicon.svg",
       logo: {
         light: "./src/assets/logo-light.svg",

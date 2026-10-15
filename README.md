@@ -4,13 +4,18 @@
 
 # crib
 
+> [!WARNING]
+> crib is discontinued and no longer actively maintained. See ["I'm done with dev containers"](https://fabiorehm.com/blog/2026/10/09/im-done-with-dev-containers/) for the background.
+>
+> **Interested in taking over?** Please [reply to the maintainer invitation](https://github.com/fgrehm/crib/issues/95) to get in touch. If no new maintainer steps forward, this repository will eventually be archived.
+
 Just Enough Devcontainers.
 
 Your `devcontainer.json`, minus the IDE. crib builds the container and stays out of your way.
 
 **[Documentation](https://fgrehm.github.io/crib/)** · **[Comparison with alternatives](https://fgrehm.github.io/crib/comparison/)**
 
-> **Note:** This is the `main` branch where active development happens. Docs here may describe unreleased features. For documentation matching the latest release, see the [`stable`](https://github.com/fgrehm/crib/tree/stable) branch.
+This is the `main` branch. Docs here may describe unreleased features. For documentation matching the latest release, see the [`stable`](https://github.com/fgrehm/crib/tree/stable) branch.
 
 <p align="center">
   <img src="./demo.gif" alt="crib demo" width="800">
@@ -37,6 +42,8 @@ rm crib.tar.gz
 Make sure `~/.local/bin` is in your `PATH`.
 
 ## Contributing
+
+The project is looking for a new maintainer rather than new feature contributions. If you'd like to carry it on, please [reply to the maintainer invitation](https://github.com/fgrehm/crib/issues/95) to discuss taking over.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for a contributor's map of the codebase: module layout, dependency flow, and the invariants that hold the design together. Quirks and spec-compliance status live in [`docs/implementation-notes.md`](./docs/implementation-notes.md).
 
